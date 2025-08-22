@@ -49,7 +49,7 @@ export class InMemoryStore {
     this.store[conversationId].evictionTime = Date.now() + EVICTION_TIME; // refresh eviction time
   }
 
-  get(conversationId: string): Message[] | undefined {
-    return this.store[conversationId]?.messages;
+  get(conversationId: string): Message[]{
+    return this.store[conversationId]?.messages ?? [];
   }
 }
