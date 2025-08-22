@@ -5,6 +5,7 @@
       "name": "bun-react-template",
       "dependencies": {
         "@types/express": "^5.0.3",
+        "@types/node": "^24.3.0",
         "express": "^5.1.0",
         "jsonwebtoken": "^9.0.2",
         "react": "^19",

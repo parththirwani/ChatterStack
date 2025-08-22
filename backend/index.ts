@@ -1,4 +1,5 @@
 import express from "express"
+import { createCompletion } from "openrouter";
 import { CreateChatSchema } from "types";
 
 const app = express();
@@ -14,6 +15,10 @@ app.post("/chat",(req,res)=>{
         })
         return
     }
+
+    //EventEmitters
+    createCompletion(data);
+
 })
 
 app.listen(3000);
