@@ -1,8 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import ChatterStackPage from "./components/ChatPage";
 
-const BACKEND_URL = "http://localhost:3000"; //  your express server
+const BACKEND_URL = "http://localhost:3000";
 
 type User = {
   id: string;
@@ -89,27 +90,6 @@ export default function Home() {
   };
 
   return (
-    <div style={{ padding: 20 }}>
-      <h1>ChatterStack Client</h1>
-
-      {!user ? (
-        <div>
-          <button onClick={() => handleLogin("google")}>Login with Google</button>
-          <button onClick={() => handleLogin("github")}>Login with GitHub</button>
-        </div>
-      ) : (
-        <div>
-          <p>✅ Logged in as {user.name} ({user.email})</p>
-          {user.avatarUrl && <img src={user.avatarUrl} alt="avatar" width={40} />}
-          <button onClick={handleLogout}>Logout</button>
-        </div>
-      )}
-
-      <hr />
-
-      <button onClick={callChat} disabled={loading}>
-        {loading ? "Calling Chat..." : "Call Chat API"}
-      </button>
-    </div>
+    <ChatterStackPage />
   );
 }
