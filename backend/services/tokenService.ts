@@ -24,5 +24,7 @@ export async function issueTokens(res: any, user: { id: string; provider: string
 
   res.cookie("access_token", access, cookieConfig(false));
   res.cookie("refresh_token", refreshRaw, cookieConfig(true));
-  res.json({ success: true, user, accessToken: access });
+  
+  // Don't return JSON here since we'll be redirecting
+  return { success: true, user, accessToken: access };
 }

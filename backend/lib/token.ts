@@ -28,12 +28,13 @@ export function refreshExpiryDate() {
 }
 
 export function cookieConfig(isRefresh=false) {
-  const secure = process.env.NODE_ENV === "production";
+  const isProduction = process.env.NODE_ENV === "production";
+  
   return {
     httpOnly: true,
-    secure,
-    sameSite: secure ? ("none" as const) : ("lax" as const), // set "none" if cross-site OAuth callback
-    domain: process.env.COOKIE_DOMAIN || undefined,
+    secure: isProduction, // Only secure in production (HTTPS)
+    sameSite: isProduction ? ("none" as const) : ("lax" as const), // 'none' for cross-site in production, 'lax' for localhost
+    domain: isProduction ? process.env.COOKIE_DOMAIN : undefined, // No domain for localhost
     path: "/",
     // Access token can be slightly shorter lived; refresh token aligns with DB expiry:
     maxAge: isRefresh ? 30*24*60*60*1000 : 15*60*1000,

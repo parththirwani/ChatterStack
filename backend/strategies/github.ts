@@ -7,7 +7,7 @@ export const githubStrategy = new GitHubStrategy(
   {
     clientID: process.env.GITHUB_CLIENT_ID!,
     clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-    callbackURL: process.env.GITHUB_CALLBACK_URL!,
+    callbackURL: `${process.env.BACKEND_URL || "http://localhost:3000"}/auth/github/callback`,
     scope: ["user:email"],
   },
   async (accessToken: string, _refreshToken: string, profile: Profile, done: (err: any, user?: any) => void) => {
