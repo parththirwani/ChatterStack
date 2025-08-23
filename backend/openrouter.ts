@@ -1,73 +1,74 @@
-import type { Message, MODEL } from "types";
-
+const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const OPENROUTER_KEY = process.env.OPENROUTER_KEY!;
-const MAX_TOKEN_ITERATION = 1000;
 
-
-
-export const createCompletion = async (
-  messages: Message[],
-  model: MODEL,
+export async function createCompletion(
+  messages: { role: string; content: string }[],
+  model: string,
   cb: (chunk: string) => void
-) => {
-  return new Promise<void>(async (resolve, reject) => {
-    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages,
-        stream: true,
-      }),
-    });
+): Promise<string> {
+  console.log("📤 Sending to OpenRouter:", {
+    model,
+    messages,
+  });
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error("Response body is not readable");
+  const response = await fetch(OPENROUTER_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${OPENROUTER_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": "http://localhost:3000", 
+      "X-Title": "ChatterStack",
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      stream: true,
+    }),
+  });
 
-    const decoder = new TextDecoder();
-    let buffer = "";
+  console.log("🔎 OpenRouter status:", response.status, response.statusText);
 
-    try {
-      let tokenIterations = 0;
-      while (true) {
-        tokenIterations++;
-        if (tokenIterations > MAX_TOKEN_ITERATION) {
-          resolve();
-          return;
-        }
+  if (!response.ok || !response.body) {
+    const errText = await response.text();
+    console.error("OpenRouter error:", errText);
+    throw new Error(`OpenRouter request failed: ${response.status}`);
+  }
 
-        const { done, value } = await reader.read();
-        if (done) break;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder("utf-8");
 
-        buffer += decoder.decode(value, { stream: true });
+  let fullMessage = "";
 
-        while (true) {
-          const lineEnd = buffer.indexOf("\n");
-          if (lineEnd === -1) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
 
-          const line = buffer.slice(0, lineEnd).trim();
-          buffer = buffer.slice(lineEnd + 1);
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n").filter((line) => line.trim() !== "");
 
-          if (line.startsWith("data: ")) {
-            const data = line.slice(6);
-            if (data === "[DONE]") break;
+      for (const line of lines) {
+        if (line.startsWith("data:")) {
+          const data = line.replace("data:", "").trim();
+          if (data === "[DONE]") continue;
 
-            try {
-              const parsed = JSON.parse(data);
-              const content = parsed.choices[0].delta.content;
-              if (content) cb(content);
-            } catch {
-              reject(new Error("Failed to parse response chunk"));
+          try {
+            const json = JSON.parse(data);
+            const content = json.choices?.[0]?.delta?.content || "";
+            if (content) {
+              cb(content);
+              fullMessage += content;
             }
+          } catch (err) {
+            console.error("Error parsing JSON line:", line, err);
           }
         }
       }
-    } finally {
-      reader.cancel();
-      resolve();
     }
-  });
-};
+  } catch (err) {
+    console.error("Error streaming OpenRouter:", err);
+  }
+
+  console.log("Full assistant message:", fullMessage);
+  return fullMessage;
+}
