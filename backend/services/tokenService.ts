@@ -1,4 +1,4 @@
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../lib/prisma";
 import {
   signAccessToken,
   generateRefreshTokenString,
@@ -7,9 +7,11 @@ import {
   cookieConfig,
 } from "../lib/token";
 
-const prisma = new PrismaClient();
-
-export async function issueTokens(res: any, user: { id: string; provider: string }, meta: { ip?: string; ua?: string }) {
+export async function issueTokens(
+  res: any,
+  user: { id: string; provider: string },
+  meta: { ip?: string; ua?: string }
+) {
   const access = signAccessToken(user);
   const refreshRaw = generateRefreshTokenString();
   const refresh = {
@@ -24,7 +26,6 @@ export async function issueTokens(res: any, user: { id: string; provider: string
 
   res.cookie("access_token", access, cookieConfig(false));
   res.cookie("refresh_token", refreshRaw, cookieConfig(true));
-  
-  // Don't return JSON here since we'll be redirecting
+
   return { success: true, user, accessToken: access };
 }

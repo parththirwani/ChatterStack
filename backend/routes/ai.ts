@@ -3,6 +3,9 @@ import { Router } from "express";
 import { InMemoryStore } from "../store/InMemoryStore";
 import { CreateChatSchema, Role } from "../types";
 import { createCompletion } from "openrouter";
+import { PrismaClient } from "@prisma/client/extension";
+import { prisma } from "lib/prisma";
+
 
 const router = Router();
 
@@ -49,6 +52,8 @@ router.post("/chat", async (req, res) => {
             role: Role.Assistant,
             content: message
         });
+
+        await prisma.conversation
 
     } catch (error) {
         console.error("Error in chat:", error);

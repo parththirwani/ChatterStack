@@ -1,7 +1,6 @@
 import { Strategy as GitHubStrategy, type Profile } from "passport-github2";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
+import type { VerifyCallback } from "passport-google-oauth20";
 
 export const githubStrategy = new GitHubStrategy(
   {
@@ -10,7 +9,7 @@ export const githubStrategy = new GitHubStrategy(
     callbackURL: `${process.env.BACKEND_URL || "http://localhost:3000"}/auth/github/callback`,
     scope: ["user:email"],
   },
-  async (accessToken: string, _refreshToken: string, profile: Profile, done: (err: any, user?: any) => void) => {
+  async (accessToken: string, _refreshToken: string, profile: Profile, done: VerifyCallback) => {
     try {
       let email: string | null = (profile as any).emails?.[0]?.value || null;
 
@@ -24,6 +23,7 @@ export const githubStrategy = new GitHubStrategy(
       }
 
       let user = await prisma.user.findUnique({ where: { providerId: profile.id } });
+
       if (!user) {
         user = await prisma.user.create({
           data: {
@@ -31,14 +31,14 @@ export const githubStrategy = new GitHubStrategy(
             providerId: profile.id,
             email,
             name: profile.displayName,
-            avatarUrl: profile.photos?.[0]?.value,
+            avatarUrl: profile.photos?.[0]?.value || null,
           },
         });
       }
 
       return done(null, user);
     } catch (err) {
-      return done(err, null);
+      return done(err);
     }
   }
 );

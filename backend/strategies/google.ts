@@ -1,9 +1,7 @@
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import type { Profile as GoogleProfile } from "passport-google-oauth20";
 import type { VerifyCallback } from "passport-oauth2";
-import { PrismaClient } from "@prisma/client";
-
-const prisma = new PrismaClient();
+import { prisma } from "../lib/prisma";
 
 export const googleStrategy = new GoogleStrategy(
   {
@@ -13,75 +11,48 @@ export const googleStrategy = new GoogleStrategy(
   },
   async (
     accessToken: string,
-    refreshToken: string,
+    _refreshToken: string,
     profile: GoogleProfile,
     done: VerifyCallback
   ) => {
     try {
-      // Debug: Log the profile to see what data we're getting
-      console.log("Google profile received:", {
-        id: profile.id,
-        displayName: profile.displayName,
-        emails: profile.emails,
-        photos: profile.photos,
-        _json: profile._json // This contains the raw Google response
-      });
-
-      // Extract avatar URL with fallbacks
+      // Extract avatar
       let avatarUrl: string | null = null;
-      
-      // Try multiple sources for the avatar image
-      if (profile.photos && profile.photos.length > 0) {
-        avatarUrl = profile.photos[0]!.value;
-      } else if (profile._json && profile._json.picture) {
-        // Google's _json often contains 'picture' field
-        avatarUrl = profile._json.picture;
+
+      if (profile.photos?.[0]?.value) {
+        avatarUrl = profile.photos[0].value;
+      } else if ((profile as any)._json?.picture) {
+        avatarUrl = (profile as any)._json.picture;
       }
 
-      // Remove size restrictions from Google Photos URLs to get high-res images
+      // Normalize Google avatar (remove size param or upscale)
       if (avatarUrl) {
-        // Google photos URLs often have size parameters like s96-c
-        // Remove them to get the full-size image, or replace with a larger size
-        avatarUrl = avatarUrl.replace(/=s\d+-c$/, '=s400-c'); // Use 400px instead of 96px
-        // Alternative: remove size parameter entirely
-        // avatarUrl = avatarUrl.replace(/=s\d+-c$/, '');
+        avatarUrl = avatarUrl.replace(/=s\d+-c$/, "=s400-c");
       }
 
-      console.log("Extracted avatar URL:", avatarUrl);
-
-      let user = await prisma.user.findUnique({ 
-        where: { providerId: profile.id } 
+      let user = await prisma.user.findUnique({
+        where: { providerId: profile.id },
       });
 
       if (!user) {
-        const userData = {
-          provider: "google" as const,
-          providerId: profile.id,
-          email: profile.emails?.[0]?.value || null,
-          name: profile.displayName || null,
-          avatarUrl: avatarUrl,
-        };
-
-        console.log("Creating new user with data:", userData);
-
         user = await prisma.user.create({
-          data: userData,
+          data: {
+            provider: "google",
+            providerId: profile.id,
+            email: profile.emails?.[0]?.value || null,
+            name: profile.displayName || null,
+            avatarUrl,
+          },
         });
-      } else {
-        // Update existing user's avatar if it's missing or changed
-        if (!user.avatarUrl && avatarUrl) {
-          console.log("Updating existing user avatar:", avatarUrl);
-          user = await prisma.user.update({
-            where: { id: user.id },
-            data: { avatarUrl: avatarUrl }
-          });
-        }
+      } else if (!user.avatarUrl && avatarUrl) {
+        user = await prisma.user.update({
+          where: { id: user.id },
+          data: { avatarUrl },
+        });
       }
 
-      console.log("Final user object:", user);
       return done(null, user);
     } catch (err) {
-      console.error("Error in Google strategy:", err);
       return done(err as Error, undefined);
     }
   }
