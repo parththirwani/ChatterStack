@@ -1,7 +1,7 @@
 // ChatPage.tsx - Updated with better conversation management and immediate sidebar updates
 import React, { useState } from 'react';
 import Sidebar from '../components/SideBar';
-import ChatInterface from '../components/ChatInterface';
+import ChatInterface from './ChatInterface/ChatInterface';
 import type { User } from '../types';
 
 const ChatPage: React.FC = () => {

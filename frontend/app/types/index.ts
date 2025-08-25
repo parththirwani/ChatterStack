@@ -30,3 +30,20 @@ export interface ChatState {
   loading: boolean;
   error?: string;
 }
+
+export interface AIModel {
+  id: string;
+  name: string;
+  description: string;
+  logo: string;
+  company: string;
+  tier: 'Premium' | 'Pro' | 'Free';
+  capabilities?: string[];
+}
+
+export interface ChatInterfaceProps {
+  user?: User | null;
+  selectedConversationId?: string;
+  onConversationCreated?: (conversationId: string) => void;
+  onNewChatStarted?: () => void;
+}

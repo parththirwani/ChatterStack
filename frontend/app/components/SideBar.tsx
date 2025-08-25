@@ -272,29 +272,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
         )}
-
-        {/* Settings */}
-        <div className="p-4 border-t border-gray-700/50">
-          {collapsed ? (
-            <div className="flex justify-center">
-              <TooltipButton
-                icon={<Settings className="w-5 h-5 text-gray-400" />}
-                tooltip="Settings"
-                onClick={() => {}}
-                className="hover:bg-gray-700/30"
-              />
-            </div>
-          ) : (
-            <button
-              onClick={() => {}}
-              className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 text-gray-400 hover:text-white"
-            >
-              <Settings className="w-5 h-5" />
-              <span className="font-medium">Settings</span>
-            </button>
-          )}
-        </div>
-
         {/* User Section */}
         <div className="p-4 border-t border-gray-700/50">
           {isAuthenticated ? (

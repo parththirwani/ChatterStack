@@ -2,11 +2,9 @@ import { z } from "zod";
 
 const MAX_INPUT_TOKENS = 1000;
 export const SUPPORTED_MODELS = [
-  "openai/gpt-4o-mini",
-  "openai/gpt-4o", 
-  "openai/gpt-4-turbo",
-  "openai/gpt-3.5-turbo",
-  "anthropic/claude-3.5-sonnet"
+  "deepseek/deepseek-chat-v3.1",
+  "google/gemini-2.5-flash",
+  "openai/gpt-4o"
 ] as const;
 
 export type MODEL = typeof SUPPORTED_MODELS[number];
@@ -30,3 +28,5 @@ export enum Role {
 }
 
 export type Messages = Message[];
+
+
