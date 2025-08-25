@@ -1,7 +1,6 @@
 # ChatterStack
 
-<img width="1536" height="1024" alt="image" src="https://github.com/user-attachments/assets/fb527b6b-7609-4d40-9562-43cb6c5e0430" />
-
+<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/77776fe5-e5ed-4547-a02a-f52f1899877d" />
 
 ChatterStack is a modern chat platform built for seamless real-time communication. It combines simplicity, speed, and an intuitive UI to deliver a powerful chat experience for individuals and teams.
 
