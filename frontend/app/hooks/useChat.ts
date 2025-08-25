@@ -1,6 +1,7 @@
+// frontend/app/hooks/useChat.ts
 import { useState, useCallback } from 'react';
-import type { Message, ChatState } from '../types';
 import { ApiService } from '../services/api';
+import type { Message, ChatState } from '../types';
 
 export const useChat = () => {
   const [state, setState] = useState<ChatState>({
@@ -10,7 +11,7 @@ export const useChat = () => {
 
   const sendMessage = useCallback(async (
     message: string, 
-    model: string = 'gpt-3.5-turbo'
+    model: string = 'openai/gpt-4o-mini' // Default to a cheaper model
   ) => {
     if (!message.trim() || state.loading) return;
 
@@ -81,7 +82,7 @@ export const useChat = () => {
       console.error('Error sending message:', error);
       setState(prev => ({
         ...prev,
-        error: 'Failed to send message. Please try again.',
+        error: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
         // Remove the failed AI message
         messages: prev.messages.slice(0, -1),
       }));
@@ -100,7 +101,10 @@ export const useChat = () => {
       const result = await ApiService.getConversation(conversationId);
       if (result?.conversation) {
         setState({
-          messages: result.conversation.messages,
+          messages: result.conversation.messages.map(msg => ({
+            ...msg,
+            role: msg.role as 'user' | 'assistant'
+          })),
           currentConversationId: conversationId,
           loading: false,
         });

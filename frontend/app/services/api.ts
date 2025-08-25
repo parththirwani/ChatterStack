@@ -95,12 +95,25 @@ export class ApiService {
     onConversationId?: (id: string) => void
   ): Promise<{ conversationId?: string }> {
     try {
+      // Get access token from cookies or storage
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      // Try to get access token from cookie (if available)
+      const accessToken = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('access_token='))
+        ?.split('=')[1];
+
+      if (accessToken) {
+        headers['Authorization'] = `Bearer ${accessToken}`;
+      }
+
       const response = await fetch(`${this.baseUrl}/ai/chat`, {
         method: 'POST',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        credentials: 'include', // This will include cookies
+        headers,
         body: JSON.stringify(request),
       });
 

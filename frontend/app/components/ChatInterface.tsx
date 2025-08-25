@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Send, Loader2, AlertCircle } from 'lucide-react';
+import { Send, Loader2, AlertCircle, Settings, ChevronDown } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import type { User } from '../types';
 
@@ -7,18 +7,31 @@ interface ChatInterfaceProps {
   user?: User | null;
 }
 
+const AVAILABLE_MODELS = [
+  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and cost-effective' },
+  { id: 'openai/gpt-4o', name: 'GPT-4o', description: 'Most capable model' },
+  { id: 'openai/gpt-4-turbo', name: 'GPT-4 Turbo', description: 'High performance' },
+  { id: 'openai/gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and reliable' },
+  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Advanced reasoning' },
+];
+
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
   const [message, setMessage] = useState('');
+  const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
+  const [showModelSelector, setShowModelSelector] = useState(false);
+  
   const { 
     messages, 
     loading, 
     error, 
     sendMessage, 
     startNewConversation,
-    clearError 
+    clearError,
+    currentConversationId 
   } = useChat();
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const modelSelectorRef = useRef<HTMLDivElement>(null);
   const isFirstMessage = messages.length === 0;
 
   // Auto-scroll to bottom when new messages arrive
@@ -26,9 +39,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Close model selector when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (modelSelectorRef.current && !modelSelectorRef.current.contains(event.target as Node)) {
+        setShowModelSelector(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
-      await sendMessage(message);
+      await sendMessage(message, selectedModel);
       setMessage('');
     }
   };
@@ -51,6 +76,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
     }
   }, [message, error, clearError]);
 
+  const selectedModelInfo = AVAILABLE_MODELS.find(m => m.id === selectedModel) || AVAILABLE_MODELS[0];
+
   return (
     <div className="flex-1 flex flex-col" style={{ backgroundColor: '#221d25' }}>
       {/* Error banner */}
@@ -69,6 +96,29 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
         </div>
       )}
 
+      {/* Model info banner */}
+      {!isFirstMessage && (
+        <div className="border-b border-gray-700/50 px-6 py-2">
+          <div className="flex items-center justify-between max-w-4xl mx-auto">
+            <div className="flex items-center space-x-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-xs text-gray-400">
+                Using {selectedModelInfo.name}
+                {currentConversationId && (
+                  <span className="ml-2">• Conversation ID: {currentConversationId.slice(0, 8)}...</span>
+                )}
+              </span>
+            </div>
+            <button
+              onClick={handleNewChat}
+              className="text-xs text-yellow-500 hover:text-yellow-400 underline"
+            >
+              New Chat
+            </button>
+          </div>
+        </div>
+      )}
+
       {isFirstMessage ? (
         // First message - centered layout
         <div className="flex-1 flex items-center justify-center">
@@ -79,6 +129,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
             <p className="text-gray-400 text-lg mb-8">
               How can I help you today?
             </p>
+
+            {/* Model Selector */}
+            <div className="mb-6" ref={modelSelectorRef}>
+              <div className="relative">
+                <button
+                  onClick={() => setShowModelSelector(!showModelSelector)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-gray-800/50 border border-gray-600/30 rounded-lg hover:border-yellow-500/50 transition-colors"
+                >
+                  <Settings className="w-4 h-4 text-gray-400" />
+                  <span className="text-sm text-white">{selectedModelInfo.name}</span>
+                  <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showModelSelector ? 'rotate-180' : ''}`} />
+                </button>
+
+                {showModelSelector && (
+                  <div className="absolute top-full mt-2 w-80 bg-gray-800 border border-gray-600 rounded-lg shadow-lg z-10 left-1/2 transform -translate-x-1/2">
+                    <div className="p-2">
+                      {AVAILABLE_MODELS.map((model) => (
+                        <button
+                          key={model.id}
+                          onClick={() => {
+                            setSelectedModel(model.id);
+                            setShowModelSelector(false);
+                          }}
+                          className={`w-full text-left p-3 rounded-lg transition-colors ${
+                            selectedModel === model.id
+                              ? 'bg-yellow-500/20 text-yellow-300'
+                              : 'text-white hover:bg-gray-700/50'
+                          }`}
+                        >
+                          <div className="font-medium text-sm">{model.name}</div>
+                          <div className="text-xs text-gray-400 mt-1">{model.description}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
             
             <div className="relative max-w-2xl">
               <textarea
@@ -183,7 +271,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
             
             <div className="flex items-center justify-center mt-2">
               <div className="text-xs text-gray-500">
-                Press Enter to send • Shift+Enter for new line
+                Press Enter to send • Shift+Enter for new line • Using {selectedModelInfo.name}
               </div>
             </div>
           </div>
