@@ -2,6 +2,8 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import aiRouter from "./routes/ai";
+import authRouter from "./routes/auth";
 
 
 dotenv.config(); 
@@ -23,10 +25,6 @@ app.use(cookieParser());
 
 // Handle preflight requests
 app.options('*', cors(corsOptions));
-
-// Import routes after middleware is set up
-import aiRouter from "./routes/ai";
-import authRouter from "./routes/auth";
 
 // Routes
 app.use("/ai", aiRouter);

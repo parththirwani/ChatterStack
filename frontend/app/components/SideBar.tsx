@@ -12,20 +12,16 @@ import {
 } from 'lucide-react';
 import LoginModal from './AuthModal';
 import Image from 'next/image';
-
-type User = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  avatarUrl: string | null;
-  provider: string;
-};
+import { ApiService } from '../services/api';
+import type { User as UserType, Conversation } from '../types';
 
 interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
-  user?: User | null;
-  onUserChange?: (user: User | null) => void;
+  user?: UserType | null;
+  onUserChange?: (user: UserType | null) => void;
+  onConversationSelect?: (conversationId: string) => void;
+  onNewChat?: () => void;
 }
 
 interface TooltipButtonProps {
@@ -65,57 +61,83 @@ const Sidebar: React.FC<SidebarProps> = ({
   collapsed, 
   onToggleCollapse, 
   user = null, 
-  onUserChange 
+  onUserChange,
+  onConversationSelect,
+  onNewChat
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [loadingConversations, setLoadingConversations] = useState(false);
 
+  // Load conversations when user logs in
   useEffect(() => {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('auth') === 'success') {
-      window.history.replaceState({}, document.title, window.location.pathname);
-      validateUser();
+    if (user && user.id !== 'guest') {
+      loadConversations();
+    } else {
+      setConversations([]);
     }
-  }, []);
+  }, [user]);
 
-  const validateUser = async () => {
+  const loadConversations = async () => {
+    if (!user || user.id === 'guest') return;
+    
+    setLoadingConversations(true);
     try {
-      const response = await fetch('http://localhost:3000/auth/validate', {
-        method: 'POST',
-        credentials: 'include',
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.ok && data.user && onUserChange) {
-          onUserChange(data.user);
-        }
-      }
+      const convos = await ApiService.getConversations();
+      setConversations(convos.sort((a, b) => 
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+      ));
     } catch (error) {
-      console.error('Error validating user:', error);
+      console.error('Failed to load conversations:', error);
+    } finally {
+      setLoadingConversations(false);
     }
   };
 
-  const handleNewChat = () => {};
-  const handleSearchChat = () => {};
+  const handleNewChat = () => {
+    if (onNewChat) onNewChat();
+  };
+
+  const handleSearchChat = () => {
+    // Implement search functionality
+  };
+
   const handleLoginClick = () => setShowLoginModal(true);
 
-  const handleLoginSuccess = (authenticatedUser: User) => {
+  const handleLoginSuccess = (authenticatedUser: UserType) => {
     if (onUserChange) onUserChange(authenticatedUser);
     setShowLoginModal(false);
   };
 
   const handleLogout = async () => {
     try {
-      await fetch(`http://localhost:3000/auth/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
+      await ApiService.logout();
       if (onUserChange) onUserChange(null);
+      setConversations([]);
     } catch (err) {
       console.error("Error logging out", err);
     }
   };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 1) return 'Today';
+    if (diffDays === 2) return 'Yesterday';
+    if (diffDays <= 7) return `${diffDays} days ago`;
+    return date.toLocaleDateString();
+  };
+
+  const filteredConversations = conversations.filter(conv =>
+    conv.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    conv.messages.some(msg => 
+      msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  );
 
   const isAuthenticated = user && user.id && user.id !== 'guest';
 
@@ -151,12 +173,14 @@ const Sidebar: React.FC<SidebarProps> = ({
                 onClick={handleNewChat}
                 className="bg-yellow-500 hover:bg-yellow-400 text-black"
               />
-              <TooltipButton
-                icon={<Search className="w-5 h-5 text-white" />}
-                tooltip="Search Chats"
-                onClick={handleSearchChat}
-                className="text-white hover:bg-white/10"
-              />
+              {isAuthenticated && (
+                <TooltipButton
+                  icon={<Search className="w-5 h-5 text-white" />}
+                  tooltip="Search Chats"
+                  onClick={handleSearchChat}
+                  className="text-white hover:bg-white/10"
+                />
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -168,37 +192,62 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <span className="font-medium">New Chat</span>
               </button>
               
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <input
-                  type="text"
-                  placeholder="Search chats..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full bg-gray-800/50 rounded-lg pl-10 pr-4 py-3 text-sm text-white placeholder-gray-400 border border-gray-600/30 hover:border-gray-500/50 focus:border-yellow-500/50 focus:outline-none transition-colors"
-                />
-              </div>
+              {isAuthenticated && (
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="Search chats..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="w-full bg-gray-800/50 rounded-lg pl-10 pr-4 py-3 text-sm text-white placeholder-gray-400 border border-gray-600/30 hover:border-gray-500/50 focus:border-yellow-500/50 focus:outline-none transition-colors"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
 
         {/* Chat History */}
-        {!collapsed && (
+        {!collapsed && isAuthenticated && (
           <div className="flex-1 overflow-y-auto p-4">
             <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">
               Recent Chats
             </h3>
-            <div className="space-y-3">
-              {["Getting Started with AI", "Project Planning", "Code Review", "Design Feedback"].map((title, i) => (
-                <div key={i} className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white mb-1 truncate">{title}</p>
-                    <p className="text-xs text-gray-400 mb-2 line-clamp-2">Sample preview text...</p>
-                    <p className="text-xs text-gray-500">Some time ago</p>
+            
+            {loadingConversations ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+              </div>
+            ) : filteredConversations.length > 0 ? (
+              <div className="space-y-3">
+                {filteredConversations.slice(0, 20).map((conversation) => (
+                  <div 
+                    key={conversation.id}
+                    onClick={() => onConversationSelect?.(conversation.id)}
+                    className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-white mb-1 truncaNew Chatte">
+                        {conversation.title || 'Untitled Chat'}
+                      </p>
+                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">
+                        {conversation.messages[0]?.content?.substring(0, 100) || 'No messages'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {formatDate(conversation.updatedAt)}
+                      </p>
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            ) : (
+              <div className="text-center py-8">
+                <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-4" />
+                <p className="text-gray-400 text-sm">No conversations yet</p>
+                <p className="text-gray-500 text-xs">Start a new chat to see it here</p>
+              </div>
+            )}
           </div>
         )}
 

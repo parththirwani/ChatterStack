@@ -75,11 +75,9 @@ export default function Home() {
       while (true) {
         const { done, value } = await reader.read();
         if (done) {
-          console.log("Stream finished");
           break;
         }
         const chunk = decoder.decode(value, { stream: true });
-        console.log("Received Chunk:", chunk);
       }
     } catch (error) {
       console.error("Error reading stream", error);
