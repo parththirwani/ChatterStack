@@ -1,4 +1,4 @@
-// frontend/app/components/SideBar.tsx - Updated with better conversation handling
+// frontend/app/components/SideBar.tsx - Updated with immediate conversation updates
 import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
@@ -23,7 +23,8 @@ interface SidebarProps {
   onUserChange?: (user: UserType | null) => void;
   onConversationSelect?: (conversationId: string) => void;
   onNewChat?: () => void;
-  currentConversationId?: string; // Add this to highlight current conversation
+  currentConversationId?: string;
+  refreshTrigger?: number; // Add refresh trigger
 }
 
 interface TooltipButtonProps {
@@ -66,28 +67,29 @@ const Sidebar: React.FC<SidebarProps> = ({
   onUserChange,
   onConversationSelect,
   onNewChat,
-  currentConversationId
+  currentConversationId,
+  refreshTrigger = 0
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
 
-  // Load conversations when user logs in or when component mounts
+  // Load conversations when user logs in, component mounts, or refresh is triggered
   useEffect(() => {
     if (user && user.id !== 'guest') {
       loadConversations();
     } else {
       setConversations([]);
     }
-  }, [user]);
+  }, [user, refreshTrigger]); // Add refreshTrigger to dependencies
 
   const loadConversations = async () => {
     if (!user || user.id === 'guest') return;
     
     setLoadingConversations(true);
     try {
-      console.log('Loading conversations for user:', user.id);
+      console.log('Loading conversations for user:', user.id, 'Trigger:', refreshTrigger);
       const convos = await ApiService.getConversations();
       console.log('Loaded conversations:', convos);
       
@@ -102,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleNewChat = () => {
-    console.log('New chat clicked');
+    console.log('New chat clicked from sidebar');
     if (onNewChat) onNewChat();
   };
 

@@ -1,4 +1,4 @@
-// frontend/app/hooks/useChat.ts - Updated version
+// frontend/app/hooks/useChat.ts - Updated with better conversation management
 import { useState, useCallback } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
@@ -11,7 +11,8 @@ export const useChat = () => {
 
   const sendMessage = useCallback(async (
     message: string, 
-    model: string = 'openai/gpt-4o-mini'
+    model: string = 'openai/gpt-4o-mini',
+    onConversationCreated?: (conversationId: string) => void // Add callback for new conversations
   ) => {
     if (!message.trim() || state.loading) return;
 
@@ -48,12 +49,13 @@ export const useChat = () => {
 
     try {
       let accumulatedContent = '';
+      let newConversationId: string | undefined;
 
       const result = await ApiService.sendMessage(
         {
           message,
           model,
-          conversationId: state.currentConversationId, // This will be undefined for new chats, set for existing ones
+          conversationId: state.currentConversationId,
         },
         (chunk: string) => {
           // Update AI message content as chunks arrive
@@ -71,6 +73,7 @@ export const useChat = () => {
           // Set conversation ID when received (for new conversations)
           if (!state.currentConversationId) {
             console.log('New conversation ID received:', conversationId);
+            newConversationId = conversationId;
             setState(prev => ({
               ...prev,
               currentConversationId: conversationId,
@@ -85,7 +88,14 @@ export const useChat = () => {
           ...prev,
           currentConversationId: result.conversationId,
         }));
+        newConversationId = result.conversationId;
       }
+
+      // Notify parent component if a new conversation was created
+      if (newConversationId && onConversationCreated) {
+        onConversationCreated(newConversationId);
+      }
+
     } catch (error) {
       console.error('Error sending message:', error);
       setState(prev => ({
@@ -144,6 +154,7 @@ export const useChat = () => {
       messages: [],
       currentConversationId: undefined,
       loading: false,
+      error: undefined,
     });
   }, []);
 

@@ -5,7 +5,9 @@ import type { User } from '../types';
 
 interface ChatInterfaceProps {
   user?: User | null;
-  selectedConversationId?: string; // Add this prop to handle conversation selection
+  selectedConversationId?: string;
+  onConversationCreated?: (conversationId: string) => void; // Add callback
+  onNewChatStarted?: () => void; // Add callback for new chat
 }
 
 const AVAILABLE_MODELS = [
@@ -16,7 +18,12 @@ const AVAILABLE_MODELS = [
   { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Advanced reasoning' },
 ];
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, selectedConversationId }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
+  user, 
+  selectedConversationId, 
+  onConversationCreated,
+  onNewChatStarted 
+}) => {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
   const [showModelSelector, setShowModelSelector] = useState(false);
@@ -27,7 +34,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, selectedConversatio
     error, 
     sendMessage, 
     startNewConversation,
-    loadConversation, // Make sure this function exists in useChat
+    loadConversation,
     clearError,
     currentConversationId 
   } = useChat();
@@ -41,8 +48,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, selectedConversatio
     if (selectedConversationId && selectedConversationId !== currentConversationId) {
       console.log('Loading selected conversation:', selectedConversationId);
       loadConversation(selectedConversationId);
+    } else if (!selectedConversationId && currentConversationId) {
+      // This handles the "new chat" case - when selectedConversationId becomes undefined
+      console.log('Starting new conversation due to selectedConversationId being undefined');
+      startNewConversation();
     }
-  }, [selectedConversationId, currentConversationId, loadConversation]);
+  }, [selectedConversationId, currentConversationId, loadConversation, startNewConversation]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -63,7 +74,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, selectedConversatio
 
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
-      await sendMessage(message, selectedModel);
+      await sendMessage(
+        message, 
+        selectedModel, 
+        (newConversationId: string) => {
+          // Notify parent component when a new conversation is created
+          if (onConversationCreated) {
+            onConversationCreated(newConversationId);
+          }
+        }
+      );
       setMessage('');
     }
   };
@@ -76,7 +96,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, selectedConversatio
   };
 
   const handleNewChat = () => {
+    console.log('New chat button clicked');
     startNewConversation();
+    if (onNewChatStarted) {
+      onNewChatStarted();
+    }
   };
 
   // Clear error when user starts typing
