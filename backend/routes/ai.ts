@@ -3,44 +3,77 @@ import { InMemoryStore } from "../store/InMemoryStore";
 import { CreateChatSchema, Role } from "../types";
 import { createCompletion } from "openrouter";
 import { prisma } from "../lib/prisma";
-import { authenticate } from "middleware/auth";
+import { authenticate } from "middleware/authentication";
 
 
 const router = Router();
 
-router.get("/conversations",authenticate, async(req,res)=>{
-        const userId = (req as any).user.id;
-        const conversations = await prisma.conversation.findMany({
-            where: {
-                userId
-            },
-            include: {
-                messages: true
-            }
-        })
-        res.json(conversations)
+router.get("/conversations", authenticate, async (req, res) => {
+    const userId = (req as any).user.id;
+    const conversations = await prisma.conversation.findMany({
+        where: {
+            userId
+        },
+        include: {
+            messages: true
+        }
+    })
+    res.json(conversations)
 })
 
-router.get("/conversations/:conversationId", authenticate, async(req,res)=>{
-        const userId = (req as any).user.id;
-        const conservationId = req.params.conversationId;
-        const conversation = await prisma.conversation.findUnique({
-            where: {
-                id: conservationId,
-                userId
-            },
-            include: {
-                messages: {
-                    orderBy: {
-                        createdAt: "asc"
-                    }
-                }
-            }
-        })
-        res.json({
-            conversation
-        })
-})
+router.get("/conversations/:conversationId", authenticate, async (req, res) => {
+  try {
+    const userId = (req as any).user.id;
+    const conversationId = req.params.conversationId;
+
+    console.log("Fetching conversation:", { userId, conversationId });
+
+    if (!conversationId) {
+      console.error("Missing conversationId in request params");
+      return res.status(400).json({ error: "Conversation ID is required" });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: {
+        id: conversationId,
+        userId,
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: "asc" },
+        },
+      },
+    });
+
+    console.log("Conversation from DB:", conversation);
+
+    if (!conversation) {
+      console.warn("Conversation not found:", { userId, conversationId });
+      return res.status(404).json({ error: "Conversation not found" });
+    }
+
+    // Generate title if not already present
+    let title = conversation.title;
+    if (!title) {
+      console.log("Title missing, generating one...");
+      const { TitleService } = await import("../services/titleService");
+      title = await TitleService.generateTitle(conversationId);
+      console.log("Generated title:", title);
+    }
+
+    res.json({
+      conversation: {
+        ...conversation,
+        title,
+      },
+    });
+  } catch (err) {
+    console.error("Error fetching conversation:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
 
 router.post("/chat", authenticate, async (req, res) => {
     try {
