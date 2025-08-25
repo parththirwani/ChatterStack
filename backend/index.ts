@@ -2,11 +2,11 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
-import passport from "passport";
+
 
 dotenv.config(); 
 
-const app = express();
+const app: express.Application = express();
 
 // CORS configuration - Allow frontend to access backend
 const corsOptions = {
@@ -19,7 +19,7 @@ const corsOptions = {
 // Middleware
 app.use(cors(corsOptions));
 app.use(express.json());
-app.use(cookieParser()); // Add cookie parser middleware
+app.use(cookieParser()); 
 
 // Handle preflight requests
 app.options('*', cors(corsOptions));

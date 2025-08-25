@@ -5,7 +5,14 @@ import { githubStrategy } from "../strategies/github";
 import { issueTokens } from "../services/tokenService";
 import { findUserById } from "../services/userService";
 import { prisma } from "../lib/prisma";
-import { cookieConfig, generateRefreshTokenString, hashToken, refreshExpiryDate, signAccessToken, verifyAccessToken } from "../lib/token";
+import {
+  cookieConfig,
+  generateRefreshTokenString,
+  hashToken,
+  refreshExpiryDate,
+  signAccessToken,
+  verifyAccessToken,
+} from "../lib/token";
 
 const router = Router();
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3001";
@@ -14,22 +21,52 @@ passport.use(googleStrategy);
 passport.use(githubStrategy);
 
 // Google
-router.get("/google", passport.authenticate("google", { scope: ["profile", "email"], session: false }));
-router.get("/google/callback",
-  passport.authenticate("google", { session: false, failureRedirect: `${FRONTEND_URL}/chat?auth=error` }),
+router.get("/google", (req, res, next) => {
+  passport.authenticate("google", { scope: ["profile", "email"], session: false })(req, res, next);
+});
+
+router.get(
+  "/google/callback",
+  passport.authenticate("google", { session: false, failureRedirect: `${FRONTEND_URL}/?auth=error` }),
   async (req: any, res) => {
-    await issueTokens(res, { id: req.user.id, provider: req.user.provider }, { ip: req.ip, ua: req.get("user-agent") });
-    res.redirect(`${FRONTEND_URL}/chat?auth=success`);
+    if (req.user?.id) {
+      await prisma.user.findUnique({
+        where: { id: req.user.id },
+      });
+    }
+
+    await issueTokens(
+      res,
+      { id: req.user.id, provider: req.user.provider },
+      { ip: req.ip, ua: req.get("user-agent") }
+    );
+
+    res.redirect(`${FRONTEND_URL}/?auth=success`);
   }
 );
 
 // GitHub
-router.get("/github", passport.authenticate("github", { scope: ["user:email"], session: false }));
-router.get("/github/callback",
-  passport.authenticate("github", { session: false, failureRedirect: `${FRONTEND_URL}/chat?auth=error` }),
+router.get("/github", (req, res, next) => {
+  passport.authenticate("github", { scope: ["user:email"], session: false })(req, res, next);
+});
+
+router.get(
+  "/github/callback",
+  passport.authenticate("github", { session: false, failureRedirect: `${FRONTEND_URL}/?auth=error` }),
   async (req: any, res) => {
-    await issueTokens(res, { id: req.user.id, provider: req.user.provider }, { ip: req.ip, ua: req.get("user-agent") });
-    res.redirect(`${FRONTEND_URL}/chat?auth=success`);
+    if (req.user?.id) {
+      await prisma.user.findUnique({
+        where: { id: req.user.id },
+      });
+    }
+
+    await issueTokens(
+      res,
+      { id: req.user.id, provider: req.user.provider },
+      { ip: req.ip, ua: req.get("user-agent") }
+    );
+
+    res.redirect(`${FRONTEND_URL}/?auth=success`);
   }
 );
 
@@ -53,9 +90,18 @@ router.post("/refresh", async (req, res) => {
   const newExpires = refreshExpiryDate();
 
   await prisma.$transaction([
-    prisma.refreshToken.update({ where: { tokenHash }, data: { revokedAt: new Date(), replacedByToken: newRaw } }),
+    prisma.refreshToken.update({
+      where: { tokenHash },
+      data: { revokedAt: new Date(), replacedByToken: newRaw },
+    }),
     prisma.refreshToken.create({
-      data: { tokenHash: newHash, userId: user.id, expiresAt: newExpires, createdByIp: req.ip, userAgent: req.get("user-agent") || undefined },
+      data: {
+        tokenHash: newHash,
+        userId: user.id,
+        expiresAt: newExpires,
+        createdByIp: req.ip,
+        userAgent: req.get("user-agent") || undefined,
+      },
     }),
   ]);
 

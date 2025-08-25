@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
   Search, 
@@ -11,6 +11,7 @@ import {
   LogIn
 } from 'lucide-react';
 import LoginModal from './AuthModal';
+import Image from 'next/image';
 
 type User = {
   id: string;
@@ -27,7 +28,6 @@ interface SidebarProps {
   onUserChange?: (user: User | null) => void;
 }
 
-// Tooltip component for collapsed state buttons
 interface TooltipButtonProps {
   icon: React.ReactNode;
   tooltip: string;
@@ -70,24 +70,39 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
 
-  const handleNewChat = () => {
-    console.log('New chat clicked');
-    // Add your new chat logic here
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('auth') === 'success') {
+      window.history.replaceState({}, document.title, window.location.pathname);
+      validateUser();
+    }
+  }, []);
+
+  const validateUser = async () => {
+    try {
+      const response = await fetch('http://localhost:3000/auth/validate', {
+        method: 'POST',
+        credentials: 'include',
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.ok && data.user && onUserChange) {
+          onUserChange(data.user);
+        }
+      }
+    } catch (error) {
+      console.error('Error validating user:', error);
+    }
   };
 
-  const handleSearchChat = () => {
-    console.log('Search chat clicked');
-    // Add your search chat logic here
-  };
-
-  const handleLoginClick = () => {
-    setShowLoginModal(true);
-  };
+  const handleNewChat = () => {};
+  const handleSearchChat = () => {};
+  const handleLoginClick = () => setShowLoginModal(true);
 
   const handleLoginSuccess = (authenticatedUser: User) => {
-    if (onUserChange) {
-      onUserChange(authenticatedUser);
-    }
+    if (onUserChange) onUserChange(authenticatedUser);
+    setShowLoginModal(false);
   };
 
   const handleLogout = async () => {
@@ -96,13 +111,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         method: "POST",
         credentials: "include",
       });
-      if (onUserChange) {
-        onUserChange(null);
-      }
+      if (onUserChange) onUserChange(null);
     } catch (err) {
       console.error("Error logging out", err);
     }
   };
+
+  const isAuthenticated = user && user.id && user.id !== 'guest';
 
   return (
     <>
@@ -126,10 +141,9 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        {/* Action Buttons Section */}
+        {/* Action Buttons */}
         <div className="p-4 border-b border-gray-700">
           {collapsed ? (
-            // Collapsed state - show icon buttons with tooltips
             <div className="space-y-3 flex flex-col items-center">
               <TooltipButton
                 icon={<Plus className="w-5 h-5 text-black" />}
@@ -145,7 +159,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               />
             </div>
           ) : (
-            // Expanded state - show full buttons
             <div className="space-y-3">
               <button
                 onClick={handleNewChat}
@@ -170,57 +183,24 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         {/* Chat History */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {!collapsed && (
-            <>
-              <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">
-                Recent Chats
-              </h3>
-              <div className="space-y-3">
-                {/* Sample chat items with bubble design */}
-                <div className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white mb-1 truncate">Getting Started with AI</p>
-                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">How does artificial intelligence work?</p>
-                      <p className="text-xs text-gray-500">30m ago</p>
-                    </div>
+        {!collapsed && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">
+              Recent Chats
+            </h3>
+            <div className="space-y-3">
+              {["Getting Started with AI", "Project Planning", "Code Review", "Design Feedback"].map((title, i) => (
+                <div key={i} className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-white mb-1 truncate">{title}</p>
+                    <p className="text-xs text-gray-400 mb-2 line-clamp-2">Sample preview text...</p>
+                    <p className="text-xs text-gray-500">Some time ago</p>
                   </div>
                 </div>
-                
-                <div className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white mb-1 truncate">Project Planning</p>
-                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">Can you help me plan my next project?</p>
-                      <p className="text-xs text-gray-500">2h ago</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white mb-1 truncate">Code Review</p>
-                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">Please review this React component</p>
-                      <p className="text-xs text-gray-500">1d ago</p>
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30">
-                  <div className="flex items-start space-x-3">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white mb-1 truncate">Design Feedback</p>
-                      <p className="text-xs text-gray-400 mb-2 line-clamp-2">What do you think about this UI?</p>
-                      <p className="text-xs text-gray-500">2d ago</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Settings */}
         <div className="p-4 border-t border-gray-700/50">
@@ -229,13 +209,13 @@ const Sidebar: React.FC<SidebarProps> = ({
               <TooltipButton
                 icon={<Settings className="w-5 h-5 text-gray-400" />}
                 tooltip="Settings"
-                onClick={() => console.log('Settings clicked')}
+                onClick={() => {}}
                 className="hover:bg-gray-700/30"
               />
             </div>
           ) : (
             <button
-              onClick={() => console.log('Settings clicked')}
+              onClick={() => {}}
               className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-gray-700/30 transition-all duration-200 text-gray-400 hover:text-white"
             >
               <Settings className="w-5 h-5" />
@@ -246,20 +226,23 @@ const Sidebar: React.FC<SidebarProps> = ({
 
         {/* User Section */}
         <div className="p-4 border-t border-gray-700/50">
-          {user && user.id !== 'guest' ? (
+          {isAuthenticated ? (
             collapsed ? (
-              // Collapsed user section
               <div className="flex flex-col items-center space-y-3">
                 <TooltipButton
-                  icon={
-                    user.avatarUrl ? (
-                      <img src={user.avatarUrl} alt={user.name || 'User'} className="w-8 h-8 rounded-full" />
-                    ) : (
-                      <User className="w-5 h-5 text-white" />
-                    )
-                  }
-                  tooltip={user.name || user.email || 'User Profile'}
-                  onClick={() => console.log('User profile clicked')}
+                  icon={user?.avatarUrl ? (
+                    <Image
+                      src={user.avatarUrl}
+                      alt={user.name || 'User'} 
+                      width={32}
+                      height={32}
+                      className="w-8 h-8 rounded-full"
+                    />
+                  ) : (
+                    <User className="w-5 h-5 text-white" />
+                  )}
+                  tooltip={user?.name || user?.email || 'User Profile'}
+                  onClick={() => {}}
                 />
                 <TooltipButton
                   icon={<LogOut className="w-5 h-5 text-red-400" />}
@@ -269,23 +252,24 @@ const Sidebar: React.FC<SidebarProps> = ({
                 />
               </div>
             ) : (
-              // Expanded user section
               <div className="space-y-3">
                 <div className="flex items-center space-x-3 p-3 rounded-lg bg-gray-800/30 border border-gray-600/20">
-                  {user.avatarUrl ? (
-                    <img src={user.avatarUrl} alt={user.name || 'User'} className="w-10 h-10 rounded-full" />
+                  {user?.avatarUrl ? (
+                    <Image
+                      src={user.avatarUrl}
+                      alt={user.name || 'User'} 
+                      width={40}
+                      height={40}
+                      className="w-10 h-10 rounded-full"
+                    />
                   ) : (
                     <div className="w-10 h-10 rounded-full bg-yellow-500 flex items-center justify-center">
                       <User className="w-5 h-5 text-black" />
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
-                      {user.name || 'User'}
-                    </p>
-                    <p className="text-xs text-gray-400 truncate">
-                      {user.email || `Signed in with ${user.provider}`}
-                    </p>
+                    <p className="text-sm font-medium text-white truncate">{user?.name || 'User'}</p>
+                    <p className="text-xs text-gray-400 truncate">{user?.email || `Signed in with ${user?.provider}`}</p>
                   </div>
                 </div>
                 
@@ -299,7 +283,6 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )
           ) : (
-            // Not logged in state - show login button
             <button 
               onClick={handleLoginClick}
               className={`${collapsed ? 'w-12 h-12' : 'w-full px-4 py-3'} flex items-center justify-center space-x-3 rounded-lg bg-yellow-500 hover:bg-yellow-400 transition-colors text-black font-medium`}
@@ -313,7 +296,6 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Login Modal */}
       <LoginModal 
-            //TODO:fix the google avatar 
         isOpen={showLoginModal} 
         onClose={() => setShowLoginModal(false)} 
         onLoginSuccess={handleLoginSuccess}
