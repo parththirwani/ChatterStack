@@ -1,3 +1,4 @@
+// frontend/app/components/SideBar.tsx - Updated with better conversation handling
 import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
@@ -22,6 +23,7 @@ interface SidebarProps {
   onUserChange?: (user: UserType | null) => void;
   onConversationSelect?: (conversationId: string) => void;
   onNewChat?: () => void;
+  currentConversationId?: string; // Add this to highlight current conversation
 }
 
 interface TooltipButtonProps {
@@ -63,14 +65,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   user = null, 
   onUserChange,
   onConversationSelect,
-  onNewChat
+  onNewChat,
+  currentConversationId
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
 
-  // Load conversations when user logs in
+  // Load conversations when user logs in or when component mounts
   useEffect(() => {
     if (user && user.id !== 'guest') {
       loadConversations();
@@ -84,7 +87,10 @@ const Sidebar: React.FC<SidebarProps> = ({
     
     setLoadingConversations(true);
     try {
+      console.log('Loading conversations for user:', user.id);
       const convos = await ApiService.getConversations();
+      console.log('Loaded conversations:', convos);
+      
       setConversations(convos.sort((a, b) => 
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       ));
@@ -96,7 +102,15 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleNewChat = () => {
+    console.log('New chat clicked');
     if (onNewChat) onNewChat();
+  };
+
+  const handleConversationClick = (conversationId: string) => {
+    console.log('Conversation clicked:', conversationId);
+    if (onConversationSelect) {
+      onConversationSelect(conversationId);
+    }
   };
 
   const handleSearchChat = () => {
@@ -224,12 +238,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {filteredConversations.slice(0, 20).map((conversation) => (
                   <div 
                     key={conversation.id}
-                    onClick={() => onConversationSelect?.(conversation.id)}
-                    className="p-4 rounded-2xl bg-gray-800/30 hover:bg-gray-700/40 transition-all duration-200 cursor-pointer border border-gray-600/20 hover:border-gray-500/30"
+                    onClick={() => handleConversationClick(conversation.id)}
+                    className={`p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${
+                      currentConversationId === conversation.id
+                        ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
+                        : 'bg-gray-800/30 hover:bg-gray-700/40 border-gray-600/20 hover:border-gray-500/30'
+                    }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-white mb-1 truncaNew Chatte">
-                        {conversation.title || 'Untitled Chat'}
+                      <p className={`text-sm font-medium mb-1 truncate ${
+                        currentConversationId === conversation.id ? 'text-yellow-300' : 'text-white'
+                      }`}>
+                        {conversation.title || 'New Chat'}
                       </p>
                       <p className="text-xs text-gray-400 mb-2 line-clamp-2">
                         {conversation.messages[0]?.content?.substring(0, 100) || 'No messages'}

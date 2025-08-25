@@ -1,4 +1,4 @@
-// frontend/app/hooks/useChat.ts
+// frontend/app/hooks/useChat.ts - Updated version
 import { useState, useCallback } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
@@ -11,9 +11,14 @@ export const useChat = () => {
 
   const sendMessage = useCallback(async (
     message: string, 
-    model: string = 'openai/gpt-4o-mini' // Default to a cheaper model
+    model: string = 'openai/gpt-4o-mini'
   ) => {
     if (!message.trim() || state.loading) return;
+
+    console.log('=== Sending Message ===');
+    console.log('Current conversation ID:', state.currentConversationId);
+    console.log('Message:', message);
+    console.log('Model:', model);
 
     // Add user message immediately
     const userMessage: Message = {
@@ -48,7 +53,7 @@ export const useChat = () => {
         {
           message,
           model,
-          conversationId: state.currentConversationId,
+          conversationId: state.currentConversationId, // This will be undefined for new chats, set for existing ones
         },
         (chunk: string) => {
           // Update AI message content as chunks arrive
@@ -63,11 +68,14 @@ export const useChat = () => {
           }));
         },
         (conversationId: string) => {
-          // Set conversation ID when received
-          setState(prev => ({
-            ...prev,
-            currentConversationId: conversationId,
-          }));
+          // Set conversation ID when received (for new conversations)
+          if (!state.currentConversationId) {
+            console.log('New conversation ID received:', conversationId);
+            setState(prev => ({
+              ...prev,
+              currentConversationId: conversationId,
+            }));
+          }
         }
       );
 
@@ -95,16 +103,25 @@ export const useChat = () => {
   }, [state.loading, state.currentConversationId]);
 
   const loadConversation = useCallback(async (conversationId: string) => {
+    console.log('=== Loading Conversation ===');
+    console.log('Conversation ID:', conversationId);
+    
     setState(prev => ({ ...prev, loading: true, error: undefined }));
 
     try {
       const result = await ApiService.getConversation(conversationId);
+      console.log('Conversation loaded:', result);
+      
       if (result?.conversation) {
+        const messages = result.conversation.messages.map(msg => ({
+          ...msg,
+          role: msg.role as 'user' | 'assistant'
+        }));
+        
+        console.log('Setting messages:', messages);
+        
         setState({
-          messages: result.conversation.messages.map(msg => ({
-            ...msg,
-            role: msg.role as 'user' | 'assistant'
-          })),
+          messages,
           currentConversationId: conversationId,
           loading: false,
         });
@@ -122,6 +139,7 @@ export const useChat = () => {
   }, []);
 
   const startNewConversation = useCallback(() => {
+    console.log('=== Starting New Conversation ===');
     setState({
       messages: [],
       currentConversationId: undefined,

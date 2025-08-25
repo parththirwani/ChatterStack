@@ -10,7 +10,11 @@ const router = Router();
 
 router.post("/", authenticate, async (req, res) => {
   try {
+    console.log("=== Environment Debug ===");
+    console.log("OPENROUTER_API_KEY exists:", !!process.env.OPENROUTER_API_KEY);
+    console.log("OPENROUTER_API_KEY value:", process.env.OPENROUTER_API_KEY?.substring(0, 10) + "...");
     console.log("=== Chat Request Debug ===");
+
     console.log("Request body:", req.body);
     console.log("User from token:", (req as any).user);
     console.log("Headers:", req.headers);
@@ -19,9 +23,9 @@ router.post("/", authenticate, async (req, res) => {
     const { success, data, error: validationError } = CreateChatSchema.safeParse(req.body);
     if (!success) {
       console.log("Validation failed:", validationError);
-      return res.status(400).json({ 
-        message: "Incorrect inputs", 
-        errors: validationError?.errors 
+      return res.status(400).json({
+        message: "Incorrect inputs",
+        errors: validationError?.errors
       });
     }
 
@@ -48,7 +52,7 @@ router.post("/", authenticate, async (req, res) => {
     // 👇 Hydrate from DB if memory empty but conversationId exists
     if (existingMessages.length === 0 && data.conversationId) {
       console.log("Loading messages from DB for conversation:", conversationId);
-      
+
       // Verify conversation belongs to user
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId, userId },
@@ -75,8 +79,8 @@ router.post("/", authenticate, async (req, res) => {
 
     // 👇 Generate reply with history
     const messagesForAI = [...existingMessages, { role: Role.User, content: data.message }];
-    console.log("Sending to AI:", messagesForAI.map(m => ({ 
-      role: m.role, 
+    console.log("Sending to AI:", messagesForAI.map(m => ({
+      role: m.role,
       content: m.content.substring(0, 50) + (m.content.length > 50 ? "..." : "")
     })));
 
@@ -107,7 +111,7 @@ router.post("/", authenticate, async (req, res) => {
     if (!data.conversationId) {
       // 👇 New conversation
       console.log("Creating new conversation in DB");
-      
+
       try {
         const conversation = await prisma.conversation.create({
           data: {
@@ -137,7 +141,7 @@ router.post("/", authenticate, async (req, res) => {
     } else {
       // 👇 Existing conversation
       console.log("Adding messages to existing conversation");
-      
+
       try {
         await prisma.message.createMany({
           data: [
@@ -160,10 +164,10 @@ router.post("/", authenticate, async (req, res) => {
     // 👇 End SSE stream properly
     res.write("data: [DONE]\n\n");
     res.end();
-    
+
   } catch (error) {
     console.error("Error in chat:", error);
-    
+
     // Send error to client via SSE
     if (!res.writableEnded) {
       try {

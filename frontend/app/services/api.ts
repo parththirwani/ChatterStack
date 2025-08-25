@@ -1,4 +1,4 @@
-// frontend/app/services/api.ts
+// frontend/app/services/api.ts - Updated with better error handling and auth
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
 export interface User {
@@ -10,6 +10,7 @@ export interface User {
 }
 
 export interface Message {
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   createdAt?: string;
@@ -33,19 +34,44 @@ export interface ChatRequest {
 export class ApiService {
   private static baseUrl = BACKEND_URL;
 
-  // Generic fetch wrapper with credentials
+  // Helper to get auth headers
+  private static getAuthHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+
+    // Try to get access token from cookie
+    const accessToken = document.cookie
+      .split('; ')
+      .find(row => row.startsWith('access_token='))
+      ?.split('=')[1];
+
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+
+    return headers;
+  }
+
+  // Generic fetch wrapper with credentials and better error handling
   private static async fetchWithCredentials(url: string, options: RequestInit = {}) {
+    console.log(`API Call: ${options.method || 'GET'} ${url}`);
+    
     const response = await fetch(`${this.baseUrl}${url}`, {
       ...options,
       credentials: 'include',
       headers: {
-        'Content-Type': 'application/json',
+        ...this.getAuthHeaders(),
         ...options.headers,
       },
     });
 
+    console.log(`API Response: ${response.status} ${response.statusText}`);
+
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      const errorText = await response.text();
+      console.error('API Error:', response.status, errorText);
+      throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
 
     return response;
@@ -54,10 +80,13 @@ export class ApiService {
   // Authentication methods
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
     try {
+      console.log('Validating authentication...');
       const response = await this.fetchWithCredentials('/auth/validate', {
         method: 'POST',
       });
-      return await response.json();
+      const result = await response.json();
+      console.log('Auth validation result:', result);
+      return result;
     } catch (error) {
       console.error('Auth validation failed:', error);
       return { ok: false };
@@ -66,10 +95,13 @@ export class ApiService {
 
   static async logout(): Promise<{ success: boolean }> {
     try {
+      console.log('Logging out...');
       const response = await this.fetchWithCredentials('/auth/logout', {
         method: 'POST',
       });
-      return await response.json();
+      const result = await response.json();
+      console.log('Logout result:', result);
+      return result;
     } catch (error) {
       console.error('Logout failed:', error);
       return { success: false };
@@ -78,10 +110,13 @@ export class ApiService {
 
   static async refreshToken(): Promise<{ success: boolean; accessToken?: string }> {
     try {
+      console.log('Refreshing token...');
       const response = await this.fetchWithCredentials('/auth/refresh', {
         method: 'POST',
       });
-      return await response.json();
+      const result = await response.json();
+      console.log('Token refresh result:', result);
+      return result;
     } catch (error) {
       console.error('Token refresh failed:', error);
       return { success: false };
@@ -95,30 +130,22 @@ export class ApiService {
     onConversationId?: (id: string) => void
   ): Promise<{ conversationId?: string }> {
     try {
-      // Get access token from cookies or storage
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-
-      // Try to get access token from cookie (if available)
-      const accessToken = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('access_token='))
-        ?.split('=')[1];
-
-      if (accessToken) {
-        headers['Authorization'] = `Bearer ${accessToken}`;
-      }
+      console.log('=== Sending Message ===');
+      console.log('Request:', request);
 
       const response = await fetch(`${this.baseUrl}/ai/chat`, {
         method: 'POST',
-        credentials: 'include', // This will include cookies
-        headers,
+        credentials: 'include',
+        headers: this.getAuthHeaders(),
         body: JSON.stringify(request),
       });
 
+      console.log('Chat response status:', response.status);
+
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        console.error('Chat API error:', response.status, errorText);
+        throw new Error(`Chat API error: ${response.status} - ${errorText}`);
       }
 
       const reader = response.body?.getReader();
@@ -128,7 +155,10 @@ export class ApiService {
       if (reader) {
         while (true) {
           const { done, value } = await reader.read();
-          if (done) break;
+          if (done) {
+            console.log('Stream completed');
+            break;
+          }
 
           const chunk = decoder.decode(value);
           const lines = chunk.split('\n');
@@ -137,11 +167,14 @@ export class ApiService {
             if (line.startsWith('data: ')) {
               const data = line.slice(6);
               if (data === '[DONE]') {
+                console.log('Stream finished');
                 return { conversationId };
               }
 
               try {
                 const parsed = JSON.parse(data);
+                console.log('Parsed SSE data:', parsed);
+                
                 if (parsed.chunk && onChunk) {
                   onChunk(parsed.chunk);
                 }
@@ -149,8 +182,12 @@ export class ApiService {
                   conversationId = parsed.conversationId;
                   onConversationId(parsed.conversationId);
                 }
+                if (parsed.error) {
+                  throw new Error(parsed.error);
+                }
               } catch (e) {
-                // Ignore invalid JSON
+                // Ignore invalid JSON chunks but log them
+                console.log('Invalid JSON in SSE:', data);
               }
             }
           }
@@ -167,8 +204,11 @@ export class ApiService {
   // Conversation methods
   static async getConversations(): Promise<Conversation[]> {
     try {
+      console.log('Fetching conversations...');
       const response = await this.fetchWithCredentials('/ai/conversations');
-      return await response.json();
+      const conversations = await response.json();
+      console.log('Fetched conversations:', conversations.length);
+      return conversations;
     } catch (error) {
       console.error('Get conversations failed:', error);
       return [];
@@ -177,8 +217,11 @@ export class ApiService {
 
   static async getConversation(conversationId: string): Promise<{ conversation: Conversation } | null> {
     try {
+      console.log('Fetching conversation:', conversationId);
       const response = await this.fetchWithCredentials(`/ai/conversations/${conversationId}`);
-      return await response.json();
+      const result = await response.json();
+      console.log('Fetched conversation:', result);
+      return result;
     } catch (error) {
       console.error('Get conversation failed:', error);
       return null;

@@ -5,6 +5,7 @@ import type { User } from '../types';
 
 interface ChatInterfaceProps {
   user?: User | null;
+  selectedConversationId?: string; // Add this prop to handle conversation selection
 }
 
 const AVAILABLE_MODELS = [
@@ -15,7 +16,7 @@ const AVAILABLE_MODELS = [
   { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', description: 'Advanced reasoning' },
 ];
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
+const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, selectedConversationId }) => {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState(AVAILABLE_MODELS[0].id);
   const [showModelSelector, setShowModelSelector] = useState(false);
@@ -26,6 +27,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
     error, 
     sendMessage, 
     startNewConversation,
+    loadConversation, // Make sure this function exists in useChat
     clearError,
     currentConversationId 
   } = useChat();
@@ -33,6 +35,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const modelSelectorRef = useRef<HTMLDivElement>(null);
   const isFirstMessage = messages.length === 0;
+
+  // Handle conversation selection from sidebar
+  useEffect(() => {
+    if (selectedConversationId && selectedConversationId !== currentConversationId) {
+      console.log('Loading selected conversation:', selectedConversationId);
+      loadConversation(selectedConversationId);
+    }
+  }, [selectedConversationId, currentConversationId, loadConversation]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -78,6 +88,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
 
   const selectedModelInfo = AVAILABLE_MODELS.find(m => m.id === selectedModel) || AVAILABLE_MODELS[0];
 
+  // Get conversation title if available
+  const conversationTitle = currentConversationId && messages.length > 0 
+    ? messages[0].content.substring(0, 50) + (messages[0].content.length > 50 ? '...' : '')
+    : null;
+
   return (
     <div className="flex-1 flex flex-col" style={{ backgroundColor: '#221d25' }}>
       {/* Error banner */}
@@ -105,7 +120,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
               <span className="text-xs text-gray-400">
                 Using {selectedModelInfo.name}
                 {currentConversationId && (
-                  <span className="ml-2">• Conversation ID: {currentConversationId.slice(0, 8)}...</span>
+                  <span className="ml-2">• {conversationTitle || `Conversation ID: ${currentConversationId.slice(0, 8)}...`}</span>
                 )}
               </span>
             </div>
@@ -210,7 +225,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
           <div className="flex-1 overflow-y-auto p-6">
             <div className="space-y-6 max-w-4xl mx-auto">
               {messages.map((msg, index) => (
-                <div key={index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div key={msg.id || index} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.role === 'user' ? (
                     // User message bubble
                     <div className="bg-yellow-500 text-black rounded-2xl px-6 py-3 max-w-xs lg:max-w-md shadow-lg">
@@ -222,7 +237,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user }) => {
                       <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center text-black text-xs font-bold flex-shrink-0 mt-1">
                         AI
                       </div>
-                      <div className="bg-gray-800/50 text-white rounded-2xl px-6 py-3 max-w-xs lg:max-w-2xl shadow-lg border border-gray-600/30">
+                      <div className="bg-gray-800/50 text-white rounded-2xl px-6 py-3 max-w-xs lg:max-2xl shadow-lg border border-gray-600/30">
                         <div className="text-sm whitespace-pre-wrap">
                           {msg.content}
                           {loading && index === messages.length - 1 && (

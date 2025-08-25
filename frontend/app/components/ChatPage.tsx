@@ -1,58 +1,51 @@
-"use client"
+// ChatPage.tsx - Updated to handle conversation selection
 import React, { useState } from 'react';
-import Sidebar from './SideBar';
-import ChatInterface from './ChatInterface';
-import { useAuth } from '../hooks/useAuth';
-import { useChat } from '../hooks/useChat';
+import Sidebar from '../components/SideBar';
+import ChatInterface from '../components/ChatInterface';
+import type { User } from '../types';
 
-const ChatterStackPage: React.FC = () => {
+const ChatPage: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { user, loading, login, logout } = useAuth();
-  const { loadConversation, startNewConversation } = useChat();
+  const [user, setUser] = useState<User | null>(null);
+  const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
   };
 
-  const handleConversationSelect = async (conversationId: string) => {
-    await loadConversation(conversationId);
+  const handleUserChange = (newUser: User | null) => {
+    setUser(newUser);
+  };
+
+  const handleConversationSelect = (conversationId: string) => {
+    console.log('=== ChatPage: Conversation Selected ===');
+    console.log('Selected conversation ID:', conversationId);
+    console.log('Current conversation ID:', selectedConversationId);
+    setSelectedConversationId(conversationId);
   };
 
   const handleNewChat = () => {
-    startNewConversation();
+    console.log('=== ChatPage: New Chat Started ===');
+    setSelectedConversationId(undefined);
   };
 
-  // Show loading spinner while checking authentication
-  if (loading) {
-    return (
-      <div className="flex h-screen items-center justify-center" style={{ backgroundColor: '#221c24' }}>
-        <div className="text-center">
-          <div className="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex h-screen text-white" style={{ backgroundColor: '#221c24' }}>
+    <div className="flex h-screen bg-gray-900">
       <Sidebar 
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         user={user}
-        onUserChange={(newUser) => {
-          if (newUser) {
-            login(newUser);
-          } else {
-            logout();
-          }
-        }}
+        onUserChange={handleUserChange}
         onConversationSelect={handleConversationSelect}
         onNewChat={handleNewChat}
+        currentConversationId={selectedConversationId}
       />
-      <ChatInterface user={user} />
+      <ChatInterface 
+        user={user}
+        selectedConversationId={selectedConversationId}
+      />
     </div>
   );
 };
 
-export default ChatterStackPage;
+export default ChatPage;
