@@ -1,30 +1,32 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import Image from 'next/image';
 
 import MessageInput from './MessageInput';
 import { ChatInterfaceProps, Message } from '@/app/types';
 import { useChat } from '@/app/hooks/useChat';
 
-const ChatInterface: React.FC<ChatInterfaceProps> = ({ 
-  user, 
-  selectedConversationId, 
+const ChatInterface: React.FC<ChatInterfaceProps> = ({
+  user,
+  selectedConversationId,
   onConversationCreated,
-  onNewChatStarted 
+  onNewChatStarted
 }) => {
   const [message, setMessage] = useState('');
   const [selectedModel, setSelectedModel] = useState('deepseek/deepseek-chat-v3.1');
-  
-  const { 
-    messages, 
-    loading, 
-    error, 
-    sendMessage, 
+
+  const {
+    messages,
+    loading,
+    error,
+    sendMessage,
     startNewConversation,
     loadConversation,
     clearError,
-    currentConversationId 
+    currentConversationId
   } = useChat();
-  
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isFirstMessage = messages.length === 0;
 
@@ -45,8 +47,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
       await sendMessage(
-        message, 
-        selectedModel, 
+        message,
+        selectedModel,
         (newConversationId: string) => {
           if (onConversationCreated) {
             onConversationCreated(newConversationId);
@@ -72,7 +74,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [message, error, clearError]);
 
   // Get conversation title if available
-  const conversationTitle = currentConversationId && messages.length > 0 
+  const conversationTitle = currentConversationId && messages.length > 0
     ? messages[0].content.substring(0, 50) + (messages[0].content.length > 50 ? '...' : '')
     : null;
 
@@ -84,7 +86,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div className="flex items-center space-x-2 text-red-400">
             <AlertCircle className="w-4 h-4" />
             <span className="text-sm">{error}</span>
-            <button 
+            <button
               onClick={clearError}
               className="ml-auto text-red-400 hover:text-red-300 text-sm underline"
             >
@@ -119,15 +121,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         // First message - centered layout
         <div className="flex-1 flex items-center justify-center p-6">
           <div className="text-center max-w-2xl w-full">
-            <div className="mb-8">
-              <h1 className="text-4xl font-bold text-white mb-4">
-                Chatter<span className="text-yellow-500">Stack</span>
-              </h1>
-              <p className="text-gray-400 text-lg">
+            <div className="mb-4">
+              <Link href="/" className="inline-block">
+                <Image
+                  src="/logo.png"
+                  alt="ChatterStack Logo"
+                  width={320}
+                  height={320}
+                  priority
+                  className="mx-auto object-contain pointer-events-none"
+                  style={{ height: "200px", width: "auto" }} // adjust to 200px or more
+                />
+              </Link>
+              <p className="text-gray-400 text-lg mt-6">
                 How can I help you today?
               </p>
             </div>
-            
+
+
+
             <MessageInput
               message={message}
               onMessageChange={setMessage}
@@ -136,9 +148,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               onModelChange={setSelectedModel}
               loading={loading}
             />
-            
+
             <div className="flex items-center justify-center mt-4 text-xs text-gray-500">
-              <span>ChatterStack can make mistakes. Check important info.</span>
+              <span>ck can make mistakes. Check important info.</span>
             </div>
           </div>
         </div>
@@ -176,7 +188,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <div ref={messagesEndRef} />
             </div>
           </div>
-          
+
           {/* Input area for ongoing chat */}
           <div className="p-4 border-t border-gray-700/50">
             <div className="max-w-4xl mx-auto">
