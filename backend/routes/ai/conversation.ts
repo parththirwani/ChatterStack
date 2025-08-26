@@ -1,4 +1,3 @@
-// backend/routes/ai/conversation.ts - Improved version
 import { Router } from "express";
 import { prisma } from "../../lib/prisma";
 import { authenticate } from "../../middleware/authentication";
@@ -48,7 +47,7 @@ router.get("/", authenticate, async (req, res) => {
     );
 
     res.json(conversationsWithTitles);
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error getting conversations:", error);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -85,7 +84,7 @@ router.get("/:conversationId", authenticate, async (req, res) => {
     });
 
     if (!conversation) {
-      console.log(`Conversation ${conversationId} not found or rized`);
+      console.log(`Conversation ${conversationId} not found or unauthorized`);
       return res.status(404).json({ error: "Conversation not found" });
     }
 
@@ -109,13 +108,13 @@ router.get("/:conversationId", authenticate, async (req, res) => {
         title 
       } 
     });
-  } catch (error) {
+  } catch (error: unknown) {
     console.error("Error getting conversation:", error);
     res.status(500).json({ error: "Internal server error" });
   }
 });
 
-// DELETE conversation (bonus feature)
+// DELETE conversation - Simplified with cascade delete
 router.delete("/:conversationId", authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
@@ -123,25 +122,66 @@ router.delete("/:conversationId", authenticate, async (req, res) => {
 
     console.log(`Deleting conversation ${conversationId} for user ${userId}`);
 
+    if (!conversationId) {
+      return res.status(400).json({ error: "Conversation ID is required" });
+    }
+
+    // First, verify the conversation exists and belongs to the user
+    // Also get message count for response
     const conversation = await prisma.conversation.findUnique({
       where: { 
         id: conversationId,
         userId 
       },
+      include: {
+        _count: {
+          select: { messages: true }
+        }
+      }
     });
 
     if (!conversation) {
+      console.log(`Conversation ${conversationId} not found or unauthorized`);
       return res.status(404).json({ error: "Conversation not found" });
     }
 
+    const messageCount = conversation._count.messages;
+    console.log(`Found conversation with ${messageCount} messages to delete`);
+
+    // With cascade delete, this will automatically delete all associated messages
     await prisma.conversation.delete({
-      where: { id: conversationId },
+      where: { id: conversationId }
     });
 
-    console.log(`Conversation ${conversationId} deleted`);
-    res.json({ success: true });
-  } catch (error) {
+    console.log(`Successfully deleted conversation ${conversationId} and ${messageCount} messages`);
+
+    res.json({ 
+      success: true, 
+      message: `Conversation and ${messageCount} messages deleted successfully`,
+      deletedConversationId: conversationId,
+      deletedMessagesCount: messageCount
+    });
+
+  } catch (error: unknown) {
     console.error("Error deleting conversation:", error);
+    
+    // Handle specific Prisma errors
+    if (error && typeof error === 'object' && 'code' in error) {
+      const prismaError = error as { code: string };
+      
+      if (prismaError.code === 'P2025') {
+        return res.status(404).json({ 
+          error: "Conversation not found" 
+        });
+      }
+
+      if (prismaError.code === 'P2003') {
+        return res.status(400).json({ 
+          error: "Cannot delete conversation due to foreign key constraint" 
+        });
+      }
+    }
+
     res.status(500).json({ error: "Internal server error" });
   }
 });

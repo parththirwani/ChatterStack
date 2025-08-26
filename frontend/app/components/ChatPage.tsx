@@ -1,8 +1,8 @@
-// ChatPage.tsx - Updated with better conversation management and immediate sidebar updates
 import React, { useState } from 'react';
-import Sidebar from '../components/SideBar';
+
 import ChatInterface from './ChatInterface/ChatInterface';
 import type { User } from '../types';
+import Sidebar from './Sidebar';
 
 const ChatPage: React.FC = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);

@@ -227,4 +227,34 @@ export class ApiService {
       return null;
     }
   }
+static async deleteConversation(conversationId: string): Promise<void> {
+  try {
+    // Read access_token cookie (assuming it's NOT httpOnly, otherwise backend must attach Authorization automatically)
+    const accessToken = document.cookie
+      .split('; ')
+      .find((row) => row.startsWith('access_token='))
+      ?.split('=')[1];
+
+    const response = await fetch(`${this.baseUrl}/ai/conversations/${conversationId}`, {
+      method: 'DELETE',
+      credentials: 'include', // send refresh_token + other cookies
+      headers: {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      },
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.error || `Failed to delete conversation: ${response.status}`);
+    }
+
+    console.log(`Conversation ${conversationId} deleted successfully`);
+  } catch (error) {
+    console.error('Error deleting conversation:', error);
+    throw error;
+  }
 }
+
+}
+

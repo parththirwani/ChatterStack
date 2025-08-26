@@ -193,14 +193,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
               </button>
 
               {/* GitHub Auth Button */}
+              {/* GitHub Auth Button */}
               <button
                 onClick={() => handleLogin("github")}
                 disabled={loading}
                 className="w-full bg-[#211d22] text-white py-3 px-6 rounded-xl flex items-center justify-center space-x-3 hover:bg-gray-700 transition-colors font-medium border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Github className="w-5 h-5" />
+                <Image
+                  src="/github.svg" // public/github.svg
+                  alt="GitHub Logo"
+                  width={20}
+                  height={20}
+                />
                 <span>{loading ? 'Signing in...' : 'Continue with GitHub'}</span>
               </button>
+
             </div>
 
             {/* Divider */}
