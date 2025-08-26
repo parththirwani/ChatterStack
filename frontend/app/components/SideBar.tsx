@@ -1,11 +1,10 @@
-// frontend/app/components/SideBar.tsx - Updated with immediate conversation updates
+// frontend/app/components/SideBar.tsx
 import React, { useState, useEffect } from 'react';
-import { 
-  MessageSquare, 
-  Search, 
-  Plus, 
-  Settings, 
-  LogOut, 
+import {
+  MessageSquare,
+  Search,
+  Plus,
+  LogOut,
   User,
   ChevronLeft,
   ChevronRight,
@@ -24,7 +23,7 @@ interface SidebarProps {
   onConversationSelect?: (conversationId: string) => void;
   onNewChat?: () => void;
   currentConversationId?: string;
-  refreshTrigger?: number; // Add refresh trigger
+  refreshTrigger?: number;
 }
 
 interface TooltipButtonProps {
@@ -47,7 +46,7 @@ const TooltipButton: React.FC<TooltipButtonProps> = ({ icon, tooltip, onClick, c
       >
         {icon}
       </button>
-      
+
       {showTooltip && (
         <div className="absolute left-16 top-1/2 transform -translate-y-1/2 z-50">
           <div className="bg-gray-800 text-white px-3 py-2 rounded-lg shadow-lg text-sm font-medium whitespace-nowrap border border-gray-600">
@@ -60,10 +59,10 @@ const TooltipButton: React.FC<TooltipButtonProps> = ({ icon, tooltip, onClick, c
   );
 };
 
-const Sidebar: React.FC<SidebarProps> = ({ 
-  collapsed, 
-  onToggleCollapse, 
-  user = null, 
+const Sidebar: React.FC<SidebarProps> = ({
+  collapsed,
+  onToggleCollapse,
+  user = null,
   onUserChange,
   onConversationSelect,
   onNewChat,
@@ -82,18 +81,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     } else {
       setConversations([]);
     }
-  }, [user, refreshTrigger]); // Add refreshTrigger to dependencies
+  }, [user, refreshTrigger]);
 
   const loadConversations = async () => {
     if (!user || user.id === 'guest') return;
-    
     setLoadingConversations(true);
     try {
-      console.log('Loading conversations for user:', user.id, 'Trigger:', refreshTrigger);
       const convos = await ApiService.getConversations();
-      console.log('Loaded conversations:', convos);
-      
-      setConversations(convos.sort((a, b) => 
+      setConversations(convos.sort((a, b) =>
         new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       ));
     } catch (error) {
@@ -104,28 +99,19 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
 
   const handleNewChat = () => {
-    console.log('New chat clicked from sidebar');
     if (onNewChat) onNewChat();
   };
 
   const handleConversationClick = (conversationId: string) => {
-    console.log('Conversation clicked:', conversationId);
-    if (onConversationSelect) {
-      onConversationSelect(conversationId);
-    }
+    if (onConversationSelect) onConversationSelect(conversationId);
   };
 
-  const handleSearchChat = () => {
-    // Implement search functionality
-  };
-
+  const handleSearchChat = () => { };
   const handleLoginClick = () => setShowLoginModal(true);
-
   const handleLoginSuccess = (authenticatedUser: UserType) => {
     if (onUserChange) onUserChange(authenticatedUser);
     setShowLoginModal(false);
   };
-
   const handleLogout = async () => {
     try {
       await ApiService.logout();
@@ -138,19 +124,12 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
-    const now = new Date();
-    const diffTime = Math.abs(now.getTime() - date.getTime());
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-    
-    if (diffDays === 1) return 'Today';
-    if (diffDays === 2) return 'Yesterday';
-    if (diffDays <= 7) return `${diffDays} days ago`;
     return date.toLocaleDateString();
   };
 
   const filteredConversations = conversations.filter(conv =>
     conv.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    conv.messages.some(msg => 
+    conv.messages.some(msg =>
       msg.content.toLowerCase().includes(searchQuery.toLowerCase())
     )
   );
@@ -159,25 +138,50 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-      <div className={`${collapsed ? 'w-20' : 'w-80'} h-full transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`} 
-           style={{ backgroundColor: '#141017' }}>
-        
+      <div className={`${collapsed ? 'w-20' : 'w-80'} h-full transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`}
+        style={{ backgroundColor: '#141017' }}>
+
         {/* Header */}
         <div className="p-4 border-b border-gray-700">
           <div className="flex items-center justify-between">
-            {!collapsed && (
-              <h2 className="text-xl font-bold text-white">
-                Chatter<span className="text-yellow-500">Stack</span>
-              </h2>
+            {/* Logo + Hover Expand */}
+            {collapsed ? (
+              <div
+                className="relative group cursor-pointer"
+                onClick={onToggleCollapse}
+              >
+                {/* Logo (default) */}
+                <Image
+                  src="/logo.png"
+                  alt="Logo"
+                  width={32}
+                  height={32}
+                  className="transition-opacity duration-200 group-hover:opacity-0"
+                />
+                {/* Expand Button (shows only on hover) */}
+                <ChevronRight
+                  className="absolute inset-0 w-6 h-6 text-white opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                />
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center space-x-2">
+                  <Image src="/logo.png" alt="Logo" width={32} height={32} />
+                  <h2 className="text-xl font-bold text-white">
+                    Chatter<span className="text-yellow-500">Stack</span>
+                  </h2>
+                </div>
+                <button
+                  onClick={onToggleCollapse}
+                  className="p-2 rounded-lg hover:bg-white/10 transition-colors duration-200 text-white hover:text-yellow-500"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+              </>
             )}
-            <button
-              onClick={onToggleCollapse}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors duration-200 text-white hover:text-yellow-500"
-            >
-              {collapsed ? <ChevronRight className="w-5 h-5" /> : <ChevronLeft className="w-5 h-5" />}
-            </button>
           </div>
         </div>
+
 
         {/* Action Buttons */}
         <div className="p-4 border-b border-gray-700">
@@ -207,7 +211,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 <Plus className="w-5 h-5" />
                 <span className="font-medium">New Chat</span>
               </button>
-              
+
               {isAuthenticated && (
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -230,7 +234,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">
               Recent Chats
             </h3>
-            
+
             {loadingConversations ? (
               <div className="flex items-center justify-center py-8">
                 <div className="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
@@ -238,19 +242,17 @@ const Sidebar: React.FC<SidebarProps> = ({
             ) : filteredConversations.length > 0 ? (
               <div className="space-y-3">
                 {filteredConversations.slice(0, 20).map((conversation) => (
-                  <div 
+                  <div
                     key={conversation.id}
                     onClick={() => handleConversationClick(conversation.id)}
-                    className={`p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${
-                      currentConversationId === conversation.id
+                    className={`p-4 rounded-2xl transition-all duration-200 cursor-pointer border ${currentConversationId === conversation.id
                         ? 'bg-yellow-500/20 border-yellow-500/50 text-yellow-300'
                         : 'bg-gray-800/30 hover:bg-gray-700/40 border-gray-600/20 hover:border-gray-500/30'
-                    }`}
+                      }`}
                   >
                     <div className="flex-1 min-w-0">
-                      <p className={`text-sm font-medium mb-1 truncate ${
-                        currentConversationId === conversation.id ? 'text-yellow-300' : 'text-white'
-                      }`}>
+                      <p className={`text-sm font-medium mb-1 truncate ${currentConversationId === conversation.id ? 'text-yellow-300' : 'text-white'
+                        }`}>
                         {conversation.title || 'New Chat'}
                       </p>
                       <p className="text-xs text-gray-400 mb-2 line-clamp-2">
@@ -272,8 +274,9 @@ const Sidebar: React.FC<SidebarProps> = ({
             )}
           </div>
         )}
-        {/* User Section */}
-        <div className="p-4 border-t border-gray-700/50">
+
+        {/* User Section (always bottom) */}
+        <div className="mt-auto p-4 border-t border-gray-700/50">
           {isAuthenticated ? (
             collapsed ? (
               <div className="flex flex-col items-center space-y-3">
@@ -281,7 +284,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   icon={user?.avatarUrl ? (
                     <Image
                       src={user.avatarUrl}
-                      alt={user.name || 'User'} 
+                      alt={user.name || 'User'}
                       width={32}
                       height={32}
                       className="w-8 h-8 rounded-full"
@@ -290,7 +293,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <User className="w-5 h-5 text-white" />
                   )}
                   tooltip={user?.name || user?.email || 'User Profile'}
-                  onClick={() => {}}
+                  onClick={() => { }}
                 />
                 <TooltipButton
                   icon={<LogOut className="w-5 h-5 text-red-400" />}
@@ -305,7 +308,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   {user?.avatarUrl ? (
                     <Image
                       src={user.avatarUrl}
-                      alt={user.name || 'User'} 
+                      alt={user.name || 'User'}
                       width={40}
                       height={40}
                       className="w-10 h-10 rounded-full"
@@ -320,7 +323,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <p className="text-xs text-gray-400 truncate">{user?.email || `Signed in with ${user?.provider}`}</p>
                   </div>
                 </div>
-                
+
                 <button
                   onClick={handleLogout}
                   className="w-full flex items-center space-x-3 px-4 py-3 rounded-lg hover:bg-red-500/10 transition-colors text-red-400 hover:text-red-300"
@@ -331,7 +334,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )
           ) : (
-            <button 
+            <button
               onClick={handleLoginClick}
               className={`${collapsed ? 'w-12 h-12' : 'w-full px-4 py-3'} flex items-center justify-center space-x-3 rounded-lg bg-yellow-500 hover:bg-yellow-400 transition-colors text-black font-medium`}
             >
@@ -343,9 +346,9 @@ const Sidebar: React.FC<SidebarProps> = ({
       </div>
 
       {/* Login Modal */}
-      <LoginModal 
-        isOpen={showLoginModal} 
-        onClose={() => setShowLoginModal(false)} 
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
         onLoginSuccess={handleLoginSuccess}
       />
     </>

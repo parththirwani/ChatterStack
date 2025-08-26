@@ -85,7 +85,7 @@ router.get("/:conversationId", authenticate, async (req, res) => {
     });
 
     if (!conversation) {
-      console.log(`Conversation ${conversationId} not found or unauthorized`);
+      console.log(`Conversation ${conversationId} not found or rized`);
       return res.status(404).json({ error: "Conversation not found" });
     }
 

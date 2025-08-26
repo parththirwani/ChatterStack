@@ -101,8 +101,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <Image
                   src="/logo.png"
                   alt="ChatterStack Logo"
-                  width={200}
-                  height={200}
+                  width={150}
+                  height={150}
                   priority
                   className="mx-auto object-contain pointer-events-none"
                 />
