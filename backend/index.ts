@@ -14,7 +14,7 @@ const app: express.Application = express();
 const corsOptions = {
   origin: process.env.FRONTEND_URL || "http://localhost:3001", // Allow your frontend origin
   credentials: true, // Allow cookies to be sent
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS','PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 };
 
