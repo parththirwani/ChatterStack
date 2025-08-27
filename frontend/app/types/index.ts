@@ -1,4 +1,3 @@
-// frontend/app/types/index.ts
 export interface User {
   id: string;
   email?: string | null;
@@ -9,35 +8,7 @@ export interface User {
   updatedAt?: string;
 }
 
-// Create an alias for backward compatibility
 export type UserType = User;
-
-export interface Message {
-  id?: string; // Made optional to match API service
-  content: string;
-  role: 'user' | 'assistant' | 'system';
-  timestamp?: string; // Made optional to match API service
-  conversationId?: string;
-  metadata?: {
-    model?: string;
-    tokens?: number;
-    processingTime?: number;
-  };
-}
-
-export interface Conversation {
-  id: string;
-  title?: string | null; // Allow null to match API service
-  messages: Message[];
-  userId?: string;
-  createdAt: string;
-  updatedAt: string;
-  metadata?: {
-    model?: string;
-    totalMessages?: number;
-    totalTokens?: number;
-  };
-}
 
 export interface ApiResponse<T = any> {
   success: boolean;
@@ -86,4 +57,44 @@ export interface ConversationFilter {
   searchQuery?: string;
   limit?: number;
   offset?: number;
+}
+export interface Message {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Conversation {
+  id: string;
+  title?: string;
+  userId: string;
+  createdAt: string;
+  updatedAt: string;
+  messages: Message[];
+}
+
+export interface ChatState {
+  messages: Message[];
+  currentConversationId?: string;
+  loading: boolean;
+  error?: string;
+}
+
+export interface AIModel {
+  id: string;
+  name: string;
+  description: string;
+  logo: string;
+  company: string;
+  tier: 'Premium' | 'Pro' | 'Free';
+  capabilities?: string[];
+}
+
+export interface ChatInterfaceProps {
+  user?: User | null;
+  selectedConversationId?: string;
+  onConversationCreated?: (conversationId: string) => void;
+  onNewChatStarted?: () => void;
 }
