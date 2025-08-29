@@ -11,7 +11,7 @@ export type MODEL = typeof SUPPORTED_MODELS[number];
 
 export const CreateChatSchema = z.object({
     conversationId: z.string().uuid().optional(),
-    message: z.string().max(MAX_INPUT_TOKENS),
+    message: z.string().trim().min(1).max(MAX_INPUT_TOKENS),
     model: z.enum(SUPPORTED_MODELS)
 });
 

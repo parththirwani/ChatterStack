@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { AlertCircle, Sparkles } from 'lucide-react';
+import { AlertCircle} from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 
@@ -122,7 +122,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             />
 
             <div className="flex items-center justify-center mt-4 text-xs text-gray-500">
-              <span>ck can make mistakes. Check important info.</span>
+              <span>ChatterStack can make mistakes. Check important info.</span>
             </div>
           </div>
         </div>

@@ -32,7 +32,7 @@ router.post("/", authenticate, async (req, res) => {
     const userId = (req as any).user.id;
     console.log("Using user ID:", userId);
 
-    // 👇 If client provides conversationId, reuse it; else generate new
+    // If client provides conversationId, reuse it; else generate new
     const conversationId = data.conversationId ?? crypto.randomUUID();
     console.log("Conversation ID:", conversationId);
     console.log("Model:", data.model);
@@ -49,7 +49,7 @@ router.post("/", authenticate, async (req, res) => {
     let message = "";
     let existingMessages = InMemoryStore.getInstance().get(conversationId);
 
-    // 👇 Hydrate from DB if memory empty but conversationId exists
+    // Hydrate from DB if memory empty but conversationId exists
     if (existingMessages.length === 0 && data.conversationId) {
       console.log("Loading messages from DB for conversation:", conversationId);
 
@@ -77,7 +77,7 @@ router.post("/", authenticate, async (req, res) => {
 
     console.log("Total messages in conversation:", existingMessages.length + 1);
 
-    // 👇 Generate reply with history
+    // Generate reply with history
     const messagesForAI = [...existingMessages, { role: Role.User, content: data.message }];
     console.log("Sending to AI:", messagesForAI.map(m => ({
       role: m.role,
@@ -98,7 +98,7 @@ router.post("/", authenticate, async (req, res) => {
 
     console.log("AI response complete, length:", message.length);
 
-    // 👇 Add messages to in-memory store
+    //  Add messages to in-memory store
     InMemoryStore.getInstance().add(conversationId, {
       role: Role.User,
       content: data.message,
@@ -109,7 +109,7 @@ router.post("/", authenticate, async (req, res) => {
     });
 
     if (!data.conversationId) {
-      // 👇 New conversation
+      //  New conversation
       console.log("Creating new conversation in DB");
 
       try {
@@ -139,7 +139,7 @@ router.post("/", authenticate, async (req, res) => {
         );
       }
     } else {
-      // 👇 Existing conversation
+      //  Existing conversation
       console.log("Adding messages to existing conversation");
 
       try {

@@ -1,4 +1,3 @@
-// frontend/app/hooks/useChat.ts - Updated with better conversation management
 import { useState, useCallback } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
@@ -11,7 +10,7 @@ export const useChat = () => {
 
   const sendMessage = useCallback(async (
     message: string, 
-    model: string = 'openai/gpt-4o-mini',
+    model: string = 'deepseek/deepseek-chat-v3.1',
     onConversationCreated?: (conversationId: string) => void // Add callback for new conversations
   ) => {
     if (!message.trim() || state.loading) return;
