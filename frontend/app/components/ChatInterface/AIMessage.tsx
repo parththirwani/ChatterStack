@@ -4,15 +4,13 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
-
-
-// Import CSS for syntax highlighting and math
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
 import MessageActions from '@/app/MessageFunctionality/MessageActions';
 
 interface AIMessageWithActionsProps {
   content: string;
+  modelId?: string; // Added to display model name
   loading?: boolean;
   isLastMessage?: boolean;
   filename?: string;
@@ -20,34 +18,38 @@ interface AIMessageWithActionsProps {
   showDownload?: boolean;
 }
 
+const modelNameMap: Record<string, string> = {
+  'deepseek/deepseek-chat-v3.1': 'DeepSeek v3.1',
+  'google/gemini-2.5-flash': 'Gemini Flash',
+  'openai/gpt-4o': 'GPT-4o',
+};
+
 const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
   content,
+  modelId,
   loading = false,
   isLastMessage = false,
   filename,
   showCopy = true,
-  showDownload = true
+  showDownload = true,
 }) => {
   return (
     <div className="relative">
-      {/* AI Message with integrated markdown rendering */}
       <div className="flex items-start space-x-3">
         <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center text-black text-xs font-bold flex-shrink-0 mt-1">
           AI
         </div>
-        <div className="bg-gray-800/50 text-white rounded-2xl px-6 py-4 max-w-xs lg:max-w-5xl shadow-lg border border-gray-600/30 overflow-hidden">
+        <div className="bg-gray-800/50 text-white rounded-2xl px-6 py-4 max-w-full shadow-lg border border-gray-600/30 overflow-hidden">
+          {modelId && (
+            <div className="text-xs text-gray-400 mb-2">
+              {modelNameMap[modelId] || modelId}
+            </div>
+          )}
           <div className="text-sm prose prose-invert prose-sm max-w-none">
             <ReactMarkdown
-              remarkPlugins={[
-                remarkGfm,      // GitHub Flavored Markdown (tables, strikethrough, etc.)
-                remarkMath      // Math equations support
-              ]}
-              rehypePlugins={[
-                rehypeKatex,    // Render math equations
-                rehypeHighlight // Syntax highlighting for code blocks
-              ]}
+              remarkPlugins={[remarkGfm, remarkMath]}
+              rehypePlugins={[rehypeKatex, rehypeHighlight]}
               components={{
-                // Headers
                 h1: ({ children }) => (
                   <h1 className="text-2xl font-bold text-yellow-400 mt-6 mb-3 first:mt-0 border-b border-gray-600 pb-2">
                     {children}
@@ -68,8 +70,6 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     {children}
                   </h4>
                 ),
-                
-                // Text formatting
                 p: ({ children }) => (
                   <p className="mb-4 leading-relaxed last:mb-0 text-gray-100">
                     {children}
@@ -85,14 +85,11 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     {children}
                   </em>
                 ),
-                
-                // Code with syntax highlighting
                 code: ({ node, className, children, ...props }: any) => {
                   const match = /language-(\w+)/.exec(className || '');
                   const language = match ? match[1] : '';
                   const isInline = !match;
-                  
-                  // Handle Mermaid diagrams - show as regular code block for now
+
                   if (language === 'mermaid') {
                     return (
                       <div className="my-4 bg-gray-800/30 p-4 rounded-lg border border-gray-600">
@@ -105,7 +102,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                       </div>
                     );
                   }
-                  
+
                   if (isInline) {
                     return (
                       <code className="bg-gray-700 text-yellow-300 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
@@ -113,7 +110,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                       </code>
                     );
                   }
-                  
+
                   return (
                     <div className="relative group">
                       <div className="absolute top-2 right-2 text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">
@@ -127,8 +124,6 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     </div>
                   );
                 },
-                
-                // Lists with better alignment
                 ul: ({ children, ...props }: any) => {
                   const isNested = props.depth > 0;
                   return (
@@ -151,8 +146,6 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     <div className="flex-1">{children}</div>
                   </li>
                 ),
-                
-                // Tables (GitHub Flavored Markdown)
                 table: ({ children }) => (
                   <div className="overflow-x-auto my-6 rounded-lg border border-gray-600">
                     <table className="min-w-full border-collapse bg-gray-800/50">
@@ -176,7 +169,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                   </tr>
                 ),
                 th: ({ children, style }) => (
-                  <th 
+                  <th
                     className="px-4 py-3 text-left font-semibold text-yellow-300 text-sm border-r border-gray-600 last:border-r-0"
                     style={style}
                   >
@@ -184,25 +177,21 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                   </th>
                 ),
                 td: ({ children, style }) => (
-                  <td 
+                  <td
                     className="px-4 py-3 text-gray-100 text-sm border-r border-gray-600 last:border-r-0 align-top"
                     style={style}
                   >
                     {children}
                   </td>
                 ),
-                
-                // Quotes
                 blockquote: ({ children }) => (
                   <blockquote className="border-l-4 border-yellow-400 pl-4 italic text-gray-300 my-4 bg-gray-800/30 py-3 rounded-r">
                     {children}
                   </blockquote>
                 ),
-                
-                // Links
                 a: ({ href, children }) => (
-                  <a 
-                    href={href} 
+                  <a
+                    href={href}
                     className="text-yellow-400 hover:text-yellow-300 underline decoration-dotted underline-offset-2 transition-colors"
                     target="_blank"
                     rel="noopener noreferrer"
@@ -210,31 +199,23 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     {children}
                   </a>
                 ),
-                
-                // Horizontal rule
                 hr: () => (
                   <hr className="border-gray-600 my-6" />
                 ),
-                
-                // Strikethrough (GitHub Flavored Markdown)
                 del: ({ children }) => (
                   <del className="text-gray-400 line-through">
                     {children}
                   </del>
                 ),
-                
-                // Task lists (GitHub Flavored Markdown)
                 input: ({ checked, ...props }: any) => (
-                  <input 
-                    type="checkbox" 
-                    checked={checked} 
-                    disabled 
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled
                     className="mr-2 accent-yellow-500 scale-110"
                     {...props}
                   />
                 ),
-                
-                // Math equations (display and inline)
                 div: ({ className, children, ...props }: any) => {
                   if (className === 'math math-display') {
                     return (
@@ -249,7 +230,6 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                   }
                   return <div className={className} {...props}>{children}</div>;
                 },
-                
                 span: ({ className, children, ...props }: any) => {
                   if (className === 'math math-inline') {
                     return (
@@ -270,8 +250,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
           </div>
         </div>
       </div>
-      
-      {/* Action buttons - positioned below the message like ChatGPT */}
+
       {!loading && content && (
         <div className="ml-11 mt-2">
           <MessageActions

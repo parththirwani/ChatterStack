@@ -33,7 +33,6 @@ export interface AuthProvider {
 }
 
 export interface ChatSettings {
-  model?: string;
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
@@ -58,12 +57,14 @@ export interface ConversationFilter {
   limit?: number;
   offset?: number;
 }
+
 export interface Message {
   id?: string;
-  role: 'user' | 'assistant';
+  role: MessageRole;
   content: string;
   createdAt?: string;
   updatedAt?: string;
+  modelId?: string; // Added to track which LLM generated the response
 }
 
 export interface Conversation {
@@ -80,6 +81,11 @@ export interface ChatState {
   currentConversationId?: string;
   loading: boolean;
   error?: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  conversationId?: string; // Removed model since all LLMs are used
 }
 
 export interface AIModel {

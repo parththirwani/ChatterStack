@@ -1,46 +1,16 @@
-// frontend/app/services/api.ts - Updated with better error handling and auth
+import { ChatRequest, Conversation, User } from "../types";
+
+
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-
-export interface User {
-  id: string;
-  name: string | null;
-  email: string | null;
-  avatarUrl: string | null;
-  provider: string;
-}
-
-export interface Message {
-  id?: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt?: string;
-}
-
-export interface Conversation {
-  id: string;
-  title?: string;
-  userId: string;
-  createdAt: string;
-  updatedAt: string;
-  messages: Message[];
-}
-
-export interface ChatRequest {
-  message: string;
-  model?: string;
-  conversationId?: string;
-}
 
 export class ApiService {
   private static baseUrl = BACKEND_URL;
 
-  // Helper to get auth headers
   private static getAuthHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
-    // Try to get access token from cookie
     const accessToken = document.cookie
       .split('; ')
       .find(row => row.startsWith('access_token='))
@@ -53,7 +23,6 @@ export class ApiService {
     return headers;
   }
 
-  // Generic fetch wrapper with credentials and better error handling
   private static async fetchWithCredentials(url: string, options: RequestInit = {}) {
     console.log(`API Call: ${options.method || 'GET'} ${url}`);
     
@@ -77,7 +46,6 @@ export class ApiService {
     return response;
   }
 
-  // Authentication methods
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
     try {
       console.log('Validating authentication...');
@@ -123,10 +91,10 @@ export class ApiService {
     }
   }
 
-  // Chat methods
   static async sendMessage(
     request: ChatRequest,
-    onChunk?: (chunk: string) => void,
+    onChunk?: (modelId: string, chunk: string) => void,
+    onDone?: (modelId: string) => void,
     onConversationId?: (id: string) => void
   ): Promise<{ conversationId?: string }> {
     try {
@@ -136,7 +104,10 @@ export class ApiService {
       const response = await fetch(`${this.baseUrl}/ai/chat`, {
         method: 'POST',
         credentials: 'include',
-        headers: this.getAuthHeaders(),
+        headers: {
+          ...this.getAuthHeaders(),
+          Accept: 'text/event-stream',
+        },
         body: JSON.stringify(request),
       });
 
@@ -174,19 +145,25 @@ export class ApiService {
               try {
                 const parsed = JSON.parse(data);
                 console.log('Parsed SSE data:', parsed);
-                
-                if (parsed.chunk && onChunk) {
-                  onChunk(parsed.chunk);
+
+                if (parsed.status === 'starting') {
+                  // Handle starting state if needed
+                  continue;
+                }
+                if (parsed.error) {
+                  throw new Error(parsed.error);
                 }
                 if (parsed.conversationId && onConversationId) {
                   conversationId = parsed.conversationId;
                   onConversationId(parsed.conversationId);
                 }
-                if (parsed.error) {
-                  throw new Error(parsed.error);
+                if (parsed.modelId && parsed.chunk && onChunk) {
+                  onChunk(parsed.modelId, parsed.chunk);
+                }
+                if (parsed.modelId && parsed.done && onDone) {
+                  onDone(parsed.modelId);
                 }
               } catch (e) {
-                // Ignore invalid JSON chunks but log them
                 console.log('Invalid JSON in SSE:', data);
               }
             }
@@ -201,7 +178,6 @@ export class ApiService {
     }
   }
 
-  // Conversation methods
   static async getConversations(): Promise<Conversation[]> {
     try {
       console.log('Fetching conversations...');
@@ -227,34 +203,16 @@ export class ApiService {
       return null;
     }
   }
-static async deleteConversation(conversationId: string): Promise<void> {
-  try {
-    // Read access_token cookie (assuming it's NOT httpOnly, otherwise backend must attach Authorization automatically)
-    const accessToken = document.cookie
-      .split('; ')
-      .find((row) => row.startsWith('access_token='))
-      ?.split('=')[1];
 
-    const response = await fetch(`${this.baseUrl}/ai/conversations/${conversationId}`, {
-      method: 'DELETE',
-      credentials: 'include', // send refresh_token + other cookies
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
-    });
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || `Failed to delete conversation: ${response.status}`);
+  static async deleteConversation(conversationId: string): Promise<void> {
+    try {
+      const response = await this.fetchWithCredentials(`/ai/conversations/${conversationId}`, {
+        method: 'DELETE',
+      });
+      console.log(`Conversation ${conversationId} deleted successfully`);
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      throw error;
     }
-
-    console.log(`Conversation ${conversationId} deleted successfully`);
-  } catch (error) {
-    console.error('Error deleting conversation:', error);
-    throw error;
   }
 }
-
-}
-
