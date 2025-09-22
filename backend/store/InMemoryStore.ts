@@ -1,4 +1,5 @@
-import type { Message } from "types";
+// backend/store/InMemoryStore.ts
+import type { Message } from "../types";
 
 const EVICTION_TIME = 5 * 60 * 1000; // 5 minutes
 

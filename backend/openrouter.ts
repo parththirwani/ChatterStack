@@ -10,7 +10,7 @@ export async function createCompletion(
   messages: { role: Role; content: string }[],
   model: string = "gpt-3.5-turbo",
   onChunk: (chunk: string) => void
-): Promise<void> {
+): Promise<string> {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error("OPENROUTER_API_KEY is not set");
   }
@@ -50,6 +50,8 @@ export async function createCompletion(
     throw new Error("No response body");
   }
 
+  let fullContent = "";
+
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
@@ -62,7 +64,7 @@ export async function createCompletion(
         const data = line.slice(6).trim();
         
         if (data === '[DONE]') {
-          return;
+          return fullContent;
         }
         
         try {
@@ -70,6 +72,7 @@ export async function createCompletion(
           const content = parsed.choices?.[0]?.delta?.content;
           
           if (content) {
+            fullContent += content;
             onChunk(content);
           }
         } catch (e) {
@@ -78,4 +81,6 @@ export async function createCompletion(
       }
     }
   }
+
+  return fullContent;
 }

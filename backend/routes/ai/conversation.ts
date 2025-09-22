@@ -1,3 +1,4 @@
+// backend/routes/conversations.ts
 import { Router } from "express";
 import { prisma } from "../../lib/prisma";
 import { authenticate } from "../../middleware/authentication";
@@ -19,6 +20,7 @@ router.get("/", authenticate, async (req, res) => {
             id: true,
             content: true,
             role: true,
+            modelId: true, // Changed from model to modelId
             createdAt: true,
           }
         } 
@@ -68,7 +70,7 @@ router.get("/:conversationId", authenticate, async (req, res) => {
     const conversation = await prisma.conversation.findUnique({
       where: { 
         id: conversationId,
-        userId // Ensure user can only access their own conversations
+        userId
       },
       include: { 
         messages: { 
@@ -77,6 +79,7 @@ router.get("/:conversationId", authenticate, async (req, res) => {
             id: true,
             content: true,
             role: true,
+            modelId: true, // Changed from model to modelId
             createdAt: true,
           }
         }
@@ -114,7 +117,7 @@ router.get("/:conversationId", authenticate, async (req, res) => {
   }
 });
 
-// DELETE conversation - Simplified with cascade delete
+// DELETE conversation
 router.delete("/:conversationId", authenticate, async (req, res) => {
   try {
     const userId = (req as any).user.id;
@@ -126,8 +129,6 @@ router.delete("/:conversationId", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Conversation ID is required" });
     }
 
-    // First, verify the conversation exists and belongs to the user
-    // Also get message count for response
     const conversation = await prisma.conversation.findUnique({
       where: { 
         id: conversationId,
@@ -148,7 +149,6 @@ router.delete("/:conversationId", authenticate, async (req, res) => {
     const messageCount = conversation._count.messages;
     console.log(`Found conversation with ${messageCount} messages to delete`);
 
-    // With cascade delete, this will automatically delete all associated messages
     await prisma.conversation.delete({
       where: { id: conversationId }
     });
@@ -165,7 +165,6 @@ router.delete("/:conversationId", authenticate, async (req, res) => {
   } catch (error: unknown) {
     console.error("Error deleting conversation:", error);
     
-    // Handle specific Prisma errors
     if (error && typeof error === 'object' && 'code' in error) {
       const prismaError = error as { code: string };
       

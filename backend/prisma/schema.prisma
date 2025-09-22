@@ -41,10 +41,16 @@ model Message {
   conversationId  String
   content         String
   role            String
+  modelId         String?  
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
   conversation    Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // Add index for efficient queries by model
+  @@index([modelId])
+  @@index([conversationId, modelId])
+  @@map("messages")
 }
 
 model RefreshToken {

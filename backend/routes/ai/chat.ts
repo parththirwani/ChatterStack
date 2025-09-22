@@ -1,6 +1,7 @@
+// backend/routes/chat.ts
 import { Router } from "express";
 import { InMemoryStore } from "../../store/InMemoryStore";
-import { CreateChatSchema, Role } from "../../types";
+import { CreateChatSchema, Role, SUPPORTED_MODELS } from "../../types";
 import { createCompletion } from "../../openrouter";
 import { prisma } from "../../lib/prisma";
 import { authenticate } from "../../middleware/authentication";
@@ -32,12 +33,10 @@ router.post("/", authenticate, async (req, res) => {
     const userId = (req as any).user.id;
     console.log("Using user ID:", userId);
 
-    // If client provides conversationId, reuse it; else generate new
     const conversationId = data.conversationId ?? crypto.randomUUID();
     console.log("Conversation ID:", conversationId);
-    console.log("Model:", data.model);
+    console.log("Models:", SUPPORTED_MODELS);
 
-    // SSE headers - Fixed CORS for frontend
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
     res.setHeader("Connection", "keep-alive");
@@ -46,14 +45,11 @@ router.post("/", authenticate, async (req, res) => {
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.flushHeaders();
 
-    let message = "";
     let existingMessages = InMemoryStore.getInstance().get(conversationId);
 
-    // Hydrate from DB if memory empty but conversationId exists
     if (existingMessages.length === 0 && data.conversationId) {
       console.log("Loading messages from DB for conversation:", conversationId);
 
-      // Verify conversation belongs to user
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId, userId },
         include: { messages: { orderBy: { createdAt: "asc" } } }
@@ -68,6 +64,7 @@ router.post("/", authenticate, async (req, res) => {
       existingMessages = conversation.messages.map((m) => ({
         role: m.role as Role,
         content: m.content,
+        modelId: m.modelId ?? undefined, // Changed from model to modelId
       }));
 
       for (const msg of existingMessages) {
@@ -77,39 +74,51 @@ router.post("/", authenticate, async (req, res) => {
 
     console.log("Total messages in conversation:", existingMessages.length + 1);
 
-    // Generate reply with history
     const messagesForAI = [...existingMessages, { role: Role.User, content: data.message }];
     console.log("Sending to AI:", messagesForAI.map(m => ({
       role: m.role,
       content: m.content.substring(0, 50) + (m.content.length > 50 ? "..." : "")
     })));
 
-    // Send initial confirmation that request was received
     res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
 
-    await createCompletion(
-      messagesForAI,
-      data.model || "openai/gpt-4o-mini",
-      (chunk: string) => {
-        message += chunk;
-        res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-      }
-    );
-
-    console.log("AI response complete, length:", message.length);
-
-    //  Add messages to in-memory store
     InMemoryStore.getInstance().add(conversationId, {
       role: Role.User,
       content: data.message,
     });
-    InMemoryStore.getInstance().add(conversationId, {
-      role: Role.Assistant,
-      content: message,
+
+    const responses: Record<string, string> = {};
+    await Promise.all(
+      SUPPORTED_MODELS.map(async (model) => {
+        try {
+          const fullContent = await createCompletion(
+            messagesForAI,
+            model,
+            (chunk: string) => {
+              res.write(`data: ${JSON.stringify({ modelId: model, chunk })}\n\n`); // Changed model to modelId
+            }
+          );
+          responses[model] = fullContent;
+          res.write(`data: ${JSON.stringify({ modelId: model, done: true })}\n\n`); // Changed model to modelId
+          console.log(`AI response complete for ${model}, length:`, fullContent.length);
+        } catch (error) {
+          console.error(`Error with model ${model}:`, error);
+          res.write(`data: ${JSON.stringify({ modelId: model, error: (error as Error).message })}\n\n`); // Changed model to modelId
+        }
+      })
+    );
+
+    SUPPORTED_MODELS.forEach((model) => {
+      if (responses[model]) {
+        InMemoryStore.getInstance().add(conversationId, {
+          role: Role.Assistant,
+          content: responses[model],
+          modelId: model, // Changed from model to modelId
+        });
+      }
     });
 
     if (!data.conversationId) {
-      //  New conversation
       console.log("Creating new conversation in DB");
 
       try {
@@ -120,39 +129,44 @@ router.post("/", authenticate, async (req, res) => {
             messages: {
               create: [
                 { content: data.message, role: Role.User },
-                { content: message, role: Role.Assistant },
+                ...SUPPORTED_MODELS.map((model) => ({
+                  content: responses[model] || "Error generating response",
+                  role: Role.Assistant,
+                  modelId: model, // Changed from model to modelId
+                })),
               ],
             },
           },
         });
 
         console.log("New conversation created:", conversation.id);
-        // send conversationId to client
         res.write(
           `data: ${JSON.stringify({ conversationId: conversation.id })}\n\n`
         );
       } catch (dbError) {
         console.error("Database error creating conversation:", dbError);
-        // Continue anyway - we have the messages in memory
         res.write(
           `data: ${JSON.stringify({ conversationId, warning: "Database save failed" })}\n\n`
         );
       }
     } else {
-      //  Existing conversation
       console.log("Adding messages to existing conversation");
 
       try {
         await prisma.message.createMany({
           data: [
             { conversationId, content: data.message, role: Role.User },
-            { conversationId, content: message, role: Role.Assistant },
+            ...SUPPORTED_MODELS.map((model) => ({
+              conversationId,
+              content: responses[model] || "Error generating response",
+              role: Role.Assistant,
+              modelId: model, // Changed from model to modelId
+            })),
           ],
         });
         console.log("Messages saved to DB");
       } catch (dbError) {
         console.error("Database error saving messages:", dbError);
-        // Continue anyway - we have the messages in memory
         res.write(
           `data: ${JSON.stringify({ warning: "Database save failed" })}\n\n`
         );
@@ -161,14 +175,12 @@ router.post("/", authenticate, async (req, res) => {
 
     console.log("=== Chat Request Complete ===");
 
-    // 👇 End SSE stream properly
     res.write("data: [DONE]\n\n");
     res.end();
 
   } catch (error) {
     console.error("Error in chat:", error);
 
-    // Send error to client via SSE
     if (!res.writableEnded) {
       try {
         const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
@@ -177,7 +189,6 @@ router.post("/", authenticate, async (req, res) => {
         res.end();
       } catch (writeError) {
         console.error("Failed to write error response:", writeError);
-        // Force end the response
         if (!res.writableEnded) {
           res.end();
         }
