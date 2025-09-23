@@ -2,7 +2,14 @@
 
 <img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/77776fe5-e5ed-4547-a02a-f52f1899877d" />
 
-ChatterStack is a modern chat platform built for seamless real-time communication. It combines simplicity, speed, and an intuitive UI to deliver a powerful chat experience for individuals and teams.
+- Built **ChatterStack**, an **LLM aggregator** to compare responses from multiple large language models (e.g., DeepSeek, Gemini, GPT-4o) in real time.
+- Provided **premium tier** with access to **15+ LLMs** for advanced benchmarking and research.
+- Integrated **OpenRouter** to seamlessly access and manage multiple LLMs.
+- Implemented an **in-memory store** to handle **parallel responses** and ensure **low-latency inference**.
+- Developed **backend with Express.js + Bun** for fast and scalable request handling.
+- Designed **frontend with Next.js** for an intuitive and responsive user experience.
+- Added **Postgres** for archival storage and history management.
+<img width="1194" height="529" alt="image" src="https://github.com/user-attachments/assets/d58b7e3e-8843-4cdf-9181-c3f95629439a" />
 
 ---
 
