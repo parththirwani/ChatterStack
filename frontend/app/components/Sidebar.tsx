@@ -121,7 +121,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       <div
         className={`${
           collapsed ? 'w-20' : 'w-80'
-        } h-full transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`}
+        } h-screen flex-shrink-0 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`}
         style={{ backgroundColor: '#141017' }}
       >
         <SidebarHeader

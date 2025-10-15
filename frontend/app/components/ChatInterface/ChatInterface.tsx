@@ -7,6 +7,7 @@ import MessageInput from './MessageInput';
 import { ChatInterfaceProps, Message } from '@/app/types';
 import { useChat } from '@/app/hooks/useChat';
 import AIMessageWithActions from './AIMessage';
+import UserMessage from './UserMessage';
 
 interface ChatInterfaceExtendedProps extends ChatInterfaceProps {
   viewMode: 'all' | string;
@@ -38,6 +39,7 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
   viewMode,
 }) => {
   const [message, setMessage] = useState('');
+  
   const {
     messages,
     loading,
@@ -49,14 +51,8 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
     currentConversationId,
   } = useChat();
 
-  const messagesEndRefs = useRef<Record<string, React.MutableRefObject<HTMLDivElement | null>>>(
-    Object.fromEntries(
-      SUPPORTED_MODELS.map((modelId) => [
-        modelId,
-        React.createRef<HTMLDivElement>(),
-      ])
-    )
-  );
+  const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const scrollContainerRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const isFirstMessage = messages.length === 0;
 
@@ -69,14 +65,17 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
   }, [selectedConversationId, currentConversationId, loadConversation, startNewConversation]);
 
   useEffect(() => {
-    if (viewMode === 'all') {
-      SUPPORTED_MODELS.forEach((modelId) => {
-        messagesEndRefs.current[modelId].current?.scrollIntoView({ behavior: 'smooth' });
-      });
-    } else {
-      messagesEndRefs.current[viewMode].current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [messages, viewMode]);
+    const modelsToUpdate = viewMode === 'all' ? SUPPORTED_MODELS : [viewMode];
+    
+    modelsToUpdate.forEach((modelId) => {
+      setTimeout(() => {
+        const endElement = messagesEndRefs.current[modelId];
+        if (endElement) {
+          endElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
+        }
+      }, 100);
+    });
+  }, [messages, loading, viewMode]);
 
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
@@ -103,9 +102,9 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
   }, [message, error, clearError]);
 
   return (
-    <div className="flex-1 flex flex-col bg-[#201d26]">
+    <div className="h-full flex flex-col bg-[#201d26]">
       {error && (
-        <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-3">
+        <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 px-6 py-3">
           <div className="flex items-center space-x-2 text-red-400">
             <AlertCircle className="w-4 h-4" />
             <span className="text-sm">{error}</span>
@@ -120,7 +119,7 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
       )}
 
       {isFirstMessage ? (
-        <div className="flex-1 flex items-center justify-center p-6">
+        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
           <div className="text-center max-w-2xl w-full">
             <div className="mb-4">
               <Link href="/" className="inline-block">
@@ -152,53 +151,52 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
         </div>
       ) : (
         <>
-          <div className="flex-1 flex overflow-y-auto p-6 gap-4">
+          <div className="flex-1 flex overflow-y-auto p-6 gap-4 min-h-0">
             {(viewMode === 'all' ? SUPPORTED_MODELS : [viewMode]).map((modelId) => (
-              <div
-                key={modelId}
-                className={`${
-                  viewMode === 'all' ? 'flex-1' : 'w-full'
-                } px-4 bg-[#2a2633]/50 rounded-lg shadow-md border border-gray-700/30 transition-all duration-300`}
-              >
-                <div className="flex items-center justify-center gap-2 py-3 border-b border-gray-700/50 sticky top-0 bg-[#2a2633]/80 backdrop-blur-sm z-10">
-                  <Image
-                    src={modelIconMap[modelId]}
-                    alt={`${modelNameMap[modelId]} logo`}
-                    width={20}
-                    height={20}
-                    className={`object-contain ${modelId === 'openai/gpt-4o' ? 'invert brightness-0' : ''}`}
-                  />
-                  <span className="text-sm font-medium text-gray-200">{modelNameMap[modelId]}</span>
-                </div>
-                <div className="space-y-6 py-4">
-                  {messages
-                    .filter((msg) => msg.role === 'user' || msg.modelId === modelId)
-                    .map((msg: Message, index: number) => (
-                      <div
-                        key={msg.id || `${modelId}-${index}`}
-                        className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        {msg.role === 'user' ? (
-                          <div className="bg-gradient-to-br from-yellow-500 to-yellow-600 text-black rounded-2xl px-6 py-3 max-w-xs lg:max-w-md shadow-lg hover:shadow-xl transition-shadow duration-200">
-                            <p className="text-sm font-medium whitespace-pre-wrap">{msg.content}</p>
+              <div key={modelId} className={`${viewMode === 'all' ? 'flex-1 min-w-0' : 'w-full'} flex flex-col h-full`}>
+                <div
+                  className="flex-1 overflow-y-auto px-4 bg-[#2a2633]/50 rounded-lg shadow-md border border-gray-700/30"
+                  ref={(el) => { scrollContainerRefs.current[modelId] = el; }}
+                >
+                  <div className="flex items-center justify-center gap-2 py-3 border-b border-gray-700/50 sticky top-0 bg-[#2a2633]/80 backdrop-blur-sm z-10">
+                    <Image
+                      src={modelIconMap[modelId]}
+                      alt={`${modelNameMap[modelId]} logo`}
+                      width={20}
+                      height={20}
+                      className={`${modelId === 'openai/gpt-4o' ? 'invert brightness-0' : ''}`}
+                    />
+                    <span className="text-sm font-medium text-gray-200">{modelNameMap[modelId]}</span>
+                  </div>
+
+                  <div className="space-y-6 py-4">
+                    {messages.map((msg: Message, index: number) => {
+                      if (msg.role === 'user') {
+                        return (
+                          <div key={`user-${index}`} className="flex justify-end">
+                            <UserMessage content={msg.content} />
                           </div>
-                        ) : (
+                        );
+                      }
+                      if (msg.role === 'assistant' && msg.modelId === modelId) {
+                        return (
                           <AIMessageWithActions
+                            key={`ai-${index}`}
                             content={msg.content}
                             modelId={msg.modelId}
-                            loading={loading && index === messages.filter((m) => m.modelId === modelId).length - 1}
-                            isLastMessage={index === messages.filter((m) => m.modelId === modelId).length - 1}
                           />
-                        )}
-                      </div>
-                    ))}
-                  <div ref={messagesEndRefs.current[modelId]} />
+                        );
+                      }
+                      return null;
+                    })}
+                    <div ref={(el) => { messagesEndRefs.current[modelId] = el; }} />
+                  </div>
                 </div>
               </div>
             ))}
           </div>
 
-          <div className="p-4 border-t border-gray-700/50 bg-[#2a2633]/80 backdrop-blur-sm">
+          <div className="flex-shrink-0 p-4 border-t border-gray-700/50 bg-[#2a2633]/80 backdrop-blur-sm">
             <div className="max-w-4xl mx-auto">
               <MessageInput
                 message={message}

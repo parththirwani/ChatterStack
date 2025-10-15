@@ -46,19 +46,21 @@ const ChatPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-[#201d26]">
-      <Sidebar
-        collapsed={sidebarCollapsed}
-        onToggleCollapse={handleToggleSidebar}
-        user={user}
-        onUserChange={handleUserChange}
-        onConversationSelect={handleConversationSelect}
-        onNewChat={handleNewChat}
-        currentConversationId={selectedConversationId}
-        refreshTrigger={refreshConversations}
-      />
-      <div className="flex-1 flex flex-col">
-        <header className="flex items-center justify-end px-6 py-4 bg-[#201d26] backdrop-blur-md border-b border-gray-700/50">
+    <div className="flex h-screen overflow-hidden bg-[#201d26]">
+      <div className="flex-shrink-0">
+        <Sidebar
+          collapsed={sidebarCollapsed}
+          onToggleCollapse={handleToggleSidebar}
+          user={user}
+          onUserChange={handleUserChange}
+          onConversationSelect={handleConversationSelect}
+          onNewChat={handleNewChat}
+          currentConversationId={selectedConversationId}
+          refreshTrigger={refreshConversations}
+        />
+      </div>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <header className="flex-shrink-0 flex items-center justify-end px-6 py-4 bg-[#201d26] backdrop-blur-md border-b border-gray-700/50">
           <button
             onClick={toggleViewMode}
             className="p-2 rounded-full text-gray-400 hover:text-gray-200 hover:bg-gray-700/50 transition-all duration-200"
@@ -71,13 +73,15 @@ const ChatPage: React.FC = () => {
             )}
           </button>
         </header>
-        <ChatInterface
-          user={user}
-          selectedConversationId={selectedConversationId}
-          onConversationCreated={handleConversationCreated}
-          onNewChatStarted={handleNewChat}
-          viewMode={viewMode}
-        />
+        <div className="flex-1 overflow-hidden">
+          <ChatInterface
+            user={user}
+            selectedConversationId={selectedConversationId}
+            onConversationCreated={handleConversationCreated}
+            onNewChatStarted={handleNewChat}
+            viewMode={viewMode}
+          />
+        </div>
       </div>
     </div>
   );

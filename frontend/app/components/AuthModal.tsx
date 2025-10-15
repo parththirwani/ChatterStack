@@ -25,6 +25,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
   // Check authentication status on component mount (handles OAuth redirect)
   useEffect(() => {
     checkAuthStatus();
+    
+    // Clean up URL after OAuth redirect
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('auth')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   }, []);
 
   // Also check when modal opens
