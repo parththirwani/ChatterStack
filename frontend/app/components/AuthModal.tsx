@@ -22,7 +22,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Check if user is already logged in when modal opens
+  // Check authentication status on component mount (handles OAuth redirect)
+  useEffect(() => {
+    checkAuthStatus();
+  }, []);
+
+  // Also check when modal opens
   useEffect(() => {
     if (isOpen) {
       checkAuthStatus();
@@ -54,8 +59,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
 
   const handleLogin = (provider: "google" | "github") => {
     setLoading(true);
-    // Close modal before redirecting
-    onClose();
     // Redirect user to backend OAuth route
     window.location.href = `${BACKEND_URL}/auth/${provider}`;
   };
@@ -67,24 +70,15 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
         credentials: "include",
       });
       setUser(null);
+      if (onLoginSuccess) {
+        onLoginSuccess(null as any);
+      }
     } catch (err) {
       console.error("Error logging out", err);
     }
   };
 
-  const handleGuestContinue = () => {
-    onClose();
-    if (onLoginSuccess) {
-      // Pass null or a guest user object
-      onLoginSuccess({
-        id: 'guest',
-        name: 'Guest User',
-        email: null,
-        avatarUrl: null,
-        provider: 'guest'
-      });
-    }
-  };
+
 
   if (!isOpen) return null;
 
@@ -129,8 +123,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
               Welcome back, {user.name || 'User'}!
             </h2>
             <p className="text-gray-400 text-sm mb-6">
-              You're already signed in with {user.provider}
+              You're signed in with {user.provider}
             </p>
+            {user.email && (
+              <p className="text-gray-400 text-sm mb-6">
+                {user.email}
+              </p>
+            )}
 
             <div className="space-y-4">
               <button
@@ -193,7 +192,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
               </button>
 
               {/* GitHub Auth Button */}
-              {/* GitHub Auth Button */}
               <button
                 onClick={() => handleLogin("github")}
                 disabled={loading}
@@ -209,22 +207,6 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
               </button>
 
             </div>
-
-            {/* Divider */}
-            <div className="flex items-center my-6">
-              <div className="flex-1 border-t border-gray-700"></div>
-              <span className="px-4 text-xs text-gray-400 uppercase tracking-wide">Or</span>
-              <div className="flex-1 border-t border-gray-700"></div>
-            </div>
-
-            {/* Guest Option */}
-            <button
-              onClick={handleGuestContinue}
-              disabled={loading}
-              className="w-full bg-transparent text-gray-400 py-3 px-6 rounded-xl border border-gray-700 hover:border-yellow-500 hover:text-white transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Continue as Guest
-            </button>
 
             {/* Footer */}
             <p className="text-center text-xs text-gray-400 mt-6">

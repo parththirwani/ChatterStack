@@ -49,44 +49,6 @@ export default function Home() {
     setUser(null);
   };
 
-  // ---- Example: Call chat API after login
-  const callChat = async () => {
-    setLoading(true);
-    const response = await fetch(`${BACKEND_URL}/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include", //  send auth cookies
-      body: JSON.stringify({
-        message: "what is 2+2",
-        model: "openai/gpt-4o",
-      }),
-    });
-
-    if (!response.body) {
-      console.error("No response body");
-      setLoading(false);
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-        const chunk = decoder.decode(value, { stream: true });
-      }
-    } catch (error) {
-      console.error("Error reading stream", error);
-    } finally {
-      reader.releaseLock();
-      setLoading(false);
-    }
-  };
-
   return (
     <ChatterStackPage />
   );
