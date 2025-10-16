@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import LoginModal from './AuthModal';
-
 import { ApiService } from '../services/api';
 import type { User, Conversation } from '../types';
 import ChatHistory from './Sidebar/ChatHistory';

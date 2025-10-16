@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { LayoutGrid, LayoutList } from 'lucide-react';
 import ChatInterface from './ChatInterface/ChatInterface';
 import type { User } from '../types';
@@ -11,6 +11,18 @@ const ChatPage: React.FC = () => {
   const [refreshConversations, setRefreshConversations] = useState(0);
   const [viewMode, setViewMode] = useState<'all' | string>('all');
 
+  // Load conversation ID from URL on mount
+  useEffect(() => {
+    const path = window.location.pathname;
+    const conversationId = path.split('/').filter(Boolean)[0]; // Get first path segment
+    
+    if (conversationId && conversationId.length > 0) {
+      console.log('=== ChatPage: Loading conversation from URL ===');
+      console.log('Conversation ID from URL:', conversationId);
+      setSelectedConversationId(conversationId);
+    }
+  }, []);
+
   const handleToggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
   };
@@ -18,6 +30,8 @@ const ChatPage: React.FC = () => {
   const handleUserChange = (newUser: User | null) => {
     setUser(newUser);
     setSelectedConversationId(undefined);
+    // Reset URL to home when user changes
+    window.history.pushState({}, '', '/');
   };
 
   const handleConversationSelect = (conversationId: string) => {
@@ -25,11 +39,17 @@ const ChatPage: React.FC = () => {
     console.log('Selected conversation ID:', conversationId);
     console.log('Current conversation ID:', selectedConversationId);
     setSelectedConversationId(conversationId);
+    
+    // Update URL without reloading page
+    window.history.pushState({}, '', `/${conversationId}`);
   };
 
   const handleNewChat = () => {
     console.log('=== ChatPage: New Chat Started ===');
     setSelectedConversationId(undefined);
+    
+    // Reset URL to home
+    window.history.pushState({}, '', '/');
   };
 
   const handleConversationCreated = (conversationId: string) => {
@@ -37,6 +57,9 @@ const ChatPage: React.FC = () => {
     console.log('New conversation ID:', conversationId);
     setSelectedConversationId(conversationId);
     setRefreshConversations((prev) => prev + 1);
+    
+    // Update URL with new conversation ID
+    window.history.pushState({}, '', `/${conversationId}`);
   };
 
   const toggleViewMode = () => {
@@ -44,6 +67,26 @@ const ChatPage: React.FC = () => {
       prev === 'all' ? 'deepseek/deepseek-chat-v3.1' : 'all'
     );
   };
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      const path = window.location.pathname;
+      const conversationId = path.split('/').filter(Boolean)[0];
+      
+      if (conversationId) {
+        console.log('=== ChatPage: Browser navigation detected ===');
+        console.log('Loading conversation:', conversationId);
+        setSelectedConversationId(conversationId);
+      } else {
+        console.log('=== ChatPage: Browser navigation to home ===');
+        setSelectedConversationId(undefined);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#201d26]">

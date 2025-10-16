@@ -1,6 +1,6 @@
 // backend/routes/chat.ts
 import { Router } from "express";
-import { InMemoryStore } from "../../store/InMemoryStore";
+import { RedisStore } from "../../store/RedisStore";
 import { CreateChatSchema, Role, SUPPORTED_MODELS } from "../../types";
 import { createCompletion } from "../../openrouter";
 import { prisma } from "../../lib/prisma";
@@ -18,8 +18,6 @@ router.post("/", authenticate, async (req, res) => {
 
     console.log("Request body:", req.body);
     console.log("User from token:", (req as any).user);
-    console.log("Headers:", req.headers);
-    console.log("Cookies:", req.cookies);
 
     const { success, data, error: validationError } = CreateChatSchema.safeParse(req.body);
     if (!success) {
@@ -35,7 +33,6 @@ router.post("/", authenticate, async (req, res) => {
 
     const conversationId = data.conversationId ?? crypto.randomUUID();
     console.log("Conversation ID:", conversationId);
-    console.log("Models:", SUPPORTED_MODELS);
 
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -45,10 +42,15 @@ router.post("/", authenticate, async (req, res) => {
     res.setHeader("Access-Control-Allow-Credentials", "true");
     res.flushHeaders();
 
-    let existingMessages = InMemoryStore.getInstance().get(conversationId);
+    const store = RedisStore.getInstance();
 
-    if (existingMessages.length === 0 && data.conversationId) {
-      console.log("Loading messages from DB for conversation:", conversationId);
+    // Step 1: Try to get messages from Redis
+    let conversationHistory = await store.get(conversationId);
+    console.log(`Redis cache: ${conversationHistory.length} messages found`);
+
+    // Step 2: If Redis is empty and this is an existing conversation, load from DB
+    if (conversationHistory.length === 0 && data.conversationId) {
+      console.log("Loading conversation history from database...");
 
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId, userId },
@@ -60,33 +62,45 @@ router.post("/", authenticate, async (req, res) => {
         return res.status(404).json({ error: "Conversation not found" });
       }
 
-      console.log("Found DB messages:", conversation.messages.length);
-      existingMessages = conversation.messages.map((m) => ({
+      console.log(`Found ${conversation.messages.length} messages in database`);
+      
+      // Map DB messages to Message format
+      conversationHistory = conversation.messages.map((m) => ({
         role: m.role as Role,
         content: m.content,
-        modelId: m.modelId ?? undefined, // Changed from model to modelId
+        modelId: m.modelId ?? undefined,
       }));
 
-      for (const msg of existingMessages) {
-        InMemoryStore.getInstance().add(conversationId, msg);
+      // Step 3: Repopulate Redis cache with conversation history
+      console.log("Repopulating Redis cache...");
+      for (const msg of conversationHistory) {
+        await store.add(conversationId, msg);
       }
+      console.log("Redis cache repopulated");
     }
 
-    console.log("Total messages in conversation:", existingMessages.length + 1);
-
-    const messagesForAI = [...existingMessages, { role: Role.User, content: data.message }];
-    console.log("Sending to AI:", messagesForAI.map(m => ({
-      role: m.role,
-      content: m.content.substring(0, 50) + (m.content.length > 50 ? "..." : "")
-    })));
-
-    res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
-
-    InMemoryStore.getInstance().add(conversationId, {
+    // Step 4: Add the new user message to Redis cache
+    await store.add(conversationId, {
       role: Role.User,
       content: data.message,
     });
 
+    // Step 5: Build message array for AI (includes history + new message)
+    const messagesForAI = [
+      ...conversationHistory,
+      { role: Role.User, content: data.message }
+    ];
+
+    console.log(`Sending to AI: ${messagesForAI.length} total messages (${conversationHistory.length} from history + 1 new)`);
+    console.log("Message preview:", messagesForAI.map(m => ({
+      role: m.role,
+      content: m.content.substring(0, 50) + (m.content.length > 50 ? "..." : ""),
+      modelId: m.modelId
+    })));
+
+    res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
+
+    // Step 6: Get AI responses
     const responses: Record<string, string> = {};
     await Promise.all(
       SUPPORTED_MODELS.map(async (model) => {
@@ -95,31 +109,33 @@ router.post("/", authenticate, async (req, res) => {
             messagesForAI,
             model,
             (chunk: string) => {
-              res.write(`data: ${JSON.stringify({ modelId: model, chunk })}\n\n`); // Changed model to modelId
+              res.write(`data: ${JSON.stringify({ modelId: model, chunk })}\n\n`);
             }
           );
           responses[model] = fullContent;
-          res.write(`data: ${JSON.stringify({ modelId: model, done: true })}\n\n`); // Changed model to modelId
+          res.write(`data: ${JSON.stringify({ modelId: model, done: true })}\n\n`);
           console.log(`AI response complete for ${model}, length:`, fullContent.length);
         } catch (error) {
           console.error(`Error with model ${model}:`, error);
-          res.write(`data: ${JSON.stringify({ modelId: model, error: (error as Error).message })}\n\n`); // Changed model to modelId
+          res.write(`data: ${JSON.stringify({ modelId: model, error: (error as Error).message })}\n\n`);
         }
       })
     );
 
-    SUPPORTED_MODELS.forEach((model) => {
+    // Step 7: Add AI responses to Redis cache
+    for (const model of SUPPORTED_MODELS) {
       if (responses[model]) {
-        InMemoryStore.getInstance().add(conversationId, {
+        await store.add(conversationId, {
           role: Role.Assistant,
           content: responses[model],
-          modelId: model, // Changed from model to modelId
+          modelId: model,
         });
       }
-    });
+    }
 
+    // Step 8: Persist to database
     if (!data.conversationId) {
-      console.log("Creating new conversation in DB");
+      console.log("Creating new conversation in database");
 
       try {
         const conversation = await prisma.conversation.create({
@@ -132,7 +148,7 @@ router.post("/", authenticate, async (req, res) => {
                 ...SUPPORTED_MODELS.map((model) => ({
                   content: responses[model] || "Error generating response",
                   role: Role.Assistant,
-                  modelId: model, // Changed from model to modelId
+                  modelId: model,
                 })),
               ],
             },
@@ -150,7 +166,7 @@ router.post("/", authenticate, async (req, res) => {
         );
       }
     } else {
-      console.log("Adding messages to existing conversation");
+      console.log("Adding messages to existing conversation in database");
 
       try {
         await prisma.message.createMany({
@@ -160,11 +176,11 @@ router.post("/", authenticate, async (req, res) => {
               conversationId,
               content: responses[model] || "Error generating response",
               role: Role.Assistant,
-              modelId: model, // Changed from model to modelId
+              modelId: model,
             })),
           ],
         });
-        console.log("Messages saved to DB");
+        console.log("Messages saved to database");
       } catch (dbError) {
         console.error("Database error saving messages:", dbError);
         res.write(
