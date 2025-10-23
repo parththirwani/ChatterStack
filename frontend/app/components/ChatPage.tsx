@@ -1,27 +1,35 @@
 import React, { useState, useEffect } from 'react';
+import { usePathname } from 'next/navigation';
 import { LayoutGrid, LayoutList } from 'lucide-react';
 import ChatInterface from './ChatInterface/ChatInterface';
 import type { User } from '../types';
 import Sidebar from './Sidebar';
 
 const ChatPage: React.FC = () => {
+  const pathname = usePathname();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [user, setUser] = useState<User | null>(null);
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
   const [refreshConversations, setRefreshConversations] = useState(0);
   const [viewMode, setViewMode] = useState<'all' | string>('all');
 
-  // Load conversation ID from URL on mount
+  // Load conversation ID from URL on mount and when pathname changes
   useEffect(() => {
-    const path = window.location.pathname;
-    const conversationId = path.split('/').filter(Boolean)[0]; // Get first path segment
+    console.log('=== ChatPage: Pathname changed ===');
+    console.log('Current pathname:', pathname);
+    
+    // Extract conversation ID from pathname (e.g., /abc-123-def -> abc-123-def)
+    const pathSegments = pathname.split('/').filter(Boolean);
+    const conversationId = pathSegments[0];
     
     if (conversationId && conversationId.length > 0) {
-      console.log('=== ChatPage: Loading conversation from URL ===');
-      console.log('Conversation ID from URL:', conversationId);
+      console.log('Loading conversation from URL:', conversationId);
       setSelectedConversationId(conversationId);
+    } else {
+      console.log('No conversation ID in URL, showing new chat');
+      setSelectedConversationId(undefined);
     }
-  }, []);
+  }, [pathname]);
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -72,7 +80,8 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname;
-      const conversationId = path.split('/').filter(Boolean)[0];
+      const pathSegments = path.split('/').filter(Boolean);
+      const conversationId = pathSegments[0];
       
       if (conversationId) {
         console.log('=== ChatPage: Browser navigation detected ===');
@@ -89,6 +98,7 @@ const ChatPage: React.FC = () => {
   }, []);
 
   return (
+
     <div className="flex h-screen overflow-hidden bg-[#201d26]">
       <div className="flex-shrink-0">
         <Sidebar
