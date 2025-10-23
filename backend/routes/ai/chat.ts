@@ -1,4 +1,4 @@
-// backend/routes/chat.ts
+// backend/routes/ai/chat.ts
 import { Router } from "express";
 import { RedisStore } from "../../store/RedisStore";
 import { CreateChatSchema, Role, SUPPORTED_MODELS } from "../../types";
@@ -11,11 +11,7 @@ const router = Router();
 
 router.post("/", authenticate, async (req, res) => {
   try {
-    console.log("=== Environment Debug ===");
-    console.log("OPENROUTER_API_KEY exists:", !!process.env.OPENROUTER_API_KEY);
-    console.log("OPENROUTER_API_KEY value:", process.env.OPENROUTER_API_KEY?.substring(0, 10) + "...");
     console.log("=== Chat Request Debug ===");
-
     console.log("Request body:", req.body);
     console.log("User from token:", (req as any).user);
 
@@ -29,10 +25,20 @@ router.post("/", authenticate, async (req, res) => {
     }
 
     const userId = (req as any).user.id;
-    console.log("Using user ID:", userId);
-
     const conversationId = data.conversationId ?? crypto.randomUUID();
-    console.log("Conversation ID:", conversationId);
+
+    // Get selected models from request, default to all if none provided
+    const selectedModels = data.selectedModels && data.selectedModels.length > 0
+      ? data.selectedModels.filter(m => SUPPORTED_MODELS.includes(m as any))
+      : SUPPORTED_MODELS;
+
+    console.log("Selected models for this request:", selectedModels);
+
+    if (selectedModels.length === 0) {
+      return res.status(400).json({
+        message: "At least one model must be selected"
+      });
+    }
 
     res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
     res.setHeader("Cache-Control", "no-cache, no-transform");
@@ -44,14 +50,12 @@ router.post("/", authenticate, async (req, res) => {
 
     const store = RedisStore.getInstance();
 
-    // Step 1: Try to get messages from Redis
+    // Load conversation history
     let conversationHistory = await store.get(conversationId);
     console.log(`Redis cache: ${conversationHistory.length} messages found`);
 
-    // Step 2: If Redis is empty and this is an existing conversation, load from DB
     if (conversationHistory.length === 0 && data.conversationId) {
       console.log("Loading conversation history from database...");
-
       const conversation = await prisma.conversation.findUnique({
         where: { id: conversationId, userId },
         include: { messages: { orderBy: { createdAt: "asc" } } }
@@ -64,14 +68,12 @@ router.post("/", authenticate, async (req, res) => {
 
       console.log(`Found ${conversation.messages.length} messages in database`);
       
-      // Map DB messages to Message format
       conversationHistory = conversation.messages.map((m) => ({
         role: m.role as Role,
         content: m.content,
         modelId: m.modelId ?? undefined,
       }));
 
-      // Step 3: Repopulate Redis cache with conversation history
       console.log("Repopulating Redis cache...");
       for (const msg of conversationHistory) {
         await store.add(conversationId, msg);
@@ -79,31 +81,25 @@ router.post("/", authenticate, async (req, res) => {
       console.log("Redis cache repopulated");
     }
 
-    // Step 4: Add the new user message to Redis cache
+    // Add new user message
     await store.add(conversationId, {
       role: Role.User,
       content: data.message,
     });
 
-    // Step 5: Build message array for AI (includes history + new message)
     const messagesForAI = [
       ...conversationHistory,
       { role: Role.User, content: data.message }
     ];
 
-    console.log(`Sending to AI: ${messagesForAI.length} total messages (${conversationHistory.length} from history + 1 new)`);
-    console.log("Message preview:", messagesForAI.map(m => ({
-      role: m.role,
-      content: m.content.substring(0, 50) + (m.content.length > 50 ? "..." : ""),
-      modelId: m.modelId
-    })));
+    console.log(`Sending to AI: ${messagesForAI.length} total messages`);
 
     res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
 
-    // Step 6: Get AI responses
+    // Get AI responses only from selected models
     const responses: Record<string, string> = {};
     await Promise.all(
-      SUPPORTED_MODELS.map(async (model) => {
+      selectedModels.map(async (model) => {
         try {
           const fullContent = await createCompletion(
             messagesForAI,
@@ -114,7 +110,7 @@ router.post("/", authenticate, async (req, res) => {
           );
           responses[model] = fullContent;
           res.write(`data: ${JSON.stringify({ modelId: model, done: true })}\n\n`);
-          console.log(`AI response complete for ${model}, length:`, fullContent.length);
+          console.log(`AI response complete for ${model}`);
         } catch (error) {
           console.error(`Error with model ${model}:`, error);
           res.write(`data: ${JSON.stringify({ modelId: model, error: (error as Error).message })}\n\n`);
@@ -122,8 +118,8 @@ router.post("/", authenticate, async (req, res) => {
       })
     );
 
-    // Step 7: Add AI responses to Redis cache
-    for (const model of SUPPORTED_MODELS) {
+    // Add AI responses to Redis cache
+    for (const model of selectedModels) {
       if (responses[model]) {
         await store.add(conversationId, {
           role: Role.Assistant,
@@ -133,10 +129,9 @@ router.post("/", authenticate, async (req, res) => {
       }
     }
 
-    // Step 8: Persist to database
+    // Persist to database
     if (!data.conversationId) {
       console.log("Creating new conversation in database");
-
       try {
         const conversation = await prisma.conversation.create({
           data: {
@@ -145,7 +140,7 @@ router.post("/", authenticate, async (req, res) => {
             messages: {
               create: [
                 { content: data.message, role: Role.User },
-                ...SUPPORTED_MODELS.map((model) => ({
+                ...selectedModels.map((model) => ({
                   content: responses[model] || "Error generating response",
                   role: Role.Assistant,
                   modelId: model,
@@ -167,12 +162,11 @@ router.post("/", authenticate, async (req, res) => {
       }
     } else {
       console.log("Adding messages to existing conversation in database");
-
       try {
         await prisma.message.createMany({
           data: [
             { conversationId, content: data.message, role: Role.User },
-            ...SUPPORTED_MODELS.map((model) => ({
+            ...selectedModels.map((model) => ({
               conversationId,
               content: responses[model] || "Error generating response",
               role: Role.Assistant,

@@ -85,7 +85,8 @@ export interface ChatState {
 
 export interface ChatRequest {
   message: string;
-  conversationId?: string; // Removed model since all LLMs are used
+  conversationId?: string; 
+  selectedModels: string[];
 }
 
 export interface AIModel {

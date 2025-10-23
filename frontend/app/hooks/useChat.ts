@@ -1,14 +1,11 @@
+// frontend/app/hooks/useChat.ts
 import { useState, useCallback } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
-
-const SUPPORTED_MODELS = [
-  'deepseek/deepseek-chat-v3.1',
-  'google/gemini-2.5-flash',
-  'openai/gpt-4o',
-];
+import { useModelSelection } from '../context/ModelSelectionContext';
 
 export const useChat = () => {
+  const { selectedModels } = useModelSelection();
   const [state, setState] = useState<ChatState>({
     messages: [],
     loading: false,
@@ -21,7 +18,18 @@ export const useChat = () => {
     ) => {
       if (!message.trim() || state.loading) return;
 
+      const activeModels = Array.from(selectedModels);
+      
+      if (activeModels.length === 0) {
+        setState((prev) => ({
+          ...prev,
+          error: 'Please select at least one model',
+        }));
+        return;
+      }
+
       console.log('=== Sending Message ===');
+      console.log('Active models:', activeModels);
       console.log('Current conversation ID:', state.currentConversationId);
       console.log('Message:', message);
 
@@ -39,7 +47,7 @@ export const useChat = () => {
       }));
 
       const responses: Record<string, string> = {};
-      SUPPORTED_MODELS.forEach((modelId) => {
+      activeModels.forEach((modelId) => {
         responses[modelId] = '';
         setState((prev) => ({
           ...prev,
@@ -62,6 +70,7 @@ export const useChat = () => {
           {
             message,
             conversationId: state.currentConversationId,
+            selectedModels: activeModels,
           },
           (modelId: string, chunk: string) => {
             responses[modelId] += chunk;
@@ -113,7 +122,7 @@ export const useChat = () => {
         }));
       }
     },
-    [state.loading, state.currentConversationId]
+    [state.loading, state.currentConversationId, selectedModels]
   );
 
   const loadConversation = useCallback(async (conversationId: string) => {

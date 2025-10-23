@@ -1,8 +1,8 @@
 import jwt from "jsonwebtoken";
 import crypto from "crypto";
 
-const ACCESS_TTL = "15m";      // short-lived
-const REFRESH_TTL_DAYS = 30;   // long-lived
+const ACCESS_TTL = "30d";      
+const REFRESH_TTL_DAYS = 30;   
 
 export function signAccessToken(payload: { id: string; provider: string }) {
   return jwt.sign(payload, process.env.JWT_SECRET!, { expiresIn: ACCESS_TTL });
@@ -36,7 +36,7 @@ export function cookieConfig(isRefresh=false) {
     sameSite: isProduction ? ("none" as const) : ("lax" as const), // 'none' for cross-site in production, 'lax' for localhost
     domain: isProduction ? process.env.COOKIE_DOMAIN : undefined, // No domain for localhost
     path: "/",
-    // Access token can be slightly shorter lived; refresh token aligns with DB expiry:
-    maxAge: isRefresh ? 30*24*60*60*1000 : 15*60*1000,
+    // Both tokens now have 30 days maxAge
+    maxAge: 30*24*60*60*1000, // 30 days in milliseconds
   };
 }

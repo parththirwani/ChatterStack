@@ -13,6 +13,7 @@ export type MODEL = typeof SUPPORTED_MODELS[number];
 export const CreateChatSchema = z.object({
     conversationId: z.string().uuid().optional(),
     message: z.string().trim().min(1).max(MAX_INPUT_TOKENS),
+    selectedModels: z.array(z.string()).optional(), // Added selected models
 });
 
 export type CreateChatInput = z.infer<typeof CreateChatSchema>;
@@ -20,7 +21,7 @@ export type CreateChatInput = z.infer<typeof CreateChatSchema>;
 export type Message = {
     content: string;
     role: Role;
-    modelId?: string; // Changed from model to modelId to match schema
+    modelId?: string;
 }
 
 export enum Role {

@@ -6,6 +6,7 @@ import MessageInput from './MessageInput';
 
 import { ChatInterfaceProps, Message } from '@/app/types';
 import { useChat } from '@/app/hooks/useChat';
+import { useModelSelection } from '@/app/context/ModelSelectionContext';
 import AIMessageWithActions from './AIMessage';
 import UserMessage from './UserMessage';
 
@@ -17,7 +18,9 @@ const SUPPORTED_MODELS = [
   'deepseek/deepseek-chat-v3.1',
   'google/gemini-2.5-flash',
   'openai/gpt-4o',
-];
+] as const;
+
+type SupportedModelId = typeof SUPPORTED_MODELS[number];
 
 const modelNameMap: Record<string, string> = {
   'deepseek/deepseek-chat-v3.1': 'DeepSeek v3.1',
@@ -39,6 +42,7 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
   viewMode,
 }) => {
   const [message, setMessage] = useState('');
+  const { isModelSelected } = useModelSelection();
   
   const {
     messages,
@@ -56,6 +60,11 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
 
   const isFirstMessage = messages.length === 0;
 
+  // Get active models based on selection
+  const activeModels = viewMode === 'all' 
+    ? SUPPORTED_MODELS.filter(modelId => isModelSelected(modelId as SupportedModelId))
+    : [viewMode];
+
   useEffect(() => {
     if (selectedConversationId && selectedConversationId !== currentConversationId) {
       loadConversation(selectedConversationId);
@@ -65,7 +74,9 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
   }, [selectedConversationId, currentConversationId, loadConversation, startNewConversation]);
 
   useEffect(() => {
-    const modelsToUpdate = viewMode === 'all' ? SUPPORTED_MODELS : [viewMode];
+    const modelsToUpdate = viewMode === 'all' 
+      ? SUPPORTED_MODELS.filter(modelId => isModelSelected(modelId as SupportedModelId))
+      : [viewMode];
     
     modelsToUpdate.forEach((modelId) => {
       setTimeout(() => {
@@ -75,7 +86,7 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
         }
       }, 100);
     });
-  }, [messages, loading, viewMode]);
+  }, [messages, loading, viewMode, isModelSelected]);
 
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
@@ -152,8 +163,14 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
       ) : (
         <>
           <div className="flex-1 flex overflow-y-auto p-6 gap-4 min-h-0">
-            {(viewMode === 'all' ? SUPPORTED_MODELS : [viewMode]).map((modelId) => (
-              <div key={modelId} className={`${viewMode === 'all' ? 'flex-1 min-w-0' : 'w-full'} flex flex-col h-full`}>
+            {activeModels.map((modelId) => (
+              <div 
+                key={modelId} 
+                className={`${viewMode === 'all' ? 'flex-1 min-w-0' : 'w-full'} flex flex-col h-full transition-all duration-300 ease-in-out`}
+                style={{
+                  animation: 'slideIn 0.3s ease-out'
+                }}
+              >
                 <div
                   className="flex-1 overflow-y-auto px-4 bg-[#2a2633]/50 rounded-lg shadow-md border border-gray-700/30"
                   ref={(el) => { scrollContainerRefs.current[modelId] = el; }}
@@ -208,6 +225,19 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
           </div>
         </>
       )}
+
+      <style jsx>{`
+        @keyframes slideIn {
+          from {
+            opacity: 0;
+            transform: scale(0.95);
+          }
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
+        }
+      `}</style>
     </div>
   );
 };
