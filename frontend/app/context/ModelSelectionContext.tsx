@@ -23,6 +23,14 @@ export const AVAILABLE_MODELS = [
     logo: '/openai.svg',
     company: 'OpenAI',
   },
+  {
+    id: 'anthropic/claude-sonnet-4.5',
+    name: 'Claude Sonnet 4.5',
+    description: 'Most intelligent Claude model',
+    logo: '/claude.svg',
+    company: 'Anthropic',
+  },
+
 ] as const;
 
 export type ModelId = typeof AVAILABLE_MODELS[number]['id'];

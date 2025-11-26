@@ -1,5 +1,7 @@
-// backend/openrouter.ts
+// backend/openrouter.ts (UPDATED)
+import { getChatterStackSystemPrompt } from "config/systemPrompt";
 import { Role } from "./types";
+
 
 interface OpenRouterMessage {
   role: string;
@@ -15,10 +17,19 @@ export async function createCompletion(
     throw new Error("OPENROUTER_API_KEY is not set");
   }
 
-  const openRouterMessages: OpenRouterMessage[] = messages.map(msg => ({
-    role: msg.role === Role.User ? "user" : "assistant",
-    content: msg.content
-  }));
+  // Add ChatterStack system prompt context
+  const systemPrompt = getChatterStackSystemPrompt();
+
+  const openRouterMessages: OpenRouterMessage[] = [
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    ...messages.map(msg => ({
+      role: msg.role === Role.User ? "user" : "assistant",
+      content: msg.content
+    })),
+  ];
 
   const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",

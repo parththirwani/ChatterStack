@@ -5,7 +5,9 @@ const MAX_INPUT_TOKENS = 1000;
 export const SUPPORTED_MODELS = [
   "deepseek/deepseek-chat-v3.1",
   "google/gemini-2.5-flash",
-  "openai/gpt-4o"
+  "openai/gpt-4o",
+  "anthropic/claude-sonnet-4.5",
+  "x-ai/grok-2-1212"
 ] as const;
 
 export type MODEL = typeof SUPPORTED_MODELS[number];
@@ -13,7 +15,7 @@ export type MODEL = typeof SUPPORTED_MODELS[number];
 export const CreateChatSchema = z.object({
     conversationId: z.string().uuid().optional(),
     message: z.string().trim().min(1).max(MAX_INPUT_TOKENS),
-    selectedModels: z.array(z.string()).optional(), // Added selected models
+    selectedModels: z.array(z.string()).optional(),
 });
 
 export type CreateChatInput = z.infer<typeof CreateChatSchema>;

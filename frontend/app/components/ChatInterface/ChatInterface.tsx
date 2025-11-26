@@ -1,3 +1,4 @@
+// frontend/app/components/ChatInterface/ChatInterface.tsx
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
@@ -18,6 +19,8 @@ const SUPPORTED_MODELS = [
   'deepseek/deepseek-chat-v3.1',
   'google/gemini-2.5-flash',
   'openai/gpt-4o',
+  'anthropic/claude-sonnet-4.5',
+
 ] as const;
 
 type SupportedModelId = typeof SUPPORTED_MODELS[number];
@@ -26,12 +29,16 @@ const modelNameMap: Record<string, string> = {
   'deepseek/deepseek-chat-v3.1': 'DeepSeek v3.1',
   'google/gemini-2.5-flash': 'Gemini Flash',
   'openai/gpt-4o': 'GPT-4o',
+  'anthropic/claude-sonnet-4.5': 'Claude Sonnet 4.5',
+
 };
 
 const modelIconMap: Record<string, string> = {
   'deepseek/deepseek-chat-v3.1': '/deepseek.svg',
   'google/gemini-2.5-flash': '/gemini.svg',
   'openai/gpt-4o': '/openai.svg',
+  'anthropic/claude-sonnet-4.5': '/claude.svg',
+
 };
 
 const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
