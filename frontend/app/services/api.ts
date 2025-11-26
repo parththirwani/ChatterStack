@@ -163,7 +163,7 @@ export class ApiService {
                 if (parsed.modelId && parsed.done && onDone) {
                   onDone(parsed.modelId);
                 }
-              } catch (e) {
+              } catch {
                 console.log('Invalid JSON in SSE:', data);
               }
             }
@@ -206,7 +206,7 @@ export class ApiService {
 
   static async deleteConversation(conversationId: string): Promise<void> {
     try {
-      const response = await this.fetchWithCredentials(`/ai/conversations/${conversationId}`, {
+      await this.fetchWithCredentials(`/ai/conversations/${conversationId}`, {
         method: 'DELETE',
       });
       console.log(`Conversation ${conversationId} deleted successfully`);

@@ -80,7 +80,7 @@ const DeleteConversationModal: React.FC<DeleteConversationModalProps> = ({
               <p className="text-gray-300 text-sm leading-relaxed">
                 Are you sure you want to delete{' '}
                 <span className="font-semibold text-white">
-                  "{conversationTitle || 'this conversation'}"
+                  &ldquo;{conversationTitle || 'this conversation'}&rdquo;
                 </span>
                 ?
               </p>

@@ -64,8 +64,6 @@ export const useChat = () => {
       });
 
       try {
-        let newConversationId: string | undefined;
-
         await ApiService.sendMessage(
           {
             message,
@@ -96,7 +94,6 @@ export const useChat = () => {
           (conversationId: string) => {
             if (!state.currentConversationId) {
               console.log('New conversation ID received:', conversationId);
-              newConversationId = conversationId;
               setState((prev) => ({
                 ...prev,
                 currentConversationId: conversationId,

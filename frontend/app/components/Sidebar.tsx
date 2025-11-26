@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import LoginModal from './AuthModal';
 import { ApiService } from '../services/api';
 import type { User, Conversation } from '../types';
@@ -33,15 +33,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
 
-  useEffect(() => {
-    if (user && user.id !== 'guest') {
-      loadConversations();
-    } else {
-      setConversations([]);
-    }
-  }, [user, refreshTrigger]);
-
-  const loadConversations = async () => {
+  const loadConversations = useCallback(async () => {
     if (!user || user.id === 'guest') return;
     setLoadingConversations(true);
     try {
@@ -58,7 +50,15 @@ const Sidebar: React.FC<SidebarProps> = ({
     } finally {
       setLoadingConversations(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user && user.id !== 'guest') {
+      loadConversations();
+    } else {
+      setConversations([]);
+    }
+  }, [user, refreshTrigger, loadConversations]);
 
   const handleDeleteConversation = async (conversationId: string) => {
     try {
@@ -85,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   const handleLoginClick = () => setShowLoginModal(true);
 
-  const handleLoginSuccess = (authenticatedUser: User) => {
+  const handleLoginSuccess = (authenticatedUser: User | null) => {
     if (onUserChange) onUserChange(authenticatedUser);
     setShowLoginModal(false);
   };

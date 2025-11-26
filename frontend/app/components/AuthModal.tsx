@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
-import { X, Github } from 'lucide-react';
-import Image from "next/image";
+import React, { useEffect, useState, useCallback } from 'react';
+import { X } from 'lucide-react';
+import Image from 'next/image';
 
 const BACKEND_URL = "http://localhost:3000";
 
@@ -15,60 +15,69 @@ type User = {
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onLoginSuccess?: (user: User) => void;
+  onLoginSuccess?: (user: User | null) => void;
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Check authentication status on component mount (handles OAuth redirect)
-  useEffect(() => {
-    checkAuthStatus();
-    
-    // Clean up URL after OAuth redirect
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('auth')) {
-      window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, []);
-
-  // Also check when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      checkAuthStatus();
-    }
-  }, [isOpen]);
-
-  // Check authentication status
-  const checkAuthStatus = async () => {
+  // ------------------------------------------------------------------
+  // Check authentication status – wrapped in useCallback to satisfy exhaustive-deps
+  // ------------------------------------------------------------------
+  const checkAuthStatus = useCallback(async () => {
     try {
       const res = await fetch(`${BACKEND_URL}/auth/validate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include", // important: send cookies
-        body: JSON.stringify({ userId: user?.id }),
+        credentials: "include",
+        body: JSON.stringify({ userId: user?.id ?? null }),
       });
+
       if (res.ok) {
         const data = await res.json();
         if (data.user) {
           setUser(data.user);
-          if (onLoginSuccess) {
-            onLoginSuccess(data.user);
-          }
+          onLoginSuccess?.(data.user);
         }
       }
     } catch (err) {
       console.error("Error checking auth status", err);
     }
-  };
+  }, [user?.id, onLoginSuccess]);
 
+  // ------------------------------------------------------------------
+  // On mount – check auth + clean OAuth query params
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    checkAuthStatus();
+
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('auth')) {
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [checkAuthStatus]);
+
+  // ------------------------------------------------------------------
+  // Re-check when the modal opens
+  // ------------------------------------------------------------------
+  useEffect(() => {
+    if (isOpen) {
+      checkAuthStatus();
+    }
+  }, [isOpen, checkAuthStatus]);
+
+  // ------------------------------------------------------------------
+  // OAuth login redirect
+  // ------------------------------------------------------------------
   const handleLogin = (provider: "google" | "github") => {
     setLoading(true);
-    // Redirect user to backend OAuth route
     window.location.href = `${BACKEND_URL}/auth/${provider}`;
   };
 
+  // ------------------------------------------------------------------
+  // Logout
+  // ------------------------------------------------------------------
   const handleLogout = async () => {
     try {
       await fetch(`${BACKEND_URL}/auth/logout`, {
@@ -76,15 +85,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
         credentials: "include",
       });
       setUser(null);
-      if (onLoginSuccess) {
-        onLoginSuccess(null as any);
-      }
+      onLoginSuccess?.(null);
     } catch (err) {
       console.error("Error logging out", err);
     }
   };
-
-
 
   if (!isOpen) return null;
 
@@ -101,7 +106,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
         className="relative bg-[#141017] border border-gray-700 rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Close Button */}
+        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
@@ -109,39 +114,43 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
           <X className="w-5 h-5" />
         </button>
 
-        {/* If user is already logged in, show user info */}
+        {/* -------------------------------------------------------------
+            Logged-in view
+        ------------------------------------------------------------- */}
         {user && user.id !== 'guest' ? (
           <div className="text-center">
-            <div className="w-12 h-12 bg-yellow-500 rounded-lg flex items-center justify-center mx-auto mb-4">
+            <div className="w-12 h-12 bg-yellow-500 rounded-lg flex items-center justify-center mx-auto mb-4 overflow-hidden">
               {user.avatarUrl ? (
-                <img
+                <Image
                   src={user.avatarUrl}
-                  alt="User Avatar"
-                  className="w-full h-full rounded-lg object-cover"
+                  alt="User avatar"
+                  width={48}
+                  height={48}
+                  className="w-full h-full object-cover"
                 />
               ) : (
                 <span className="text-black font-bold text-xl">
-                  {user.name?.charAt(0) || 'U'}
+                  {user.name?.charAt(0) ?? 'U'}
                 </span>
               )}
             </div>
+
             <h2 className="text-2xl font-bold text-white mb-2">
               Welcome back, {user.name || 'User'}!
             </h2>
             <p className="text-gray-400 text-sm mb-6">
-              You're signed in with {user.provider}
+              You&apos;re signed in with {user.provider}
             </p>
+
             {user.email && (
-              <p className="text-gray-400 text-sm mb-6">
-                {user.email}
-              </p>
+              <p className="text-gray-400 text-sm mb-6">{user.email}</p>
             )}
 
             <div className="space-y-4">
               <button
                 onClick={() => {
                   onClose();
-                  if (onLoginSuccess) onLoginSuccess(user);
+                  onLoginSuccess?.(user);
                 }}
                 className="w-full bg-yellow-500 text-black py-3 px-6 rounded-xl font-medium hover:bg-yellow-400 transition-colors"
               >
@@ -158,18 +167,20 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
           </div>
         ) : (
           <>
-
-            {/* Header */}
+            {/* -------------------------------------------------------------
+                Login view
+            ------------------------------------------------------------- */}
             <div className="text-center mb-8">
               <div className="w-12 h-12 rounded-lg flex items-center justify-center mx-auto mb-4">
                 <Image
-                  src="/logo.png" // public/logo.png
+                  src="/logo.png"
                   alt="ChatterStack Logo"
                   width={48}
                   height={48}
                   className="rounded-lg"
                 />
               </div>
+
               <h2 className="text-2xl font-bold text-white mb-2">
                 Welcome to <span className="text-yellow-500">ChatterStack</span>
               </h2>
@@ -178,11 +189,8 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
               </p>
             </div>
 
-
-
-            {/* Auth Buttons */}
             <div className="space-y-4">
-              {/* Google Auth Button */}
+              {/* Google */}
               <button
                 onClick={() => handleLogin("google")}
                 disabled={loading}
@@ -197,24 +205,22 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
                 <span>{loading ? 'Signing in...' : 'Continue with Google'}</span>
               </button>
 
-              {/* GitHub Auth Button */}
+              {/* GitHub */}
               <button
                 onClick={() => handleLogin("github")}
                 disabled={loading}
                 className="w-full bg-[#211d22] text-white py-3 px-6 rounded-xl flex items-center justify-center space-x-3 hover:bg-gray-700 transition-colors font-medium border border-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Image
-                  src="/github.svg" // public/github.svg
+                  src="/github.svg"
                   alt="GitHub Logo"
                   width={20}
                   height={20}
                 />
                 <span>{loading ? 'Signing in...' : 'Continue with GitHub'}</span>
               </button>
-
             </div>
 
-            {/* Footer */}
             <p className="text-center text-xs text-gray-400 mt-6">
               By continuing, you agree to our Terms of Service and Privacy Policy
             </p>

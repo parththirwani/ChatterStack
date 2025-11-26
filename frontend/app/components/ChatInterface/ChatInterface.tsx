@@ -42,10 +42,8 @@ const modelIconMap: Record<string, string> = {
 };
 
 const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
-  user,
   selectedConversationId,
   onConversationCreated,
-  onNewChatStarted,
   viewMode,
 }) => {
   const [message, setMessage] = useState('');
@@ -103,13 +101,6 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
         }
       });
       setMessage('');
-    }
-  };
-
-  const handleNewChat = () => {
-    startNewConversation();
-    if (onNewChatStarted) {
-      onNewChatStarted();
     }
   };
 

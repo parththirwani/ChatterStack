@@ -10,7 +10,7 @@ import MessageActions from '@/app/MessageFunctionality/MessageActions';
 
 interface AIMessageWithActionsProps {
   content: string;
-  modelId?: string; // Added to display model name
+  modelId?: string;
   loading?: boolean;
   isLastMessage?: boolean;
   filename?: string;
@@ -85,7 +85,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     {children}
                   </em>
                 ),
-                code: ({ node, className, children, ...props }: any) => {
+                code: ({ className, children, ...props }) => {
                   const match = /language-(\w+)/.exec(className || '');
                   const language = match ? match[1] : '';
                   const isInline = !match;
@@ -124,16 +124,16 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     </div>
                   );
                 },
-                ul: ({ children, ...props }: any) => {
-                  const isNested = props.depth > 0;
+                ul: ({ children, ...props }) => {
+                  const isNested = (props as { depth?: number }).depth ? (props as { depth: number }).depth > 0 : false;
                   return (
                     <ul className={`mb-4 space-y-1 text-gray-100 ${isNested ? 'ml-4' : 'ml-0'}`}>
                       {children}
                     </ul>
                   );
                 },
-                ol: ({ children, ...props }: any) => {
-                  const isNested = props.depth > 0;
+                ol: ({ children, ...props }) => {
+                  const isNested = (props as { depth?: number }).depth ? (props as { depth: number }).depth > 0 : false;
                   return (
                     <ol className={`mb-4 space-y-1 text-gray-100 list-decimal ${isNested ? 'ml-4' : 'ml-4'}`}>
                       {children}
@@ -207,7 +207,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     {children}
                   </del>
                 ),
-                input: ({ checked, ...props }: any) => (
+                input: ({ checked, ...props }) => (
                   <input
                     type="checkbox"
                     checked={checked}
@@ -216,7 +216,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                     {...props}
                   />
                 ),
-                div: ({ className, children, ...props }: any) => {
+                div: ({ className, children, ...props }) => {
                   if (className === 'math math-display') {
                     return (
                       <div className="my-4 overflow-x-auto flex justify-center">
@@ -230,7 +230,7 @@ const AIMessageWithActions: React.FC<AIMessageWithActionsProps> = ({
                   }
                   return <div className={className} {...props}>{children}</div>;
                 },
-                span: ({ className, children, ...props }: any) => {
+                span: ({ className, children, ...props }) => {
                   if (className === 'math math-inline') {
                     return (
                       <span className={`${className} bg-gray-700 px-1 py-0.5 rounded text-yellow-300`} {...props}>
