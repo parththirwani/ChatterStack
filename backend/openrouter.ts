@@ -1,4 +1,3 @@
-// backend/openrouter.ts (UPDATED)
 import { getChatterStackSystemPrompt } from "config/systemPrompt";
 import { Role } from "./types";
 

@@ -1,11 +1,10 @@
-// frontend/app/hooks/useChat.ts
 import { useState, useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
 import { useModelSelection } from '../context/ModelSelectionContext';
 
 export const useChat = () => {
-  const { selectedModels } = useModelSelection();
+  const { selectedModel } = useModelSelection();
   const [state, setState] = useState<ChatState>({
     messages: [],
     loading: false,
@@ -27,20 +26,10 @@ export const useChat = () => {
         return;
       }
 
-      const activeModels = Array.from(selectedModels);
-      
-      if (activeModels.length === 0) {
-        setState((prev) => ({
-          ...prev,
-          error: 'Please select at least one model',
-        }));
-        return;
-      }
-
       isSendingRef.current = true;
 
       console.log('=== Sending Message ===');
-      console.log('Active models:', activeModels);
+      console.log('Selected model:', selectedModel);
       console.log('Message:', message);
 
       // Get current conversation ID from state at time of send
@@ -59,49 +48,45 @@ export const useChat = () => {
         error: undefined,
       }));
 
-      const responses: Record<string, string> = {};
-      const aiMessages: Message[] = [];
-
-      // Create placeholder messages for each model
-      activeModels.forEach((modelId) => {
-        responses[modelId] = '';
-        aiMessages.push({
-          role: 'assistant',
-          content: '',
-          modelId,
-          createdAt: new Date().toISOString(),
-        });
-      });
+      // Create placeholder AI message
+      const aiMessage: Message = {
+        role: 'assistant',
+        content: '',
+        modelId: selectedModel,
+        createdAt: new Date().toISOString(),
+      };
 
       setState((prev) => ({
         ...prev,
-        messages: [...prev.messages, ...aiMessages],
+        messages: [...prev.messages, aiMessage],
       }));
+
+      let fullResponse = '';
 
       try {
         await ApiService.sendMessage(
           {
             message,
             conversationId,
-            selectedModels: activeModels,
+            selectedModel,
           },
-          (modelId: string, chunk: string) => {
-            responses[modelId] += chunk;
+          (chunk: string) => {
+            fullResponse += chunk;
             setState((prev) => ({
               ...prev,
-              messages: prev.messages.map((msg) =>
-                msg.role === 'assistant' && msg.modelId === modelId && !msg.id
-                  ? { ...msg, content: responses[modelId] }
+              messages: prev.messages.map((msg, idx) =>
+                idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
+                  ? { ...msg, content: fullResponse }
                   : msg
               ),
             }));
           },
-          (modelId: string) => {
+          () => {
             setState((prev) => ({
               ...prev,
-              messages: prev.messages.map((msg) =>
-                msg.role === 'assistant' && msg.modelId === modelId && !msg.id
-                  ? { ...msg, content: responses[modelId], id: `${modelId}-${Date.now()}` }
+              messages: prev.messages.map((msg, idx) =>
+                idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
+                  ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
                   : msg
               ),
             }));
@@ -136,7 +121,7 @@ export const useChat = () => {
         isSendingRef.current = false;
       }
     },
-    [selectedModels, state.currentConversationId]
+    [selectedModel, state.currentConversationId]
   );
 
   const loadConversation = useCallback(async (conversationId: string) => {

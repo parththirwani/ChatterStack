@@ -12,10 +12,11 @@ export const SUPPORTED_MODELS = [
 
 export type MODEL = typeof SUPPORTED_MODELS[number];
 
+// Updated schema for single model per message
 export const CreateChatSchema = z.object({
     conversationId: z.string().uuid().optional(),
     message: z.string().trim().min(1).max(MAX_INPUT_TOKENS),
-    selectedModels: z.array(z.string()).optional(),
+    selectedModel: z.string(), // Single model instead of array
 });
 
 export type CreateChatInput = z.infer<typeof CreateChatSchema>;

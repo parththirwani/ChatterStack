@@ -4,14 +4,14 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 export const AVAILABLE_MODELS = [
   {
     id: 'deepseek/deepseek-chat-v3.1',
-    name: 'DeepSeek v3.1',
+    name: 'DeepSeek',
     description: 'Efficient reasoning and coding',
     logo: '/deepseek.svg',
     company: 'DeepSeek',
   },
   {
     id: 'google/gemini-2.5-flash',
-    name: 'Gemini Flash',
+    name: 'Gemini',
     description: 'Fast multimodal AI',
     logo: '/gemini.svg',
     company: 'Google',
@@ -25,79 +25,58 @@ export const AVAILABLE_MODELS = [
   },
   {
     id: 'anthropic/claude-sonnet-4.5',
-    name: 'Claude Sonnet 4.5',
+    name: 'Claude',
     description: 'Most intelligent Claude model',
     logo: '/claude.svg',
     company: 'Anthropic',
   },
-
 ] as const;
 
 export type ModelId = typeof AVAILABLE_MODELS[number]['id'];
 
 interface ModelSelectionContextType {
-  selectedModels: Set<ModelId>;
-  toggleModel: (modelId: ModelId) => void;
-  isModelSelected: (modelId: ModelId) => boolean;
-  hasAnyModelSelected: boolean;
+  selectedModel: ModelId;
+  setSelectedModel: (modelId: ModelId) => void;
+  getModelInfo: (modelId: ModelId) => typeof AVAILABLE_MODELS[number] | undefined;
 }
 
 const ModelSelectionContext = createContext<ModelSelectionContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'selectedModels';
+const STORAGE_KEY = 'selectedModel';
+const DEFAULT_MODEL: ModelId = 'deepseek/deepseek-chat-v3.1';
 
 export const ModelSelectionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // Initialize with all models selected
-  const [selectedModels, setSelectedModels] = useState<Set<ModelId>>(() => {
+  const [selectedModel, setSelectedModelState] = useState<ModelId>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        try {
-          const parsed = JSON.parse(stored);
-          return new Set(parsed);
-        } catch (e) {
-          console.error('Failed to parse stored models:', e);
-        }
+      if (stored && AVAILABLE_MODELS.some(m => m.id === stored)) {
+        return stored as ModelId;
       }
     }
-    // Default: all models selected
-    return new Set(AVAILABLE_MODELS.map(m => m.id));
+    return DEFAULT_MODEL;
   });
 
   // Save to localStorage whenever selection changes
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(selectedModels)));
+      localStorage.setItem(STORAGE_KEY, selectedModel);
     }
-  }, [selectedModels]);
+  }, [selectedModel]);
 
-  const toggleModel = (modelId: ModelId) => {
-    setSelectedModels(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(modelId)) {
-        // Don't allow deselecting if it's the last one
-        if (newSet.size === 1) {
-          return prev;
-        }
-        newSet.delete(modelId);
-      } else {
-        newSet.add(modelId);
-      }
-      return newSet;
-    });
+  const setSelectedModel = (modelId: ModelId) => {
+    setSelectedModelState(modelId);
   };
 
-  const isModelSelected = (modelId: ModelId) => selectedModels.has(modelId);
-
-  const hasAnyModelSelected = selectedModels.size > 0;
+  const getModelInfo = (modelId: ModelId) => {
+    return AVAILABLE_MODELS.find(m => m.id === modelId);
+  };
 
   return (
     <ModelSelectionContext.Provider
       value={{
-        selectedModels,
-        toggleModel,
-        isModelSelected,
-        hasAnyModelSelected,
+        selectedModel,
+        setSelectedModel,
+        getModelInfo,
       }}
     >
       {children}

@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { LayoutGrid, LayoutList } from 'lucide-react';
 import ChatInterface from './ChatInterface/ChatInterface';
 import type { User } from '../types';
 import Sidebar from './Sidebar';
@@ -14,7 +13,6 @@ const ChatPage: React.FC = () => {
   const [userLoading, setUserLoading] = useState(true);
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
   const [refreshConversations, setRefreshConversations] = useState(0);
-  const [viewMode, setViewMode] = useState<'all' | string>('all');
 
   // Use ref to prevent navigation loops
   const isNavigatingRef = useRef(false);
@@ -54,7 +52,7 @@ const ChatPage: React.FC = () => {
       console.log('URL changed, loading conversation:', newConversationId);
       setSelectedConversationId(newConversationId);
     }
-  }, [pathname]); // Removed selectedConversationId from deps to prevent loops
+  }, [pathname]);
 
   const handleToggleSidebar = () => {
     setSidebarCollapsed(!sidebarCollapsed);
@@ -119,10 +117,6 @@ const ChatPage: React.FC = () => {
     }
   };
 
-  const toggleViewMode = () => {
-    setViewMode((prev) => prev === 'all' ? 'deepseek/deepseek-chat-v3.1' : 'all');
-  };
-
   // Show loading state while initializing
   if (userLoading) {
     return (
@@ -146,23 +140,9 @@ const ChatPage: React.FC = () => {
       />
       
       <div className="flex-1 flex flex-col">
-        <div className="p-4 border-b border-gray-700/50 bg-[#282230] flex justify-end">
-          <button
-            onClick={toggleViewMode}
-            className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-700/50 hover:bg-gray-700 text-gray-300 hover:text-white transition-colors"
-          >
-            {viewMode === 'all' ? (
-              <><LayoutGrid size={20} /> All Models</>
-            ) : (
-              <><LayoutList size={20} /> DeepSeek Only</>
-            )}
-          </button>
-        </div>
-        
         <ChatInterface
           selectedConversationId={selectedConversationId}
           onConversationCreated={handleConversationCreated}
-          viewMode={viewMode}
         />
       </div>
     </div>

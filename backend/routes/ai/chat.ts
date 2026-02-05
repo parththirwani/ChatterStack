@@ -1,4 +1,3 @@
-// backend/routes/ai/chat.ts
 import { Router } from "express";
 import { RedisStore } from "../../store/RedisStore";
 import { CreateChatSchema, Role, SUPPORTED_MODELS } from "../../types";
@@ -27,16 +26,14 @@ router.post("/", authenticate, async (req, res) => {
     const userId = (req as any).user.id;
     const conversationId = data.conversationId ?? crypto.randomUUID();
 
-    // Get selected models from request, default to all if none provided
-    const selectedModels = data.selectedModels && data.selectedModels.length > 0
-      ? data.selectedModels.filter(m => SUPPORTED_MODELS.includes(m as any))
-      : SUPPORTED_MODELS;
+    // Get selected model from request
+    const selectedModel = data.selectedModel;
 
-    console.log("Selected models for this request:", selectedModels);
+    console.log("Selected model for this request:", selectedModel);
 
-    if (selectedModels.length === 0) {
+    if (!SUPPORTED_MODELS.includes(selectedModel as any)) {
       return res.status(400).json({
-        message: "At least one model must be selected"
+        message: "Invalid model selected"
       });
     }
 
@@ -96,37 +93,30 @@ router.post("/", authenticate, async (req, res) => {
 
     res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
 
-    // Get AI responses only from selected models
-    const responses: Record<string, string> = {};
-    await Promise.all(
-      selectedModels.map(async (model) => {
-        try {
-          const fullContent = await createCompletion(
-            messagesForAI,
-            model,
-            (chunk: string) => {
-              res.write(`data: ${JSON.stringify({ modelId: model, chunk })}\n\n`);
-            }
-          );
-          responses[model] = fullContent;
-          res.write(`data: ${JSON.stringify({ modelId: model, done: true })}\n\n`);
-          console.log(`AI response complete for ${model}`);
-        } catch (error) {
-          console.error(`Error with model ${model}:`, error);
-          res.write(`data: ${JSON.stringify({ modelId: model, error: (error as Error).message })}\n\n`);
+    // Get AI response from single selected model
+    let fullContent = "";
+    try {
+      fullContent = await createCompletion(
+        messagesForAI,
+        selectedModel,
+        (chunk: string) => {
+          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
         }
-      })
-    );
+      );
+      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+      console.log(`AI response complete for ${selectedModel}`);
+    } catch (error) {
+      console.error(`Error with model ${selectedModel}:`, error);
+      res.write(`data: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
+    }
 
-    // Add AI responses to Redis cache
-    for (const model of selectedModels) {
-      if (responses[model]) {
-        await store.add(conversationId, {
-          role: Role.Assistant,
-          content: responses[model],
-          modelId: model,
-        });
-      }
+    // Add AI response to Redis cache
+    if (fullContent) {
+      await store.add(conversationId, {
+        role: Role.Assistant,
+        content: fullContent,
+        modelId: selectedModel,
+      });
     }
 
     // Persist to database
@@ -140,11 +130,11 @@ router.post("/", authenticate, async (req, res) => {
             messages: {
               create: [
                 { content: data.message, role: Role.User },
-                ...selectedModels.map((model) => ({
-                  content: responses[model] || "Error generating response",
+                {
+                  content: fullContent || "Error generating response",
                   role: Role.Assistant,
-                  modelId: model,
-                })),
+                  modelId: selectedModel,
+                },
               ],
             },
           },
@@ -166,12 +156,12 @@ router.post("/", authenticate, async (req, res) => {
         await prisma.message.createMany({
           data: [
             { conversationId, content: data.message, role: Role.User },
-            ...selectedModels.map((model) => ({
+            {
               conversationId,
-              content: responses[model] || "Error generating response",
+              content: fullContent || "Error generating response",
               role: Role.Assistant,
-              modelId: model,
-            })),
+              modelId: selectedModel,
+            },
           ],
         });
         console.log("Messages saved to database");

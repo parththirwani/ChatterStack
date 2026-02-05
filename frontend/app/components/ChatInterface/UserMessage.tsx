@@ -6,8 +6,16 @@ interface UserMessageProps {
 
 const UserMessage: React.FC<UserMessageProps> = ({ content }) => {
   return (
-    <div className="max-w-xs lg:max-w-md bg-yellow-500 text-black px-4 py-2 rounded-2xl shadow-md">
-      <p className="text-sm whitespace-pre-wrap">{content}</p>
+    <div className="w-full">
+      <div className="max-w-3xl mx-auto px-4">
+        <div className="flex items-start gap-4 justify-end">
+          <div className="max-w-[80%]">
+            <div className="bg-[#2C2531] text-white px-4 py-3 rounded-2xl shadow-sm">
+              <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

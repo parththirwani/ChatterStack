@@ -64,7 +64,7 @@ export interface Message {
   content: string;
   createdAt?: string;
   updatedAt?: string;
-  modelId?: string; // Added to track which LLM generated the response
+  modelId?: string; // Track which LLM generated the response
 }
 
 export interface Conversation {
@@ -83,10 +83,11 @@ export interface ChatState {
   error?: string;
 }
 
+// Updated for single model per request
 export interface ChatRequest {
   message: string;
-  conversationId?: string; 
-  selectedModels: string[];
+  conversationId?: string;
+  selectedModel: string; // Changed from selectedModels (array) to selectedModel (string)
 }
 
 export interface AIModel {
@@ -95,7 +96,6 @@ export interface AIModel {
   description: string;
   logo: string;
   company: string;
-  tier: 'Premium' | 'Pro' | 'Free';
   capabilities?: string[];
 }
 

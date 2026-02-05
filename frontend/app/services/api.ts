@@ -108,8 +108,8 @@ export class ApiService {
 
   static async sendMessage(
     request: ChatRequest,
-    onChunk?: (modelId: string, chunk: string) => void,
-    onDone?: (modelId: string) => void,
+    onChunk?: (chunk: string) => void,
+    onDone?: () => void,
     onConversationId?: (id: string) => void
   ): Promise<{ conversationId?: string }> {
     try {
@@ -154,6 +154,7 @@ export class ApiService {
               const data = line.slice(6);
               if (data === '[DONE]') {
                 console.log('Stream finished');
+                if (onDone) onDone();
                 return { conversationId };
               }
 
@@ -162,7 +163,6 @@ export class ApiService {
                 console.log('Parsed SSE data:', parsed);
 
                 if (parsed.status === 'starting') {
-                  // Handle starting state if needed
                   continue;
                 }
                 if (parsed.error) {
@@ -172,11 +172,11 @@ export class ApiService {
                   conversationId = parsed.conversationId;
                   onConversationId(parsed.conversationId);
                 }
-                if (parsed.modelId && parsed.chunk && onChunk) {
-                  onChunk(parsed.modelId, parsed.chunk);
+                if (parsed.chunk && onChunk) {
+                  onChunk(parsed.chunk);
                 }
-                if (parsed.modelId && parsed.done && onDone) {
-                  onDone(parsed.modelId);
+                if (parsed.done && onDone) {
+                  onDone();
                 }
               } catch {
                 console.log('Invalid JSON in SSE:', data);
