@@ -20,17 +20,38 @@ You are providing direct, helpful responses to user queries. The interface allow
 
 Remember: You're here to help the user accomplish their goals efficiently and effectively.`;
 
-export const getChatterStackSystemPrompt = (): string => {
-  return CHATTERSTACK_SYSTEM_PROMPT;
+export const getChatterStackSystemPrompt = (modelId?: string): string => {
+  let prompt = CHATTERSTACK_SYSTEM_PROMPT;
+  
+  // Add model-specific context
+  if (modelId) {
+    const modelName = getModelName(modelId);
+    prompt += `\n\n### Current Model Context\nYou are currently running as ${modelName}. When users ask which model they're talking to, inform them that they are using ${modelName}.`;
+  }
+  
+  return prompt;
 };
 
+function getModelName(modelId: string): string {
+  const modelMap: Record<string, string> = {
+    'deepseek/deepseek-chat-v3.1': 'DeepSeek Chat v3.1',
+    'google/gemini-2.5-flash': 'Google Gemini 2.5 Flash',
+    'openai/gpt-4o': 'OpenAI GPT-4o',
+    'anthropic/claude-sonnet-4.5': 'Anthropic Claude Sonnet 4.5',
+    'x-ai/grok-2-1212': 'xAI Grok 2',
+  };
+  
+  return modelMap[modelId] || 'Unknown Model';
+}
+
 export const formatMessagesWithSystemContext = (
-  messages: Array<{ role: string; content: string }>
+  messages: Array<{ role: string; content: string }>,
+  modelId?: string
 ): Array<{ role: string; content: string }> => {
   return [
     {
       role: 'system',
-      content: CHATTERSTACK_SYSTEM_PROMPT,
+      content: getChatterStackSystemPrompt(modelId),
     },
     ...messages,
   ];

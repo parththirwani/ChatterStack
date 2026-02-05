@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, memo } from 'react';
 import LoginModal from './AuthModal';
 import { ApiService } from '../services/api';
 import type { User, Conversation } from '../types';
@@ -37,8 +37,10 @@ const Sidebar: React.FC<SidebarProps> = ({
   const hasLoadedRef = useRef<boolean>(false);
   const previousUserIdRef = useRef<string | undefined>(undefined);
   const isLoadingRef = useRef<boolean>(false);
+  const loadTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastRefreshTriggerRef = useRef<number>(refreshTrigger);
 
-  const loadConversations = useCallback(async () => {
+  const loadConversations = useCallback(async (immediate = false) => {
     // Don't load if not authenticated or already loading
     if (!user || user.id === 'guest' || isLoadingRef.current) {
       if (!user || user.id === 'guest') {
@@ -49,75 +51,130 @@ const Sidebar: React.FC<SidebarProps> = ({
       return;
     }
 
-    // Check if we need to show loading state
-    const userChanged = previousUserIdRef.current !== user.id;
-    const shouldShowLoading = !hasLoadedRef.current || userChanged;
-    
-    isLoadingRef.current = true;
-    
-    if (shouldShowLoading) {
-      setLoadingConversations(true);
+    // Clear any pending timeout
+    if (loadTimeoutRef.current) {
+      clearTimeout(loadTimeoutRef.current);
+      loadTimeoutRef.current = null;
     }
 
-    try {
-      const convos = await ApiService.getConversations();
-      setConversations(
-        convos.sort(
-          (a, b) =>
-            new Date(b.updatedAt).getTime() -
-            new Date(a.updatedAt).getTime()
-        )
-      );
-      hasLoadedRef.current = true;
-      previousUserIdRef.current = user.id;
-    } catch (error) {
-      console.error('Failed to load conversations:', error);
-      setConversations([]);
-    } finally {
-      setLoadingConversations(false);
-      isLoadingRef.current = false;
+    const loadFn = async () => {
+      // Check if we need to show loading state
+      const userChanged = previousUserIdRef.current !== user.id;
+      const shouldShowLoading = !hasLoadedRef.current || userChanged;
+      
+      isLoadingRef.current = true;
+      
+      if (shouldShowLoading) {
+        setLoadingConversations(true);
+      }
+
+      try {
+        const convos = await ApiService.getConversations();
+        
+        // Use functional update to prevent stale state
+        setConversations((prevConvos) => {
+          const sortedConvos = convos.sort(
+            (a, b) =>
+              new Date(b.updatedAt).getTime() -
+              new Date(a.updatedAt).getTime()
+          );
+          
+          // Only update if conversations actually changed
+          if (JSON.stringify(prevConvos) === JSON.stringify(sortedConvos)) {
+            return prevConvos;
+          }
+          
+          return sortedConvos;
+        });
+        
+        hasLoadedRef.current = true;
+        previousUserIdRef.current = user.id;
+      } catch (error) {
+        console.error('Failed to load conversations:', error);
+        setConversations([]);
+      } finally {
+        setLoadingConversations(false);
+        isLoadingRef.current = false;
+      }
+    };
+
+    // Debounce the load unless it's immediate or first load
+    if (immediate || !hasLoadedRef.current) {
+      loadFn();
+    } else {
+      // Debounce subsequent loads to prevent flickering
+      loadTimeoutRef.current = setTimeout(loadFn, 300);
     }
   }, [user]);
 
-  // Load conversations when user ID changes or refresh is triggered
+  // Load conversations when user ID changes
   useEffect(() => {
     const userId = user?.id;
     if (userId && userId !== 'guest') {
-      loadConversations();
+      loadConversations(true);
     }
-  }, [user?.id, refreshTrigger, loadConversations]);
+  }, [user?.id, loadConversations]);
 
-  const handleDeleteConversation = async (conversationId: string) => {
+  // Handle refresh trigger with debouncing
+  useEffect(() => {
+    if (refreshTrigger !== lastRefreshTriggerRef.current) {
+      lastRefreshTriggerRef.current = refreshTrigger;
+      
+      // Only reload if user is authenticated
+      if (user && user.id && user.id !== 'guest') {
+        // Debounce the refresh to prevent flickering when new conversation is created
+        loadConversations(false);
+      }
+    }
+  }, [refreshTrigger, user, loadConversations]);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (loadTimeoutRef.current) {
+        clearTimeout(loadTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const handleDeleteConversation = useCallback(async (conversationId: string) => {
     try {
       await ApiService.deleteConversation(conversationId);
+      
+      // Optimistically update UI
       setConversations((prev) =>
         prev.filter((conv) => conv.id !== conversationId)
       );
+      
       if (currentConversationId === conversationId && onNewChat) {
         onNewChat();
       }
     } catch (error) {
       console.error('Failed to delete conversation:', error);
+      // Reload conversations on error
+      loadConversations(true);
       throw error;
     }
-  };
+  }, [currentConversationId, onNewChat, loadConversations]);
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
     if (onNewChat) onNewChat();
-  };
+  }, [onNewChat]);
 
-  const handleConversationClick = (conversationId: string) => {
+  const handleConversationClick = useCallback((conversationId: string) => {
     if (onConversationSelect) onConversationSelect(conversationId);
-  };
+  }, [onConversationSelect]);
 
-  const handleLoginClick = () => setShowLoginModal(true);
+  const handleLoginClick = useCallback(() => {
+    setShowLoginModal(true);
+  }, []);
 
-  const handleLoginSuccess = (authenticatedUser: User | null) => {
+  const handleLoginSuccess = useCallback((authenticatedUser: User | null) => {
     if (onUserChange) onUserChange(authenticatedUser);
     setShowLoginModal(false);
-  };
+  }, [onUserChange]);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       await ApiService.logout();
       if (onUserChange) onUserChange(null);
@@ -127,20 +184,22 @@ const Sidebar: React.FC<SidebarProps> = ({
     } catch (err) {
       console.error('Error logging out', err);
     }
-  };
+  }, [onUserChange]);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
     return date.toLocaleDateString();
-  };
+  }, []);
 
-  const filteredConversations = conversations.filter(
-    (conv) =>
-      conv.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      conv.messages.some((msg) =>
-        msg.content.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-  );
+  const filteredConversations = React.useMemo(() => {
+    return conversations.filter(
+      (conv) =>
+        conv.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        conv.messages.some((msg) =>
+          msg.content.toLowerCase().includes(searchQuery.toLowerCase())
+        )
+    );
+  }, [conversations, searchQuery]);
 
   const isAuthenticated = user && user.id && user.id !== 'guest';
 
@@ -166,7 +225,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         />
 
         {!collapsed && isAuthenticated && (
-          <ChatHistory
+          <MemoizedChatHistory
             loadingConversations={loadingConversations}
             filteredConversations={filteredConversations}
             currentConversationId={currentConversationId}
@@ -194,4 +253,23 @@ const Sidebar: React.FC<SidebarProps> = ({
   );
 };
 
-export default Sidebar;
+// Memoize ChatHistory to prevent unnecessary re-renders
+const MemoizedChatHistory = memo(ChatHistory, (prev, next) => {
+  return (
+    prev.loadingConversations === next.loadingConversations &&
+    prev.currentConversationId === next.currentConversationId &&
+    prev.filteredConversations.length === next.filteredConversations.length &&
+    JSON.stringify(prev.filteredConversations) === JSON.stringify(next.filteredConversations)
+  );
+});
+
+MemoizedChatHistory.displayName = 'MemoizedChatHistory';
+
+export default memo(Sidebar, (prev, next) => {
+  return (
+    prev.collapsed === next.collapsed &&
+    prev.user?.id === next.user?.id &&
+    prev.currentConversationId === next.currentConversationId &&
+    prev.refreshTrigger === next.refreshTrigger
+  );
+});

@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
 import { useModelSelection } from '../context/ModelSelectionContext';
@@ -12,6 +12,9 @@ export const useChat = () => {
 
   // Use ref to track if we're currently sending to prevent duplicate sends
   const isSendingRef = useRef(false);
+  
+  // Memoize current conversation ID to prevent unnecessary re-renders
+  const currentConversationId = useMemo(() => state.currentConversationId, [state.currentConversationId]);
 
   const sendMessage = useCallback(
     async (
@@ -41,6 +44,7 @@ export const useChat = () => {
         createdAt: new Date().toISOString(),
       };
 
+      // Use functional update to prevent stale state
       setState((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
@@ -72,6 +76,7 @@ export const useChat = () => {
           },
           (chunk: string) => {
             fullResponse += chunk;
+            // Use functional update to ensure we're working with latest state
             setState((prev) => ({
               ...prev,
               messages: prev.messages.map((msg, idx) =>
@@ -143,6 +148,7 @@ export const useChat = () => {
 
         console.log('Setting messages:', messages);
 
+        // Use a single state update to prevent flickering
         setState({
           messages,
           currentConversationId: conversationId,
@@ -163,6 +169,7 @@ export const useChat = () => {
 
   const startNewConversation = useCallback(() => {
     console.log('=== Starting New Conversation ===');
+    // Single state update to prevent flickering
     setState({
       messages: [],
       currentConversationId: undefined,
@@ -180,7 +187,7 @@ export const useChat = () => {
     messages: state.messages,
     loading: state.loading,
     error: state.error,
-    currentConversationId: state.currentConversationId,
+    currentConversationId,
     sendMessage,
     loadConversation,
     startNewConversation,

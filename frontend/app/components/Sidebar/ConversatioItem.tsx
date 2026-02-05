@@ -1,9 +1,7 @@
-// frontend/app/components/ConversationItem.tsx
-import React, { useState } from 'react';
+import React, { useState, useCallback, memo } from 'react';
 import { Trash2 } from 'lucide-react';
 import { Conversation } from '@/app/types';
 import DeleteConversationModal from './DeleteModal';
-
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -24,13 +22,13 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const handleDeleteClick = (e: React.MouseEvent) => {
+  const handleDeleteClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setDeleteError(null);
     setShowDeleteModal(true);
-  };
+  }, []);
 
-  const handleConfirmDelete = async () => {
+  const handleConfirmDelete = useCallback(async () => {
     setIsDeleting(true);
     setDeleteError(null);
     
@@ -47,14 +45,14 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     } finally {
       setIsDeleting(false);
     }
-  };
+  }, [onDelete]);
 
-  const handleCloseModal = () => {
+  const handleCloseModal = useCallback(() => {
     if (!isDeleting) {
       setShowDeleteModal(false);
       setDeleteError(null);
     }
-  };
+  }, [isDeleting]);
 
   return (
     <>
@@ -87,7 +85,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-start">
             <button
               onClick={handleDeleteClick}
-              className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors"
+              className="p-1.5 rounded-md hover:bg-red-500/20 text-gray-400 hover:text-red-400 transition-colors cursor-pointer"
               title="Delete conversation"
             >
               <Trash2 className="w-4 h-4" />
@@ -96,16 +94,25 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
         </div>
       </div>
 
-      <DeleteConversationModal
-        isOpen={showDeleteModal}
-        onClose={handleCloseModal}
-        onConfirm={handleConfirmDelete}
-        conversationTitle={conversation.title || 'New Chat'}
-        isDeleting={isDeleting}
-        error={deleteError}
-      />
+      {showDeleteModal && (
+        <DeleteConversationModal
+          isOpen={showDeleteModal}
+          onClose={handleCloseModal}
+          onConfirm={handleConfirmDelete}
+          conversationTitle={conversation.title || 'New Chat'}
+          isDeleting={isDeleting}
+          error={deleteError}
+        />
+      )}
     </>
   );
 };
 
-export default ConversationItem;
+export default memo(ConversationItem, (prev, next) => {
+  return (
+    prev.conversation.id === next.conversation.id &&
+    prev.conversation.title === next.conversation.title &&
+    prev.conversation.updatedAt === next.conversation.updatedAt &&
+    prev.isActive === next.isActive
+  );
+});

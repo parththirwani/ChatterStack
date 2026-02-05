@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -128,7 +128,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                   a: ({ href, children }) => (
                     <a
                       href={href}
-                      className="text-yellow-400 hover:text-yellow-300 underline"
+                      className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -167,4 +167,12 @@ const AIMessage: React.FC<AIMessageProps> = ({
   );
 };
 
-export default AIMessage;
+// Memoize the component to prevent unnecessary re-renders
+export default memo(AIMessage, (prev, next) => {
+  return (
+    prev.content === next.content &&
+    prev.modelId === next.modelId &&
+    prev.loading === next.loading &&
+    prev.isLastMessage === next.isLastMessage
+  );
+});

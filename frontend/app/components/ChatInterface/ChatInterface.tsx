@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, memo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -8,7 +8,6 @@ import { ChatInterfaceProps, Message } from '@/app/types';
 import { useChat } from '@/app/hooks/useChat';
 import AIMessage from './AIMessage';
 import UserMessage from './UserMessage';
-import ModelSelector from './ModelSelector';
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedConversationId,
@@ -28,33 +27,47 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   } = useChat();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
-  const hasLoadedConversation = useRef<string | undefined>(undefined);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const lastLoadedConversationRef = useRef<string | undefined>(undefined);
+  const isLoadingConversationRef = useRef(false);
 
   const isFirstMessage = messages.length === 0;
 
-  // Load conversation when selectedConversationId changes
+  // Load conversation when selectedConversationId changes - FIXED
   useEffect(() => {
-    if (selectedConversationId === hasLoadedConversation.current) {
+    // Don't reload if we're already loading or if it's the same conversation
+    if (isLoadingConversationRef.current) {
+      console.log('Already loading a conversation, skipping...');
       return;
     }
 
-    if (selectedConversationId && selectedConversationId !== currentConversationId) {
+    // Case 1: New conversation selected (and it's different from current)
+    if (selectedConversationId && selectedConversationId !== lastLoadedConversationRef.current) {
       console.log('Loading conversation:', selectedConversationId);
-      loadConversation(selectedConversationId);
-      hasLoadedConversation.current = selectedConversationId;
-    } else if (!selectedConversationId && currentConversationId) {
+      console.log('Current conversation:', currentConversationId);
+      console.log('Last loaded:', lastLoadedConversationRef.current);
+      
+      isLoadingConversationRef.current = true;
+      lastLoadedConversationRef.current = selectedConversationId;
+      
+      loadConversation(selectedConversationId).finally(() => {
+        isLoadingConversationRef.current = false;
+      });
+    } 
+    // Case 2: No conversation selected (new chat)
+    else if (!selectedConversationId && lastLoadedConversationRef.current) {
       console.log('Starting new conversation');
+      lastLoadedConversationRef.current = undefined;
       startNewConversation();
-      hasLoadedConversation.current = undefined;
     }
   }, [selectedConversationId, currentConversationId, loadConversation, startNewConversation]);
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when messages change - optimized
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages, loading]);
+  }, [messages.length]); // Only when message count changes, not content
 
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
@@ -63,8 +76,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       
       await sendMessage(messageToSend, (newConversationId: string) => {
         if (onConversationCreated) {
+          console.log('New conversation created in ChatInterface:', newConversationId);
+          lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
-          hasLoadedConversation.current = newConversationId;
         }
       });
     }
@@ -79,23 +93,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-[#201d26]">
-      {/* Header with Model Selector */}
-      <div className="flex-shrink-0 border-b border-gray-700/50 bg-[#282230] backdrop-blur-sm">
-        <div className="max-w-3xl mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Image
-              src="/logo.png"
-              alt="ChatterStack Logo"
-              width={24}
-              height={24}
-              className="opacity-80"
-            />
-            <span className="text-sm text-gray-400 font-medium">ChatterStack</span>
-          </div>
-          <ModelSelector />
-        </div>
-      </div>
-
       {error && (
         <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20">
           <div className="max-w-3xl mx-auto px-4 py-3">
@@ -104,7 +101,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               <span className="text-sm">{error}</span>
               <button
                 onClick={clearError}
-                className="ml-auto text-red-400 hover:text-red-300 text-sm underline transition-colors duration-200"
+                className="ml-auto text-red-400 hover:text-red-300 text-sm underline transition-colors duration-200 cursor-pointer"
               >
                 Dismiss
               </button>
@@ -117,7 +114,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
           <div className="text-center max-w-2xl w-full">
             <div className="mb-8">
-              <Link href="/" className="inline-block">
+              <Link href="/" className="inline-block cursor-pointer">
                 <Image
                   src="/logo.png"
                   alt="ChatterStack Logo"
@@ -152,17 +149,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       ) : (
         <>
           {/* Messages Container - Scrollable */}
-          <div className="flex-1 overflow-y-auto">
+          <div 
+            ref={messagesContainerRef}
+            className="flex-1 overflow-y-auto"
+            style={{ willChange: 'scroll-position' }}
+          >
             <div className="py-6 space-y-6">
               {messages.map((msg, index) => {
                 const isLastMessage = index === messages.length - 1;
                 
                 if (msg.role === 'user') {
-                  return <UserMessage key={index} content={msg.content} />;
+                  return <MemoizedUserMessage key={`user-${index}-${msg.createdAt}`} content={msg.content} />;
                 } else {
                   return (
-                    <AIMessage
-                      key={index}
+                    <MemoizedAIMessage
+                      key={`ai-${index}-${msg.createdAt}`}
                       content={msg.content}
                       modelId={msg.modelId}
                       loading={loading && isLastMessage}
@@ -197,4 +198,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   );
 };
 
-export default ChatInterface;
+// Memoized components to prevent unnecessary re-renders
+const MemoizedUserMessage = memo(UserMessage, (prev, next) => {
+  return prev.content === next.content;
+});
+
+const MemoizedAIMessage = memo(AIMessage, (prev, next) => {
+  return (
+    prev.content === next.content &&
+    prev.modelId === next.modelId &&
+    prev.loading === next.loading &&
+    prev.isLastMessage === next.isLastMessage
+  );
+});
+
+MemoizedUserMessage.displayName = 'MemoizedUserMessage';
+MemoizedAIMessage.displayName = 'MemoizedAIMessage';
+
+export default memo(ChatInterface);

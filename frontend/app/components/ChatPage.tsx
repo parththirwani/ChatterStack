@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import ChatInterface from './ChatInterface/ChatInterface';
 import type { User } from '../types';
@@ -14,9 +14,10 @@ const ChatPage: React.FC = () => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
   const [refreshConversations, setRefreshConversations] = useState(0);
 
-  // Use ref to prevent navigation loops
+  // Use refs to prevent navigation loops and unnecessary re-renders
   const isNavigatingRef = useRef(false);
   const initializedRef = useRef(false);
+  const lastConversationIdRef = useRef<string | undefined>(undefined);
 
   // Initialize user only once on mount
   useEffect(() => {
@@ -38,8 +39,13 @@ const ChatPage: React.FC = () => {
     initializeUser();
   }, []);
 
-  // Load conversation ID from URL - only update state if it's different
+  // Load conversation ID from URL - FIXED to not redirect
   useEffect(() => {
+    // Skip if we're currently navigating
+    if (isNavigatingRef.current) {
+      return;
+    }
+
     const pathSegments = pathname.split('/').filter(Boolean);
     const conversationId = pathSegments[0];
     
@@ -47,20 +53,22 @@ const ChatPage: React.FC = () => {
       ? conversationId 
       : undefined;
 
-    // Only update if different to prevent unnecessary re-renders
-    if (newConversationId !== selectedConversationId) {
-      console.log('URL changed, loading conversation:', newConversationId);
+    // Only update state if the conversation ID actually changed
+    if (newConversationId !== lastConversationIdRef.current) {
+      console.log('URL conversation ID changed:', newConversationId);
+      lastConversationIdRef.current = newConversationId;
       setSelectedConversationId(newConversationId);
     }
   }, [pathname]);
 
-  const handleToggleSidebar = () => {
-    setSidebarCollapsed(!sidebarCollapsed);
-  };
+  const handleToggleSidebar = useCallback(() => {
+    setSidebarCollapsed(prev => !prev);
+  }, []);
 
-  const handleUserChange = (newUser: User | null) => {
+  const handleUserChange = useCallback((newUser: User | null) => {
     setUser(newUser);
     setSelectedConversationId(undefined);
+    lastConversationIdRef.current = undefined;
     
     // Navigate to home if not already there
     if (pathname !== '/' && !isNavigatingRef.current) {
@@ -70,41 +78,56 @@ const ChatPage: React.FC = () => {
         isNavigatingRef.current = false;
       }, 100);
     }
-  };
+  }, [pathname, router]);
 
-  const handleConversationSelect = (conversationId: string) => {
+  const handleConversationSelect = useCallback((conversationId: string) => {
     const targetPath = `/${conversationId}`;
+    
+    console.log('Conversation selected:', conversationId);
+    console.log('Current path:', pathname);
+    console.log('Target path:', targetPath);
+    
+    // Update state immediately
+    lastConversationIdRef.current = conversationId;
+    setSelectedConversationId(conversationId);
     
     // Only navigate if we're not already at this path
     if (pathname !== targetPath && !isNavigatingRef.current) {
       isNavigatingRef.current = true;
-      setSelectedConversationId(conversationId);
       router.push(targetPath);
       setTimeout(() => {
         isNavigatingRef.current = false;
       }, 100);
     }
-  };
+  }, [pathname, router]);
 
-  const handleNewChat = () => {
+  const handleNewChat = useCallback(() => {
+    console.log('New chat requested');
+    
+    // Clear conversation state
+    lastConversationIdRef.current = undefined;
+    setSelectedConversationId(undefined);
+    
     // Only navigate if not already at home
     if (pathname !== '/' && !isNavigatingRef.current) {
       isNavigatingRef.current = true;
-      setSelectedConversationId(undefined);
       router.push('/');
       setTimeout(() => {
         isNavigatingRef.current = false;
       }, 100);
-    } else {
-      // Just clear the conversation if already at home
-      setSelectedConversationId(undefined);
     }
-  };
+  }, [pathname, router]);
 
-  const handleConversationCreated = (conversationId: string) => {
+  const handleConversationCreated = useCallback((conversationId: string) => {
     const targetPath = `/${conversationId}`;
     
+    console.log('New conversation created:', conversationId);
+    
+    // Update state first
+    lastConversationIdRef.current = conversationId;
     setSelectedConversationId(conversationId);
+    
+    // Trigger sidebar refresh - use callback to prevent unnecessary re-renders
     setRefreshConversations((prev) => prev + 1);
     
     // Only navigate if not already at this conversation
@@ -115,7 +138,7 @@ const ChatPage: React.FC = () => {
         isNavigatingRef.current = false;
       }, 100);
     }
-  };
+  }, [pathname, router]);
 
   // Show loading state while initializing
   if (userLoading) {
@@ -128,7 +151,7 @@ const ChatPage: React.FC = () => {
 
   return (
     <div className="flex h-screen">
-      <Sidebar
+      <MemoizedSidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
         user={user}
@@ -140,7 +163,7 @@ const ChatPage: React.FC = () => {
       />
       
       <div className="flex-1 flex flex-col">
-        <ChatInterface
+        <MemoizedChatInterface
           selectedConversationId={selectedConversationId}
           onConversationCreated={handleConversationCreated}
         />
@@ -149,4 +172,22 @@ const ChatPage: React.FC = () => {
   );
 };
 
-export default ChatPage;
+// Memoize ChatInterface to prevent unnecessary re-renders
+const MemoizedChatInterface = memo(ChatInterface, (prev, next) => {
+  return prev.selectedConversationId === next.selectedConversationId;
+});
+
+// Memoize Sidebar to prevent unnecessary re-renders
+const MemoizedSidebar = memo(Sidebar, (prev, next) => {
+  return (
+    prev.collapsed === next.collapsed &&
+    prev.user?.id === next.user?.id &&
+    prev.currentConversationId === next.currentConversationId &&
+    prev.refreshTrigger === next.refreshTrigger
+  );
+});
+
+MemoizedChatInterface.displayName = 'MemoizedChatInterface';
+MemoizedSidebar.displayName = 'MemoizedSidebar';
+
+export default memo(ChatPage);

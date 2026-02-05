@@ -16,8 +16,8 @@ export async function createCompletion(
     throw new Error("OPENROUTER_API_KEY is not set");
   }
 
-  // Add ChatterStack system prompt context
-  const systemPrompt = getChatterStackSystemPrompt();
+  // Add ChatterStack system prompt context with model information
+  const systemPrompt = getChatterStackSystemPrompt(model);
 
   const openRouterMessages: OpenRouterMessage[] = [
     {

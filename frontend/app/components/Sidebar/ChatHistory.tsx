@@ -1,9 +1,7 @@
-// frontend/app/components/ChatHistory.tsx
-import React from 'react';
+import React, { memo } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { Conversation } from '@/app/types';
 import ConversationItem from './ConversatioItem';
-
 
 interface ChatHistoryProps {
   loadingConversations: boolean;
@@ -34,7 +32,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
       ) : filteredConversations.length > 0 ? (
         <div className="space-y-3">
           {filteredConversations.slice(0, 20).map((conversation) => (
-            <ConversationItem
+            <MemoizedConversationItem
               key={conversation.id}
               conversation={conversation}
               isActive={currentConversationId === conversation.id}
@@ -57,4 +55,23 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
   );
 };
 
-export default ChatHistory;
+// Memoize ConversationItem to prevent unnecessary re-renders
+const MemoizedConversationItem = memo(ConversationItem, (prev, next) => {
+  return (
+    prev.conversation.id === next.conversation.id &&
+    prev.conversation.title === next.conversation.title &&
+    prev.conversation.updatedAt === next.conversation.updatedAt &&
+    prev.isActive === next.isActive
+  );
+});
+
+MemoizedConversationItem.displayName = 'MemoizedConversationItem';
+
+export default memo(ChatHistory, (prev, next) => {
+  return (
+    prev.loadingConversations === next.loadingConversations &&
+    prev.currentConversationId === next.currentConversationId &&
+    prev.filteredConversations.length === next.filteredConversations.length &&
+    prev.filteredConversations === next.filteredConversations // Reference equality check
+  );
+});

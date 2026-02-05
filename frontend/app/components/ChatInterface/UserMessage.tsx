@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 
 interface UserMessageProps {
   content: string;
@@ -20,4 +20,7 @@ const UserMessage: React.FC<UserMessageProps> = ({ content }) => {
   );
 };
 
-export default UserMessage;
+// Memoize to prevent unnecessary re-renders
+export default memo(UserMessage, (prev, next) => {
+  return prev.content === next.content;
+});
