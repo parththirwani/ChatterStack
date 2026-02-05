@@ -1,5 +1,5 @@
 // frontend/app/hooks/useChat.ts
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
 import { useModelSelection } from '../context/ModelSelectionContext';
@@ -11,12 +11,21 @@ export const useChat = () => {
     loading: false,
   });
 
+  // Use ref to track if we're currently sending to prevent duplicate sends
+  const isSendingRef = useRef(false);
+
   const sendMessage = useCallback(
     async (
       message: string,
       onConversationCreated?: (conversationId: string) => void
     ) => {
-      if (!message.trim() || state.loading) return;
+      if (!message.trim() || isSendingRef.current) {
+        console.log('Message send blocked:', { 
+          empty: !message.trim(), 
+          alreadySending: isSendingRef.current 
+        });
+        return;
+      }
 
       const activeModels = Array.from(selectedModels);
       
@@ -28,10 +37,14 @@ export const useChat = () => {
         return;
       }
 
+      isSendingRef.current = true;
+
       console.log('=== Sending Message ===');
       console.log('Active models:', activeModels);
-      console.log('Current conversation ID:', state.currentConversationId);
       console.log('Message:', message);
+
+      // Get current conversation ID from state at time of send
+      const conversationId = state.currentConversationId;
 
       const userMessage: Message = {
         role: 'user',
@@ -47,27 +60,29 @@ export const useChat = () => {
       }));
 
       const responses: Record<string, string> = {};
+      const aiMessages: Message[] = [];
+
+      // Create placeholder messages for each model
       activeModels.forEach((modelId) => {
         responses[modelId] = '';
-        setState((prev) => ({
-          ...prev,
-          messages: [
-            ...prev.messages,
-            {
-              role: 'assistant',
-              content: '',
-              modelId,
-              createdAt: new Date().toISOString(),
-            },
-          ],
-        }));
+        aiMessages.push({
+          role: 'assistant',
+          content: '',
+          modelId,
+          createdAt: new Date().toISOString(),
+        });
       });
+
+      setState((prev) => ({
+        ...prev,
+        messages: [...prev.messages, ...aiMessages],
+      }));
 
       try {
         await ApiService.sendMessage(
           {
             message,
-            conversationId: state.currentConversationId,
+            conversationId,
             selectedModels: activeModels,
           },
           (modelId: string, chunk: string) => {
@@ -91,15 +106,16 @@ export const useChat = () => {
               ),
             }));
           },
-          (conversationId: string) => {
-            if (!state.currentConversationId) {
-              console.log('New conversation ID received:', conversationId);
+          (newConversationId: string) => {
+            // Only call onConversationCreated if this is a new conversation
+            if (!conversationId && newConversationId) {
+              console.log('New conversation ID received:', newConversationId);
               setState((prev) => ({
                 ...prev,
-                currentConversationId: conversationId,
+                currentConversationId: newConversationId,
               }));
               if (onConversationCreated) {
-                onConversationCreated(conversationId);
+                onConversationCreated(newConversationId);
               }
             }
           }
@@ -117,9 +133,10 @@ export const useChat = () => {
           ...prev,
           loading: false,
         }));
+        isSendingRef.current = false;
       }
     },
-    [state.loading, state.currentConversationId, selectedModels]
+    [selectedModels, state.currentConversationId]
   );
 
   const loadConversation = useCallback(async (conversationId: string) => {
@@ -167,6 +184,7 @@ export const useChat = () => {
       loading: false,
       error: undefined,
     });
+    isSendingRef.current = false;
   }, []);
 
   const clearError = useCallback(() => {

@@ -20,7 +20,6 @@ const SUPPORTED_MODELS = [
   'google/gemini-2.5-flash',
   'openai/gpt-4o',
   'anthropic/claude-sonnet-4.5',
-
 ] as const;
 
 type SupportedModelId = typeof SUPPORTED_MODELS[number];
@@ -30,7 +29,6 @@ const modelNameMap: Record<string, string> = {
   'google/gemini-2.5-flash': 'Gemini Flash',
   'openai/gpt-4o': 'GPT-4o',
   'anthropic/claude-sonnet-4.5': 'Claude Sonnet 4.5',
-
 };
 
 const modelIconMap: Record<string, string> = {
@@ -38,7 +36,6 @@ const modelIconMap: Record<string, string> = {
   'google/gemini-2.5-flash': '/gemini.svg',
   'openai/gpt-4o': '/openai.svg',
   'anthropic/claude-sonnet-4.5': '/claude.svg',
-
 };
 
 const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
@@ -60,8 +57,8 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
     currentConversationId,
   } = useChat();
 
-  const messagesEndRefs = useRef<Record<string, HTMLDivElement | null>>({});
-  const scrollContainerRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const messagesEndRef = useRef<HTMLDivElement | null>(null);
+  const hasLoadedConversation = useRef<string | undefined>(undefined);
 
   const isFirstMessage = messages.length === 0;
 
@@ -70,45 +67,74 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
     ? SUPPORTED_MODELS.filter(modelId => isModelSelected(modelId as SupportedModelId))
     : [viewMode];
 
+  // Load conversation when selectedConversationId changes
   useEffect(() => {
+    if (selectedConversationId === hasLoadedConversation.current) {
+      return;
+    }
+
     if (selectedConversationId && selectedConversationId !== currentConversationId) {
+      console.log('Loading conversation:', selectedConversationId);
       loadConversation(selectedConversationId);
+      hasLoadedConversation.current = selectedConversationId;
     } else if (!selectedConversationId && currentConversationId) {
+      console.log('Starting new conversation');
       startNewConversation();
+      hasLoadedConversation.current = undefined;
     }
   }, [selectedConversationId, currentConversationId, loadConversation, startNewConversation]);
 
+  // Auto-scroll to bottom when messages change
   useEffect(() => {
-    const modelsToUpdate = viewMode === 'all' 
-      ? SUPPORTED_MODELS.filter(modelId => isModelSelected(modelId as SupportedModelId))
-      : [viewMode];
-    
-    modelsToUpdate.forEach((modelId) => {
-      setTimeout(() => {
-        const endElement = messagesEndRefs.current[modelId];
-        if (endElement) {
-          endElement.scrollIntoView({ behavior: 'smooth', block: 'end' });
-        }
-      }, 100);
-    });
-  }, [messages, loading, viewMode, isModelSelected]);
+    if (messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [messages, loading]);
 
   const handleSendMessage = async () => {
     if (message.trim() && !loading) {
-      await sendMessage(message, (newConversationId: string) => {
+      const messageToSend = message;
+      setMessage(''); // Clear immediately for better UX
+      
+      await sendMessage(messageToSend, (newConversationId: string) => {
         if (onConversationCreated) {
           onConversationCreated(newConversationId);
+          hasLoadedConversation.current = newConversationId;
         }
       });
-      setMessage('');
     }
   };
 
+  // Clear error when user starts typing
   useEffect(() => {
     if (error && message) {
       clearError();
     }
   }, [message, error, clearError]);
+
+  // Group messages: user message followed by all AI responses to that message
+  const groupedMessages: Array<{ userMessage: Message; aiResponses: Message[] }> = [];
+  
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    
+    if (msg.role === 'user') {
+      const aiResponses: Message[] = [];
+      
+      // Collect all AI responses following this user message
+      for (let j = i + 1; j < messages.length && messages[j].role === 'assistant'; j++) {
+        aiResponses.push(messages[j]);
+      }
+      
+      groupedMessages.push({
+        userMessage: msg,
+        aiResponses,
+      });
+      
+      // Skip the AI messages we just collected
+      i += aiResponses.length;
+    }
+  }
 
   return (
     <div className="h-full flex flex-col bg-[#201d26]">
@@ -160,59 +186,71 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
         </div>
       ) : (
         <>
-          <div className="flex-1 flex overflow-y-auto p-6 gap-4 min-h-0">
-            {activeModels.map((modelId) => (
-              <div 
-                key={modelId} 
-                className={`${viewMode === 'all' ? 'flex-1 min-w-0' : 'w-full'} flex flex-col h-full transition-all duration-300 ease-in-out`}
-                style={{
-                  animation: 'slideIn 0.3s ease-out'
-                }}
-              >
-                <div
-                  className="flex-1 overflow-y-auto px-4 bg-[#2a2633]/50 rounded-lg shadow-md border border-gray-700/30"
-                  ref={(el) => { scrollContainerRefs.current[modelId] = el; }}
-                >
-                  <div className="flex items-center justify-center gap-2 py-3 border-b border-gray-700/50 sticky top-0 bg-[#2a2633]/80 backdrop-blur-sm z-10">
-                    <Image
-                      src={modelIconMap[modelId]}
-                      alt={`${modelNameMap[modelId]} logo`}
-                      width={20}
-                      height={20}
-                      className={`${modelId === 'openai/gpt-4o' ? 'invert brightness-0' : ''}`}
-                    />
-                    <span className="text-sm font-medium text-gray-200">{modelNameMap[modelId]}</span>
+          {/* Messages Container - Scrollable */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="max-w-5xl mx-auto px-6 py-6 space-y-8">
+              {groupedMessages.map((group, groupIndex) => (
+                <div key={`group-${groupIndex}`} className="space-y-6">
+                  {/* User Message */}
+                  <div className="flex justify-end">
+                    <UserMessage content={group.userMessage.content} />
                   </div>
 
-                  <div className="space-y-6 py-4">
-                    {messages.map((msg: Message, index: number) => {
-                      if (msg.role === 'user') {
+                  {/* AI Responses - Grid Layout */}
+                  {group.aiResponses.length > 0 && (
+                    <div className={`grid gap-4 ${
+                      viewMode === 'all' && group.aiResponses.length > 1
+                        ? group.aiResponses.length === 2
+                          ? 'grid-cols-1 md:grid-cols-2'
+                          : group.aiResponses.length === 3
+                          ? 'grid-cols-1 md:grid-cols-3'
+                          : 'grid-cols-1 md:grid-cols-2 lg:grid-cols-4'
+                        : 'grid-cols-1'
+                    }`}>
+                      {activeModels.map((modelId) => {
+                        const aiMessage = group.aiResponses.find(
+                          (resp) => resp.modelId === modelId
+                        );
+
+                        if (!aiMessage) return null;
+
                         return (
-                          <div key={`user-${index}`} className="flex justify-end">
-                            <UserMessage content={msg.content} />
+                          <div key={modelId} className="w-full">
+                            {/* Model Header */}
+                            <div className="flex items-center gap-2 mb-3 px-2">
+                              <Image
+                                src={modelIconMap[modelId]}
+                                alt={`${modelNameMap[modelId]} logo`}
+                                width={16}
+                                height={16}
+                                className={`${modelId === 'openai/gpt-4o' ? 'invert brightness-0' : ''}`}
+                              />
+                              <span className="text-xs font-medium text-gray-400">
+                                {modelNameMap[modelId]}
+                              </span>
+                            </div>
+                            
+                            {/* AI Message */}
+                            <AIMessageWithActions
+                              content={aiMessage.content}
+                              modelId={aiMessage.modelId}
+                            />
                           </div>
                         );
-                      }
-                      if (msg.role === 'assistant' && msg.modelId === modelId) {
-                        return (
-                          <AIMessageWithActions
-                            key={`ai-${index}`}
-                            content={msg.content}
-                            modelId={msg.modelId}
-                          />
-                        );
-                      }
-                      return null;
-                    })}
-                    <div ref={(el) => { messagesEndRefs.current[modelId] = el; }} />
-                  </div>
+                      })}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              ))}
+              
+              {/* Scroll anchor */}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
 
-          <div className="flex-shrink-0 p-4 border-t border-gray-700/50 bg-[#2a2633]/80 backdrop-blur-sm">
-            <div className="max-w-4xl mx-auto">
+          {/* Input Bar - Fixed at Bottom */}
+          <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm">
+            <div className="max-w-5xl mx-auto px-6 py-4">
               <MessageInput
                 message={message}
                 onMessageChange={setMessage}
@@ -223,19 +261,6 @@ const ChatInterface: React.FC<ChatInterfaceExtendedProps> = ({
           </div>
         </>
       )}
-
-      <style jsx>{`
-        @keyframes slideIn {
-          from {
-            opacity: 0;
-            transform: scale(0.95);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1);
-          }
-        }
-      `}</style>
     </div>
   );
 };

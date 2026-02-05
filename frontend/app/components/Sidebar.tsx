@@ -33,20 +33,27 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
   
-  // Track if we've loaded conversations to prevent flickering
+  // Track loading state to prevent flickering
   const hasLoadedRef = useRef<boolean>(false);
   const previousUserIdRef = useRef<string | undefined>(undefined);
+  const isLoadingRef = useRef<boolean>(false);
 
   const loadConversations = useCallback(async () => {
-    if (!user || user.id === 'guest') {
-      setConversations([]);
-      setLoadingConversations(false);
-      hasLoadedRef.current = false;
+    // Don't load if not authenticated or already loading
+    if (!user || user.id === 'guest' || isLoadingRef.current) {
+      if (!user || user.id === 'guest') {
+        setConversations([]);
+        setLoadingConversations(false);
+        hasLoadedRef.current = false;
+      }
       return;
     }
 
-    // Don't show loading state if we've already loaded conversations for this user
-    const shouldShowLoading = !hasLoadedRef.current || previousUserIdRef.current !== user.id;
+    // Check if we need to show loading state
+    const userChanged = previousUserIdRef.current !== user.id;
+    const shouldShowLoading = !hasLoadedRef.current || userChanged;
+    
+    isLoadingRef.current = true;
     
     if (shouldShowLoading) {
       setLoadingConversations(true);
@@ -68,12 +75,16 @@ const Sidebar: React.FC<SidebarProps> = ({
       setConversations([]);
     } finally {
       setLoadingConversations(false);
+      isLoadingRef.current = false;
     }
   }, [user]);
 
-  // Load conversations when user changes or refresh is triggered
+  // Load conversations when user ID changes or refresh is triggered
   useEffect(() => {
-    loadConversations();
+    const userId = user?.id;
+    if (userId && userId !== 'guest') {
+      loadConversations();
+    }
   }, [user?.id, refreshTrigger, loadConversations]);
 
   const handleDeleteConversation = async (conversationId: string) => {
