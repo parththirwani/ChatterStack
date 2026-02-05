@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import LoginModal from './AuthModal';
 import { ApiService } from '../services/api';
 import type { User, Conversation } from '../types';
@@ -32,10 +32,26 @@ const Sidebar: React.FC<SidebarProps> = ({
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  
+  // Track if we've loaded conversations to prevent flickering
+  const hasLoadedRef = useRef<boolean>(false);
+  const previousUserIdRef = useRef<string | undefined>(undefined);
 
   const loadConversations = useCallback(async () => {
-    if (!user || user.id === 'guest') return;
-    setLoadingConversations(true);
+    if (!user || user.id === 'guest') {
+      setConversations([]);
+      setLoadingConversations(false);
+      hasLoadedRef.current = false;
+      return;
+    }
+
+    // Don't show loading state if we've already loaded conversations for this user
+    const shouldShowLoading = !hasLoadedRef.current || previousUserIdRef.current !== user.id;
+    
+    if (shouldShowLoading) {
+      setLoadingConversations(true);
+    }
+
     try {
       const convos = await ApiService.getConversations();
       setConversations(
@@ -45,20 +61,20 @@ const Sidebar: React.FC<SidebarProps> = ({
             new Date(a.updatedAt).getTime()
         )
       );
+      hasLoadedRef.current = true;
+      previousUserIdRef.current = user.id;
     } catch (error) {
       console.error('Failed to load conversations:', error);
+      setConversations([]);
     } finally {
       setLoadingConversations(false);
     }
   }, [user]);
 
+  // Load conversations when user changes or refresh is triggered
   useEffect(() => {
-    if (user && user.id !== 'guest') {
-      loadConversations();
-    } else {
-      setConversations([]);
-    }
-  }, [user, refreshTrigger, loadConversations]);
+    loadConversations();
+  }, [user?.id, refreshTrigger, loadConversations]);
 
   const handleDeleteConversation = async (conversationId: string) => {
     try {
@@ -95,6 +111,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       await ApiService.logout();
       if (onUserChange) onUserChange(null);
       setConversations([]);
+      hasLoadedRef.current = false;
+      previousUserIdRef.current = undefined;
     } catch (err) {
       console.error('Error logging out', err);
     }

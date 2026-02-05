@@ -1,6 +1,5 @@
 import { ChatRequest, Conversation, User } from "../types";
 
-
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
 export class ApiService {
@@ -44,6 +43,22 @@ export class ApiService {
     }
 
     return response;
+  }
+
+  static async getCurrentUser(): Promise<User | null> {
+    try {
+      console.log('Getting current user...');
+      const result = await this.validateAuth();
+      if (result.ok && result.user) {
+        console.log('Current user:', result.user);
+        return result.user;
+      }
+      console.log('No authenticated user');
+      return null;
+    } catch (error) {
+      console.error('Get current user failed:', error);
+      return null;
+    }
   }
 
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
