@@ -1,128 +1,116 @@
-import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
+"use client";
+
+import React, { useEffect, useCallback, memo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import ChatInterface from './ChatInterface/ChatInterface';
-import type { User } from '../types';
 import Sidebar from './Sidebar';
-import { ApiService } from '../services/api';
+import { useAppStore } from '../store/useAppStore';
 
 const ChatPage: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [userLoading, setUserLoading] = useState(true);
-  const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
-  const [refreshConversations, setRefreshConversations] = useState(0);
+  
+  // Zustand selectors - only subscribe to what we need
+  const user = useAppStore((state) => state.user);
+  const userLoading = useAppStore((state) => state.userLoading);
+  const currentConversationId = useAppStore((state) => state.currentConversationId);
+  const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed);
+  
+  // Actions
+  const initializeUser = useAppStore((state) => state.initializeUser);
+  const loadConversations = useAppStore((state) => state.loadConversations);
+  const setCurrentConversationId = useAppStore((state) => state.setCurrentConversationId);
+  const setSidebarCollapsed = useAppStore((state) => state.setSidebarCollapsed);
+  const reset = useAppStore((state) => state.reset);
 
-  // Track if we've initialized to prevent loops
-  const initializedRef = useRef(false);
-  const lastPathnameRef = useRef<string>('');
-
-  // Initialize user only once on mount
+  // Initialize user on mount - ONLY ONCE
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
-    const initializeUser = async () => {
-      try {
-        const currentUser = await ApiService.getCurrentUser();
-        setUser(currentUser);
-      } catch (error) {
-        console.error('Failed to get current user:', error);
-        setUser(null);
-      } finally {
-        setUserLoading(false);
-      }
-    };
-
     initializeUser();
-  }, []);
+  }, [initializeUser]);
 
-  // Sync URL to state on mount and browser back/forward
+  // Load conversations when user is authenticated
   useEffect(() => {
-    // Only sync from URL on initial mount or browser navigation
-    if (pathname === lastPathnameRef.current) {
-      return; // No change, skip
+    if (user && user.id && user.id !== 'guest') {
+      loadConversations();
     }
+  }, [user, loadConversations]);
 
-    lastPathnameRef.current = pathname;
-
+  // Sync URL to state (browser navigation)
+  useEffect(() => {
     const pathSegments = pathname.split('/').filter(Boolean);
     const conversationId = pathSegments[0];
     
-    const newConversationId = conversationId && conversationId.length > 0 
+    const urlConversationId = conversationId && conversationId.length > 0 
       ? conversationId 
       : undefined;
 
-    console.log('URL changed to:', pathname, 'conversation:', newConversationId);
-    setSelectedConversationId(newConversationId);
-  }, [pathname]);
+    // Only update if different to prevent loops
+    if (urlConversationId !== currentConversationId) {
+      console.log('URL changed, updating conversation ID:', urlConversationId);
+      setCurrentConversationId(urlConversationId);
+    }
+  }, [pathname, currentConversationId, setCurrentConversationId]);
 
   const handleToggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => !prev);
-  }, []);
+    setSidebarCollapsed(!sidebarCollapsed);
+  }, [sidebarCollapsed, setSidebarCollapsed]);
 
-  const handleUserChange = useCallback((newUser: User | null) => {
-    setUser(newUser);
-    setSelectedConversationId(undefined);
-    
-    // Navigate to home
-    if (pathname !== '/') {
-      lastPathnameRef.current = '/';
-      router.push('/');
+  const handleUserChange = useCallback((newUser: any | null) => {
+    if (!newUser) {
+      // User logged out
+      reset();
+      if (pathname !== '/') {
+        router.push('/');
+      }
     }
-  }, [pathname, router]);
+  }, [pathname, router, reset]);
 
   const handleConversationSelect = useCallback((conversationId: string) => {
     console.log('Conversation selected:', conversationId);
     
-    // Update state immediately - NO navigation!
-    setSelectedConversationId(conversationId);
+    // Update state WITHOUT navigation
+    setCurrentConversationId(conversationId);
     
-    // Update URL without navigation using window.history
+    // Update URL without triggering navigation
     const newUrl = `/${conversationId}`;
     if (pathname !== newUrl) {
-      lastPathnameRef.current = newUrl;
       window.history.pushState({}, '', newUrl);
     }
-  }, [pathname]);
+  }, [pathname, setCurrentConversationId]);
 
   const handleNewChat = useCallback(() => {
     console.log('New chat requested');
     
-    // Clear conversation state immediately - NO navigation!
-    setSelectedConversationId(undefined);
+    // Clear conversation WITHOUT navigation
+    setCurrentConversationId(undefined);
     
-    // Update URL without navigation
+    // Update URL without triggering navigation
     if (pathname !== '/') {
-      lastPathnameRef.current = '/';
       window.history.pushState({}, '', '/');
     }
-  }, [pathname]);
+  }, [pathname, setCurrentConversationId]);
 
   const handleConversationCreated = useCallback((conversationId: string) => {
     console.log('New conversation created:', conversationId);
     
-    // Update state immediately - NO navigation!
-    setSelectedConversationId(conversationId);
+    // Update state WITHOUT navigation
+    setCurrentConversationId(conversationId);
     
-    // Trigger sidebar refresh
-    setRefreshConversations((prev) => prev + 1);
+    // Reload conversations to get the new one
+    loadConversations(true);
     
-    // Update URL without navigation using window.history
+    // Update URL without triggering navigation
     const newUrl = `/${conversationId}`;
     if (pathname !== newUrl) {
-      lastPathnameRef.current = newUrl;
-      window.history.replaceState({}, '', newUrl); // Use replace for new conversations
+      window.history.replaceState({}, '', newUrl);
     }
-  }, [pathname]);
+  }, [pathname, setCurrentConversationId, loadConversations]);
 
   // Handle browser back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
-      // When user clicks back/forward, pathname will change
-      // and the pathname effect above will handle it
       console.log('Browser navigation detected');
+      // pathname effect will handle the update
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -147,13 +135,12 @@ const ChatPage: React.FC = () => {
         onUserChange={handleUserChange}
         onConversationSelect={handleConversationSelect}
         onNewChat={handleNewChat}
-        currentConversationId={selectedConversationId}
-        refreshTrigger={refreshConversations}
+        currentConversationId={currentConversationId}
       />
       
       <div className="flex-1 flex flex-col overflow-hidden">
         <MemoizedChatInterface
-          selectedConversationId={selectedConversationId}
+          selectedConversationId={currentConversationId}
           onConversationCreated={handleConversationCreated}
         />
       </div>
@@ -171,8 +158,7 @@ const MemoizedSidebar = memo(Sidebar, (prev, next) => {
   return (
     prev.collapsed === next.collapsed &&
     prev.user?.id === next.user?.id &&
-    prev.currentConversationId === next.currentConversationId &&
-    prev.refreshTrigger === next.refreshTrigger
+    prev.currentConversationId === next.currentConversationId
   );
 });
 

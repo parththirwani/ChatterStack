@@ -1,7 +1,7 @@
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
-import type { Message, ChatState } from '../types';
-import { useModelSelection } from '../context/ModelSelectionContext';
+import { useAppStore } from '../store/useAppStore';
+import type { Message } from '../types';
 
 interface CouncilProgress {
   stage: string;
@@ -9,22 +9,22 @@ interface CouncilProgress {
   progress: number;
 }
 
-interface ExtendedChatState extends ChatState {
-  councilProgress?: CouncilProgress[];
-}
-
-export const useChat = () => {
-  const { selectedModel } = useModelSelection();
-  const [state, setState] = useState<ExtendedChatState>({
-    messages: [],
-    loading: false,
-    councilProgress: [],
-  });
-
-  const isSendingRef = useRef(false);
-  const conversationCreatedRef = useRef(false);
+export const useChatOptimized = () => {
+  const currentConversationId = useAppStore((state) => state.currentConversationId);
+  const selectedModel = useAppStore((state) => state.selectedModel);
+  const chatState = useAppStore((state) => 
+    state.chatState[currentConversationId || 'new'] || {
+      messages: [],
+      loading: false,
+      councilProgress: [],
+    }
+  );
+  const setChatState = useAppStore((state) => state.setChatState);
+  const setCurrentConversationId = useAppStore((state) => state.setCurrentConversationId);
+  const loadConversation = useAppStore((state) => state.loadConversation);
+  const loadConversations = useAppStore((state) => state.loadConversations);
   
-  const currentConversationId = useMemo(() => state.currentConversationId, [state.currentConversationId]);
+  const isSendingRef = useRef(false);
 
   const sendMessage = useCallback(
     async (
@@ -32,19 +32,12 @@ export const useChat = () => {
       onConversationCreated?: (conversationId: string) => void
     ) => {
       if (!message.trim() || isSendingRef.current) {
-        console.log('Message send blocked');
         return;
       }
 
       isSendingRef.current = true;
 
-      console.log('=== Sending Message ===');
-      console.log('Selected model:', selectedModel);
-      console.log('Current conversation ID:', state.currentConversationId);
-      console.log('Message:', message);
-
-      // Use current conversation ID from state
-      const conversationId = state.currentConversationId;
+      const conversationKey = currentConversationId || 'new';
       const isCouncilMode = selectedModel === 'council';
 
       const userMessage: Message = {
@@ -53,16 +46,15 @@ export const useChat = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // Add user message immediately
-      setState((prev) => ({
-        ...prev,
-        messages: [...prev.messages, userMessage],
+      // Add user message
+      setChatState(conversationKey, {
+        messages: [...chatState.messages, userMessage],
         loading: true,
         error: undefined,
-        councilProgress: isCouncilMode ? [] : prev.councilProgress,
-      }));
+        councilProgress: isCouncilMode ? [] : chatState.councilProgress,
+      });
 
-      // Create placeholder AI message
+      // Add placeholder AI message
       const aiMessage: Message = {
         role: 'assistant',
         content: '',
@@ -70,129 +62,98 @@ export const useChat = () => {
         createdAt: new Date().toISOString(),
       };
 
-      setState((prev) => ({
-        ...prev,
-        messages: [...prev.messages, aiMessage],
-      }));
+      setChatState(conversationKey, {
+        messages: [...chatState.messages, userMessage, aiMessage],
+      });
 
       let fullResponse = '';
 
       try {
         const handleNewConversation = (id: string) => {
-          console.log('Conversation ID received from backend:', id);
-          console.log('Current conversation ID in state:', state.currentConversationId);
-          console.log('Already notified:', conversationCreatedRef.current);
-          
-          // Only trigger callback for TRULY NEW conversations (when we don't have an ID yet)
-          if (!conversationId && id && !conversationCreatedRef.current) {
-            console.log('✅ NEW conversation - updating state and notifying parent');
-            conversationCreatedRef.current = true;
+          if (!currentConversationId && id) {
+            console.log('New conversation created:', id);
+            setCurrentConversationId(id);
             
-            // Update state with new conversation ID
-            setState((prev) => ({
-              ...prev,
-              currentConversationId: id,
-            }));
-
-            // Notify parent component ONCE
+            // Reload conversations list
+            loadConversations(true);
+            
             if (onConversationCreated) {
               onConversationCreated(id);
             }
-          } else if (conversationId && id === conversationId) {
-            console.log('⏭️ EXISTING conversation - no action needed');
-            // Just update the conversation ID in state to be safe
-            setState((prev) => ({
-              ...prev,
-              currentConversationId: id,
-            }));
-          } else {
-            console.log('⚠️ Unexpected conversation ID scenario - ignoring');
           }
         };
 
         if (isCouncilMode) {
-          console.log('Using council mode with conversation ID:', conversationId);
           await ApiService.sendCouncilMessage(
             {
               message,
-              conversationId, // Pass existing conversation ID to maintain context
+              conversationId: currentConversationId,
             },
             (chunk: string) => {
               fullResponse += chunk;
-              setState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((msg, idx) =>
-                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
-                    ? { ...msg, content: fullResponse }
-                    : msg
-                ),
-              }));
+              const currentMessages = chatState.messages;
+              const updatedMessages = currentMessages.map((msg, idx) =>
+                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+                  ? { ...msg, content: fullResponse }
+                  : msg
+              );
+              setChatState(conversationKey, { messages: updatedMessages });
             },
             (progress: CouncilProgress) => {
-              setState((prev) => {
-                const existing = prev.councilProgress?.find(
-                  p => p.stage === progress.stage && p.model === progress.model
-                );
-                
-                if (existing) {
-                  return {
-                    ...prev,
-                    councilProgress: prev.councilProgress?.map(p =>
-                      p.stage === progress.stage && p.model === progress.model
-                        ? progress
-                        : p
-                    ),
-                  };
-                } else {
-                  return {
-                    ...prev,
-                    councilProgress: [...(prev.councilProgress || []), progress],
-                  };
-                }
-              });
+              const existing = chatState.councilProgress?.find(
+                p => p.stage === progress.stage && p.model === progress.model
+              );
+              
+              if (existing) {
+                setChatState(conversationKey, {
+                  councilProgress: chatState.councilProgress?.map(p =>
+                    p.stage === progress.stage && p.model === progress.model
+                      ? progress
+                      : p
+                  ),
+                });
+              } else {
+                setChatState(conversationKey, {
+                  councilProgress: [...(chatState.councilProgress || []), progress],
+                });
+              }
             },
             () => {
-              console.log('Council message complete');
-              setState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((msg, idx) =>
-                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
-                    ? { ...msg, content: fullResponse, id: `council-${Date.now()}` }
-                    : msg
-                ),
-              }));
+              const currentMessages = chatState.messages;
+              const updatedMessages = currentMessages.map((msg, idx) =>
+                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+                  ? { ...msg, content: fullResponse, id: `council-${Date.now()}` }
+                  : msg
+              );
+              setChatState(conversationKey, { messages: updatedMessages });
             },
             handleNewConversation
           );
         } else {
-          console.log('Using regular chat mode with conversation ID:', conversationId);
           await ApiService.sendMessage(
             {
               message,
-              conversationId, // Pass existing conversation ID
+              conversationId: currentConversationId,
               selectedModel,
             },
             (chunk: string) => {
               fullResponse += chunk;
-              setState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((msg, idx) =>
-                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
-                    ? { ...msg, content: fullResponse }
-                    : msg
-                ),
-              }));
+              const currentMessages = chatState.messages;
+              const updatedMessages = currentMessages.map((msg, idx) =>
+                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+                  ? { ...msg, content: fullResponse }
+                  : msg
+              );
+              setChatState(conversationKey, { messages: updatedMessages });
             },
             () => {
-              console.log('Regular message complete');
-              setState((prev) => ({
-                ...prev,
-                messages: prev.messages.map((msg, idx) =>
-                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
-                    ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
-                    : msg
-                ),
-              }));
+              const currentMessages = chatState.messages;
+              const updatedMessages = currentMessages.map((msg, idx) =>
+                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+                  ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
+                  : msg
+              );
+              setChatState(conversationKey, { messages: updatedMessages });
             },
             handleNewConversation
           );
@@ -200,84 +161,49 @@ export const useChat = () => {
 
       } catch (error) {
         console.error('Error sending message:', error);
-        setState((prev) => ({
-          ...prev,
+        setChatState(conversationKey, {
           error: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
-          messages: prev.messages.filter((msg) => msg.role !== 'assistant' || msg.id),
-        }));
+          messages: chatState.messages.filter((msg) => msg.role !== 'assistant' || msg.id),
+        });
       } finally {
-        setState((prev) => ({
-          ...prev,
-          loading: false,
-          councilProgress: [],
-        }));
-        isSendingRef.current = false;
-      }
-    },
-    [selectedModel, state.currentConversationId]
-  );
-
-  const loadConversation = useCallback(async (conversationId: string) => {
-    console.log('=== Loading Conversation ===');
-    console.log('Conversation ID:', conversationId);
-
-    setState((prev) => ({ ...prev, loading: true, error: undefined }));
-    conversationCreatedRef.current = true; // Mark as existing conversation
-
-    try {
-      const result = await ApiService.getConversation(conversationId);
-      console.log('Conversation loaded:', result);
-
-      if (result?.conversation) {
-        const messages = result.conversation.messages.map((msg) => ({
-          ...msg,
-          role: msg.role as 'user' | 'assistant',
-          modelId: msg.modelId,
-        }));
-
-        console.log('Setting messages:', messages);
-
-        setState({
-          messages,
-          currentConversationId: conversationId,
+        setChatState(conversationKey, {
           loading: false,
           councilProgress: [],
         });
-      } else {
-        throw new Error('Conversation not found');
+        isSendingRef.current = false;
       }
-    } catch (error) {
-      console.error('Error loading conversation:', error);
-      setState((prev) => ({
-        ...prev,
-        loading: false,
-        error: 'Failed to load conversation.',
-      }));
-    }
-  }, []);
+    },
+    [
+      currentConversationId,
+      selectedModel,
+      chatState,
+      setChatState,
+      setCurrentConversationId,
+      loadConversations,
+    ]
+  );
 
   const startNewConversation = useCallback(() => {
-    console.log('=== Starting New Conversation ===');
-    setState({
+    setCurrentConversationId(undefined);
+    setChatState('new', {
       messages: [],
-      currentConversationId: undefined,
       loading: false,
       error: undefined,
       councilProgress: [],
     });
     isSendingRef.current = false;
-    conversationCreatedRef.current = false; // Reset for new conversation
-  }, []);
+  }, [setCurrentConversationId, setChatState]);
 
   const clearError = useCallback(() => {
-    setState((prev) => ({ ...prev, error: undefined }));
-  }, []);
+    const conversationKey = currentConversationId || 'new';
+    setChatState(conversationKey, { error: undefined });
+  }, [currentConversationId, setChatState]);
 
   return {
-    messages: state.messages,
-    loading: state.loading,
-    error: state.error,
-    councilProgress: state.councilProgress || [],
+    messages: chatState.messages,
+    loading: chatState.loading,
+    error: chatState.error,
+    councilProgress: chatState.councilProgress || [],
     currentConversationId,
     sendMessage,
     loadConversation,

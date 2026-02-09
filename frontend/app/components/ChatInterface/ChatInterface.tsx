@@ -4,11 +4,12 @@ import Link from 'next/link';
 import Image from 'next/image';
 import MessageInput from './MessageInput';
 
-import { ChatInterfaceProps, Message } from '@/app/types';
-import { useChat } from '@/app/hooks/useChat';
+import { ChatInterfaceProps } from '@/app/types';
+
 import AIMessage from './AIMessage';
 import UserMessage from './UserMessage';
 import CouncilProgressIndicator from '../Council/ProgressIndicator';
+import { useChatOptimized } from '@/app/hooks/useChat';
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedConversationId,
@@ -16,6 +17,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 }) => {
   const [message, setMessage] = useState('');
   
+  // ✅ CHANGED: Using optimized hook that connects to Zustand store
   const {
     messages,
     loading,
@@ -26,7 +28,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     loadConversation,
     clearError,
     currentConversationId,
-  } = useChat();
+  } = useChatOptimized();
 
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -40,7 +42,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const isFirstMessage = messages.length === 0;
 
-  // Load conversation when selectedConversationId changes
   useEffect(() => {
     if (isLoadingConversationRef.current) {
       return;
@@ -162,7 +163,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       // Re-enable auto-scroll for new message
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
-      
+
       await sendMessage(messageToSend, (newConversationId: string) => {
         if (onConversationCreated && !currentConversationId) {
           console.log('New conversation created:', newConversationId);
