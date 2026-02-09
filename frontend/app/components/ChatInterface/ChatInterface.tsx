@@ -17,7 +17,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 }) => {
   const [message, setMessage] = useState('');
   
-  // ✅ CHANGED: Using optimized hook that connects to Zustand store
   const {
     messages,
     loading,
@@ -39,6 +38,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const lastMessageCountRef = useRef(0);
   const lastContentLengthRef = useRef(0);
   const scrollAnimationFrameRef = useRef<number | null>(null);
+  const previousMessagesLengthRef = useRef(0);
 
   const isFirstMessage = messages.length === 0;
 
@@ -53,6 +53,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       isLoadingConversationRef.current = true;
       lastLoadedConversationRef.current = selectedConversationId;
       
+      // Disable auto-scroll when loading a conversation
+      autoScrollEnabledRef.current = false;
+      userHasScrolledRef.current = true;
+      
       loadConversation(selectedConversationId).finally(() => {
         isLoadingConversationRef.current = false;
       });
@@ -60,6 +64,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       console.log('Starting new conversation');
       lastLoadedConversationRef.current = undefined;
       startNewConversation();
+      // Enable auto-scroll for new conversations
+      autoScrollEnabledRef.current = true;
+      userHasScrolledRef.current = false;
     }
   }, [selectedConversationId, loadConversation, startNewConversation]);
 
@@ -117,7 +124,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, []);
 
-  // Trigger smooth scroll when messages update during generation
+  // Trigger smooth scroll ONLY when actively generating (content changing)
   useEffect(() => {
     // Cancel any existing animation frame
     if (scrollAnimationFrameRef.current) {
@@ -129,9 +136,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     
     // Check if we're actively generating (content is changing)
     const isGenerating = loading && messages.length > 0 && currentContentLength > lastContentLengthRef.current;
-    const messageCountChanged = messages.length !== lastMessageCountRef.current;
     
-    if ((isGenerating || messageCountChanged) && autoScrollEnabledRef.current) {
+    // Only auto-scroll if:
+    // 1. We're generating AND content is changing
+    // 2. Auto-scroll is enabled (user hasn't scrolled up)
+    if (isGenerating && autoScrollEnabledRef.current) {
       // Start smooth scrolling
       smoothScrollToBottom();
     }
@@ -147,12 +156,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
   }, [messages, loading, smoothScrollToBottom]);
 
-  // Re-enable auto-scroll when new message starts
+  // Re-enable auto-scroll when new message starts (not when loading old messages)
   useEffect(() => {
-    if (loading && messages.length > 0) {
+    // Only enable auto-scroll if messages length increased (new message added)
+    if (loading && messages.length > previousMessagesLengthRef.current) {
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
     }
+    
+    previousMessagesLengthRef.current = messages.length;
   }, [loading, messages.length]);
 
   const handleSendMessage = useCallback(async () => {

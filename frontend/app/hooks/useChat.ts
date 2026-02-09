@@ -61,7 +61,7 @@ export const useChatOptimized = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // Add user message
+      // Add user message immediately
       store.setChatState(conversationKey, {
         messages: [...currentChatState.messages, userMessage],
         loading: true,
@@ -77,11 +77,14 @@ export const useChatOptimized = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // Get fresh state after adding user message
-      const stateAfterUser = useAppStore.getState().chatState[conversationKey] || DEFAULT_CHAT_STATE;
-      store.setChatState(conversationKey, {
-        messages: [...stateAfterUser.messages, aiMessage],
-      });
+      // Get fresh state after adding user message and add AI placeholder
+      setTimeout(() => {
+        const freshStore = useAppStore.getState();
+        const freshChatState = freshStore.chatState[conversationKey] || DEFAULT_CHAT_STATE;
+        freshStore.setChatState(conversationKey, {
+          messages: [...freshChatState.messages, aiMessage],
+        });
+      }, 0);
 
       let fullResponse = '';
 
