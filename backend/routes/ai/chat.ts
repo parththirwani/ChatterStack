@@ -101,10 +101,13 @@ router.post("/", authenticate, async (req, res) => {
     // Check if council mode
     if (selectedModel === 'council') {
       console.log('=== Using Council Mode ===');
+      console.log(`Passing ${conversationHistory.length} messages as context`);
       
       try {
+        // Pass conversation history to council
         fullContent = await runCouncilProcess(
           data.message,
+          conversationHistory, // Pass the history!
           (stage: string, model: string, progress: number) => {
             // Send progress updates
             res.write(`data: ${JSON.stringify({ 

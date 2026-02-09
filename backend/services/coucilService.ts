@@ -9,13 +9,15 @@ import {
 } from "../config/council";
 
 /**
- * Stage 1: Collect parallel responses from all council models
+ * Stage 1: Collect parallel responses from all council models with conversation history
  */
 export async function stage1_collect_responses(
   userQuery: string,
+  conversationHistory: Array<{ role: Role; content: string }> = [],
   onProgress?: (stage: string, model: string, progress: number) => void
 ): Promise<Stage1Result[]> {
   console.log("=== Stage 1: Collecting Council Responses ===");
+  console.log(`Conversation history: ${conversationHistory.length} messages`);
 
   const promises = COUNCIL_MODELS.map(async (model) => {
     try {
@@ -23,9 +25,15 @@ export async function stage1_collect_responses(
         onProgress("stage1", model, 0);
       }
 
+      // Include conversation history for context
+      const messages = [
+        ...conversationHistory,
+        { role: Role.User, content: userQuery }
+      ];
+
       let response = "";
       await createCompletion(
-        [{ role: Role.User, content: userQuery }],
+        messages,
         model,
         (chunk: string) => {
           response += chunk;
@@ -98,6 +106,7 @@ function parse_ranking_from_text(text: string): string[] {
 export async function stage2_collect_rankings(
   userQuery: string,
   stage1Results: Stage1Result[],
+  conversationHistory: Array<{ role: Role; content: string }> = [],
   onProgress?: (stage: string, model: string, progress: number) => void
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
   console.log("=== Stage 2: Collecting Peer Rankings ===");
@@ -119,8 +128,12 @@ export async function stage2_collect_rankings(
     .map((r) => `${r.label}:\n${r.response}\n`)
     .join("\n");
 
-  const rankingPrompt = `You are an expert evaluator analyzing different AI responses to the same question.
+  const contextSummary = conversationHistory.length > 0
+    ? `\n\nCONVERSATION CONTEXT:\n${conversationHistory.slice(-4).map(m => `${m.role}: ${m.content}`).join('\n')}\n`
+    : '';
 
+  const rankingPrompt = `You are an expert evaluator analyzing different AI responses to the same question.
+${contextSummary}
 ORIGINAL QUESTION:
 ${userQuery}
 
@@ -133,6 +146,7 @@ YOUR TASK:
    - Completeness and depth
    - Clarity and organization
    - Practical usefulness
+   - Consistency with conversation history (if applicable)
    - Any errors or misconceptions
 
 2. Provide detailed critiques for each response.
@@ -232,13 +246,14 @@ function calculate_aggregate_rankings(
 }
 
 /**
- * Stage 3: Chairman synthesizes final response
+ * Stage 3: Chairman synthesizes final response with conversation history
  */
 export async function stage3_synthesize_final(
   userQuery: string,
   stage1Results: Stage1Result[],
   stage2Results: Stage2Result[],
   labelToModel: Map<string, string>,
+  conversationHistory: Array<{ role: Role; content: string }> = [],
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   console.log("=== Stage 3: Chairman Synthesis ===");
@@ -261,9 +276,13 @@ export async function stage3_synthesize_final(
     .map((r, i) => `${i + 1}. ${r.model} (avg rank: ${r.averageRank.toFixed(2)})`)
     .join("\n");
 
-  const synthesisPrompt = `You are the chairman of an AI council. Multiple expert AI models have analyzed this question and peer-reviewed each other's responses.
+  const contextSummary = conversationHistory.length > 0
+    ? `\n\nCONVERSATION HISTORY:\n${conversationHistory.slice(-6).map(m => `${m.role}: ${m.content}`).join('\n\n')}\n`
+    : '';
 
-ORIGINAL QUESTION:
+  const synthesisPrompt = `You are the chairman of an AI council. Multiple expert AI models have analyzed this question and peer-reviewed each other's responses.
+${contextSummary}
+CURRENT QUESTION:
 ${userQuery}
 
 COUNCIL RESPONSES:
@@ -278,16 +297,23 @@ ${rankingSummary}
 YOUR TASK:
 Synthesize a comprehensive, authoritative answer that:
 1. Incorporates the best insights from all council members
-2. Resolves disagreements by weighing evidence and rankings
-3. Provides a clear, unified response
-4. Acknowledges any remaining uncertainties or different perspectives
-5. Delivers practical, actionable information
+2. Maintains continuity with the conversation history (if any)
+3. Resolves disagreements by weighing evidence and rankings
+4. Provides a clear, unified response
+5. Acknowledges any remaining uncertainties or different perspectives
+6. Delivers practical, actionable information
 
 Create the definitive answer that represents the council's collective wisdom.`;
 
+  // Include conversation history in the chairman's messages
+  const chairmanMessages = [
+    ...conversationHistory,
+    { role: Role.User, content: synthesisPrompt }
+  ];
+
   let finalResponse = "";
   await createCompletion(
-    [{ role: Role.User, content: synthesisPrompt }],
+    chairmanMessages,
     CHAIRMAN_MODEL,
     (chunk: string) => {
       finalResponse += chunk;
@@ -302,26 +328,33 @@ Create the definitive answer that represents the council's collective wisdom.`;
 }
 
 /**
- * Full council process
+ * Full council process with conversation history support
  */
 export async function runCouncilProcess(
   userQuery: string,
+  conversationHistory: Array<{ role: Role; content: string }> = [],
   onProgress?: (stage: string, model: string, progress: number) => void,
   onChunk?: (chunk: string) => void
 ): Promise<string> {
   console.log("=== Starting Council Process ===");
+  console.log(`With conversation history: ${conversationHistory.length} messages`);
 
-  // Stage 1: Collect responses
-  const stage1Results = await stage1_collect_responses(userQuery, onProgress);
+  // Stage 1: Collect responses with context
+  const stage1Results = await stage1_collect_responses(
+    userQuery,
+    conversationHistory,
+    onProgress
+  );
 
   if (stage1Results.length === 0) {
     throw new Error("No council members provided responses");
   }
 
-  // Stage 2: Collect rankings
+  // Stage 2: Collect rankings with context
   const { stage2Results, labelToModel } = await stage2_collect_rankings(
     userQuery,
     stage1Results,
+    conversationHistory,
     onProgress
   );
 
@@ -329,12 +362,13 @@ export async function runCouncilProcess(
     console.warn("No rankings collected, proceeding with basic synthesis");
   }
 
-  // Stage 3: Synthesize final response
+  // Stage 3: Synthesize final response with full context
   const finalResponse = await stage3_synthesize_final(
     userQuery,
     stage1Results,
     stage2Results,
     labelToModel,
+    conversationHistory,
     onChunk
   );
 

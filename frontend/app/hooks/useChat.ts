@@ -21,10 +21,9 @@ export const useChat = () => {
     councilProgress: [],
   });
 
-  // Use ref to track if we're currently sending to prevent duplicate sends
   const isSendingRef = useRef(false);
+  const conversationCreatedRef = useRef(false);
   
-  // Memoize current conversation ID to prevent unnecessary re-renders
   const currentConversationId = useMemo(() => state.currentConversationId, [state.currentConversationId]);
 
   const sendMessage = useCallback(
@@ -33,10 +32,7 @@ export const useChat = () => {
       onConversationCreated?: (conversationId: string) => void
     ) => {
       if (!message.trim() || isSendingRef.current) {
-        console.log('Message send blocked:', { 
-          empty: !message.trim(), 
-          alreadySending: isSendingRef.current 
-        });
+        console.log('Message send blocked');
         return;
       }
 
@@ -44,9 +40,10 @@ export const useChat = () => {
 
       console.log('=== Sending Message ===');
       console.log('Selected model:', selectedModel);
+      console.log('Current conversation ID:', state.currentConversationId);
       console.log('Message:', message);
 
-      // Get current conversation ID from state at time of send
+      // Use current conversation ID from state
       const conversationId = state.currentConversationId;
       const isCouncilMode = selectedModel === 'council';
 
@@ -56,7 +53,7 @@ export const useChat = () => {
         createdAt: new Date().toISOString(),
       };
 
-      // Use functional update to prevent stale state
+      // Add user message immediately
       setState((prev) => ({
         ...prev,
         messages: [...prev.messages, userMessage],
@@ -81,12 +78,44 @@ export const useChat = () => {
       let fullResponse = '';
 
       try {
+        const handleNewConversation = (id: string) => {
+          console.log('Conversation ID received from backend:', id);
+          console.log('Current conversation ID in state:', state.currentConversationId);
+          console.log('Already notified:', conversationCreatedRef.current);
+          
+          // Only trigger callback for TRULY NEW conversations (when we don't have an ID yet)
+          if (!conversationId && id && !conversationCreatedRef.current) {
+            console.log('✅ NEW conversation - updating state and notifying parent');
+            conversationCreatedRef.current = true;
+            
+            // Update state with new conversation ID
+            setState((prev) => ({
+              ...prev,
+              currentConversationId: id,
+            }));
+
+            // Notify parent component ONCE
+            if (onConversationCreated) {
+              onConversationCreated(id);
+            }
+          } else if (conversationId && id === conversationId) {
+            console.log('⏭️ EXISTING conversation - no action needed');
+            // Just update the conversation ID in state to be safe
+            setState((prev) => ({
+              ...prev,
+              currentConversationId: id,
+            }));
+          } else {
+            console.log('⚠️ Unexpected conversation ID scenario - ignoring');
+          }
+        };
+
         if (isCouncilMode) {
-          // Use council endpoint
+          console.log('Using council mode with conversation ID:', conversationId);
           await ApiService.sendCouncilMessage(
             {
               message,
-              conversationId,
+              conversationId, // Pass existing conversation ID to maintain context
             },
             (chunk: string) => {
               fullResponse += chunk;
@@ -123,6 +152,7 @@ export const useChat = () => {
               });
             },
             () => {
+              console.log('Council message complete');
               setState((prev) => ({
                 ...prev,
                 messages: prev.messages.map((msg, idx) =>
@@ -132,25 +162,14 @@ export const useChat = () => {
                 ),
               }));
             },
-            (newConversationId: string) => {
-              if (!conversationId && newConversationId) {
-                console.log('New conversation ID received:', newConversationId);
-                setState((prev) => ({
-                  ...prev,
-                  currentConversationId: newConversationId,
-                }));
-                if (onConversationCreated) {
-                  onConversationCreated(newConversationId);
-                }
-              }
-            }
+            handleNewConversation
           );
         } else {
-          // Use regular chat endpoint
+          console.log('Using regular chat mode with conversation ID:', conversationId);
           await ApiService.sendMessage(
             {
               message,
-              conversationId,
+              conversationId, // Pass existing conversation ID
               selectedModel,
             },
             (chunk: string) => {
@@ -165,6 +184,7 @@ export const useChat = () => {
               }));
             },
             () => {
+              console.log('Regular message complete');
               setState((prev) => ({
                 ...prev,
                 messages: prev.messages.map((msg, idx) =>
@@ -174,18 +194,7 @@ export const useChat = () => {
                 ),
               }));
             },
-            (newConversationId: string) => {
-              if (!conversationId && newConversationId) {
-                console.log('New conversation ID received:', newConversationId);
-                setState((prev) => ({
-                  ...prev,
-                  currentConversationId: newConversationId,
-                }));
-                if (onConversationCreated) {
-                  onConversationCreated(newConversationId);
-                }
-              }
-            }
+            handleNewConversation
           );
         }
 
@@ -213,6 +222,7 @@ export const useChat = () => {
     console.log('Conversation ID:', conversationId);
 
     setState((prev) => ({ ...prev, loading: true, error: undefined }));
+    conversationCreatedRef.current = true; // Mark as existing conversation
 
     try {
       const result = await ApiService.getConversation(conversationId);
@@ -227,7 +237,6 @@ export const useChat = () => {
 
         console.log('Setting messages:', messages);
 
-        // Use a single state update to prevent flickering
         setState({
           messages,
           currentConversationId: conversationId,
@@ -249,7 +258,6 @@ export const useChat = () => {
 
   const startNewConversation = useCallback(() => {
     console.log('=== Starting New Conversation ===');
-    // Single state update to prevent flickering
     setState({
       messages: [],
       currentConversationId: undefined,
@@ -258,6 +266,7 @@ export const useChat = () => {
       councilProgress: [],
     });
     isSendingRef.current = false;
+    conversationCreatedRef.current = false; // Reset for new conversation
   }, []);
 
   const clearError = useCallback(() => {

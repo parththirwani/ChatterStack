@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
@@ -32,22 +32,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const lastLoadedConversationRef = useRef<string | undefined>(undefined);
   const isLoadingConversationRef = useRef(false);
+  const autoScrollEnabledRef = useRef(true);
+  const userHasScrolledRef = useRef(false);
+  const lastMessageCountRef = useRef(0);
+  const lastContentLengthRef = useRef(0);
+  const scrollAnimationFrameRef = useRef<number | null>(null);
 
   const isFirstMessage = messages.length === 0;
 
-  // Load conversation when selectedConversationId changes - FIXED
+  // Load conversation when selectedConversationId changes
   useEffect(() => {
-    // Don't reload if we're already loading or if it's the same conversation
     if (isLoadingConversationRef.current) {
-      console.log('Already loading a conversation, skipping...');
       return;
     }
 
-    // Case 1: New conversation selected (and it's different from current)
     if (selectedConversationId && selectedConversationId !== lastLoadedConversationRef.current) {
       console.log('Loading conversation:', selectedConversationId);
-      console.log('Current conversation:', currentConversationId);
-      console.log('Last loaded:', lastLoadedConversationRef.current);
       
       isLoadingConversationRef.current = true;
       lastLoadedConversationRef.current = selectedConversationId;
@@ -55,36 +55,123 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       loadConversation(selectedConversationId).finally(() => {
         isLoadingConversationRef.current = false;
       });
-    } 
-    // Case 2: No conversation selected (new chat)
-    else if (!selectedConversationId && lastLoadedConversationRef.current) {
+    } else if (!selectedConversationId && lastLoadedConversationRef.current) {
       console.log('Starting new conversation');
       lastLoadedConversationRef.current = undefined;
       startNewConversation();
     }
-  }, [selectedConversationId, currentConversationId, loadConversation, startNewConversation]);
+  }, [selectedConversationId, loadConversation, startNewConversation]);
 
-  // Auto-scroll to bottom when messages change - optimized
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  // Detect user manual scroll
+  const handleScroll = useCallback(() => {
+    if (!messagesContainerRef.current) return;
+    
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
+    
+    // If user scrolls up more than 100px from bottom, disable auto-scroll
+    if (distanceFromBottom > 100) {
+      autoScrollEnabledRef.current = false;
+      userHasScrolledRef.current = true;
+    } else if (distanceFromBottom < 10) {
+      // Re-enable if user scrolls back to near bottom
+      autoScrollEnabledRef.current = true;
+      userHasScrolledRef.current = false;
     }
-  }, [messages.length]); // Only when message count changes, not content
+  }, []);
 
-  const handleSendMessage = async () => {
+  // Attach scroll listener
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.addEventListener('scroll', handleScroll, { passive: true });
+      return () => container.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
+
+  // Smooth continuous auto-scroll using requestAnimationFrame
+  const smoothScrollToBottom = useCallback(() => {
+    if (!messagesContainerRef.current || !autoScrollEnabledRef.current) return;
+
+    const container = messagesContainerRef.current;
+    const targetScrollTop = container.scrollHeight - container.clientHeight;
+    const currentScrollTop = container.scrollTop;
+    const distance = targetScrollTop - currentScrollTop;
+
+    // If we're close enough, just jump there
+    if (Math.abs(distance) < 1) {
+      container.scrollTop = targetScrollTop;
+      return;
+    }
+
+    // Smooth easing function - adjust speed here (0.1 = slower, 0.3 = faster)
+    const easeAmount = 0.15;
+    const delta = distance * easeAmount;
+
+    container.scrollTop = currentScrollTop + delta;
+
+    // Continue scrolling if we haven't reached the bottom
+    if (Math.abs(distance) > 1) {
+      scrollAnimationFrameRef.current = requestAnimationFrame(smoothScrollToBottom);
+    }
+  }, []);
+
+  // Trigger smooth scroll when messages update during generation
+  useEffect(() => {
+    // Cancel any existing animation frame
+    if (scrollAnimationFrameRef.current) {
+      cancelAnimationFrame(scrollAnimationFrameRef.current);
+    }
+
+    const lastMessage = messages[messages.length - 1];
+    const currentContentLength = lastMessage?.content?.length || 0;
+    
+    // Check if we're actively generating (content is changing)
+    const isGenerating = loading && messages.length > 0 && currentContentLength > lastContentLengthRef.current;
+    const messageCountChanged = messages.length !== lastMessageCountRef.current;
+    
+    if ((isGenerating || messageCountChanged) && autoScrollEnabledRef.current) {
+      // Start smooth scrolling
+      smoothScrollToBottom();
+    }
+    
+    lastMessageCountRef.current = messages.length;
+    lastContentLengthRef.current = currentContentLength;
+
+    // Cleanup animation frame on unmount
+    return () => {
+      if (scrollAnimationFrameRef.current) {
+        cancelAnimationFrame(scrollAnimationFrameRef.current);
+      }
+    };
+  }, [messages, loading, smoothScrollToBottom]);
+
+  // Re-enable auto-scroll when new message starts
+  useEffect(() => {
+    if (loading && messages.length > 0) {
+      autoScrollEnabledRef.current = true;
+      userHasScrolledRef.current = false;
+    }
+  }, [loading, messages.length]);
+
+  const handleSendMessage = useCallback(async () => {
     if (message.trim() && !loading) {
       const messageToSend = message;
       setMessage('');
       
+      // Re-enable auto-scroll for new message
+      autoScrollEnabledRef.current = true;
+      userHasScrolledRef.current = false;
+      
       await sendMessage(messageToSend, (newConversationId: string) => {
-        if (onConversationCreated) {
-          console.log('New conversation created in ChatInterface:', newConversationId);
+        if (onConversationCreated && !currentConversationId) {
+          console.log('New conversation created:', newConversationId);
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }
       });
     }
-  };
+  }, [message, loading, sendMessage, onConversationCreated, currentConversationId]);
 
   // Clear error when user starts typing
   useEffect(() => {
@@ -154,7 +241,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           <div 
             ref={messagesContainerRef}
             className="flex-1 overflow-y-auto"
-            style={{ willChange: 'scroll-position' }}
+            style={{ 
+              willChange: 'scroll-position',
+              scrollBehavior: 'auto' // Use auto for RAF control
+            }}
           >
             <div className="py-6 space-y-6">
               {messages.map((msg, index) => {
@@ -175,11 +265,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }
               })}
 
-              {/* Show council progress indicator when in council mode */}
+              {/* Show council progress ONLY while waiting for response to start */}
               {loading && councilProgress.length > 0 && (
                 <CouncilProgressIndicator
                   progress={councilProgress}
                   isActive={loading}
+                  hideWhenGenerating={true}
+                  hasStartedGenerating={messages.length > 0 && messages[messages.length - 1].content.length > 0}
                 />
               )}
               

@@ -14,10 +14,9 @@ const ChatPage: React.FC = () => {
   const [selectedConversationId, setSelectedConversationId] = useState<string | undefined>();
   const [refreshConversations, setRefreshConversations] = useState(0);
 
-  // Use refs to prevent navigation loops and unnecessary re-renders
-  const isNavigatingRef = useRef(false);
+  // Track if we've initialized to prevent loops
   const initializedRef = useRef(false);
-  const lastConversationIdRef = useRef<string | undefined>(undefined);
+  const lastPathnameRef = useRef<string>('');
 
   // Initialize user only once on mount
   useEffect(() => {
@@ -39,12 +38,14 @@ const ChatPage: React.FC = () => {
     initializeUser();
   }, []);
 
-  // Load conversation ID from URL - FIXED to not redirect
+  // Sync URL to state on mount and browser back/forward
   useEffect(() => {
-    // Skip if we're currently navigating
-    if (isNavigatingRef.current) {
-      return;
+    // Only sync from URL on initial mount or browser navigation
+    if (pathname === lastPathnameRef.current) {
+      return; // No change, skip
     }
+
+    lastPathnameRef.current = pathname;
 
     const pathSegments = pathname.split('/').filter(Boolean);
     const conversationId = pathSegments[0];
@@ -53,12 +54,8 @@ const ChatPage: React.FC = () => {
       ? conversationId 
       : undefined;
 
-    // Only update state if the conversation ID actually changed
-    if (newConversationId !== lastConversationIdRef.current) {
-      console.log('URL conversation ID changed:', newConversationId);
-      lastConversationIdRef.current = newConversationId;
-      setSelectedConversationId(newConversationId);
-    }
+    console.log('URL changed to:', pathname, 'conversation:', newConversationId);
+    setSelectedConversationId(newConversationId);
   }, [pathname]);
 
   const handleToggleSidebar = useCallback(() => {
@@ -68,77 +65,69 @@ const ChatPage: React.FC = () => {
   const handleUserChange = useCallback((newUser: User | null) => {
     setUser(newUser);
     setSelectedConversationId(undefined);
-    lastConversationIdRef.current = undefined;
     
-    // Navigate to home if not already there
-    if (pathname !== '/' && !isNavigatingRef.current) {
-      isNavigatingRef.current = true;
+    // Navigate to home
+    if (pathname !== '/') {
+      lastPathnameRef.current = '/';
       router.push('/');
-      setTimeout(() => {
-        isNavigatingRef.current = false;
-      }, 100);
     }
   }, [pathname, router]);
 
   const handleConversationSelect = useCallback((conversationId: string) => {
-    const targetPath = `/${conversationId}`;
-    
     console.log('Conversation selected:', conversationId);
-    console.log('Current path:', pathname);
-    console.log('Target path:', targetPath);
     
-    // Update state immediately
-    lastConversationIdRef.current = conversationId;
+    // Update state immediately - NO navigation!
     setSelectedConversationId(conversationId);
     
-    // Only navigate if we're not already at this path
-    if (pathname !== targetPath && !isNavigatingRef.current) {
-      isNavigatingRef.current = true;
-      router.push(targetPath);
-      setTimeout(() => {
-        isNavigatingRef.current = false;
-      }, 100);
+    // Update URL without navigation using window.history
+    const newUrl = `/${conversationId}`;
+    if (pathname !== newUrl) {
+      lastPathnameRef.current = newUrl;
+      window.history.pushState({}, '', newUrl);
     }
-  }, [pathname, router]);
+  }, [pathname]);
 
   const handleNewChat = useCallback(() => {
     console.log('New chat requested');
     
-    // Clear conversation state
-    lastConversationIdRef.current = undefined;
+    // Clear conversation state immediately - NO navigation!
     setSelectedConversationId(undefined);
     
-    // Only navigate if not already at home
-    if (pathname !== '/' && !isNavigatingRef.current) {
-      isNavigatingRef.current = true;
-      router.push('/');
-      setTimeout(() => {
-        isNavigatingRef.current = false;
-      }, 100);
+    // Update URL without navigation
+    if (pathname !== '/') {
+      lastPathnameRef.current = '/';
+      window.history.pushState({}, '', '/');
     }
-  }, [pathname, router]);
+  }, [pathname]);
 
   const handleConversationCreated = useCallback((conversationId: string) => {
-    const targetPath = `/${conversationId}`;
-    
     console.log('New conversation created:', conversationId);
     
-    // Update state first
-    lastConversationIdRef.current = conversationId;
+    // Update state immediately - NO navigation!
     setSelectedConversationId(conversationId);
     
-    // Trigger sidebar refresh - use callback to prevent unnecessary re-renders
+    // Trigger sidebar refresh
     setRefreshConversations((prev) => prev + 1);
     
-    // Only navigate if not already at this conversation
-    if (pathname !== targetPath && !isNavigatingRef.current) {
-      isNavigatingRef.current = true;
-      router.push(targetPath);
-      setTimeout(() => {
-        isNavigatingRef.current = false;
-      }, 100);
+    // Update URL without navigation using window.history
+    const newUrl = `/${conversationId}`;
+    if (pathname !== newUrl) {
+      lastPathnameRef.current = newUrl;
+      window.history.replaceState({}, '', newUrl); // Use replace for new conversations
     }
-  }, [pathname, router]);
+  }, [pathname]);
+
+  // Handle browser back/forward buttons
+  useEffect(() => {
+    const handlePopState = () => {
+      // When user clicks back/forward, pathname will change
+      // and the pathname effect above will handle it
+      console.log('Browser navigation detected');
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Show loading state while initializing
   if (userLoading) {
@@ -150,7 +139,7 @@ const ChatPage: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen">
+    <div className="flex h-screen overflow-hidden">
       <MemoizedSidebar
         collapsed={sidebarCollapsed}
         onToggleCollapse={handleToggleSidebar}
@@ -162,7 +151,7 @@ const ChatPage: React.FC = () => {
         refreshTrigger={refreshConversations}
       />
       
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 flex flex-col overflow-hidden">
         <MemoizedChatInterface
           selectedConversationId={selectedConversationId}
           onConversationCreated={handleConversationCreated}
