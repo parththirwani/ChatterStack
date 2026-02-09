@@ -43,9 +43,8 @@ interface AppState {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   
-  // Selected model
-  selectedModel: string;
-  setSelectedModel: (model: string) => void;
+  // ❌ REMOVED: selectedModel (now managed by ModelSelectionContext)
+  // We don't need it here because MessageInput uses ModelSelectionContext
   
   // Actions
   initializeUser: () => Promise<void>;
@@ -76,7 +75,7 @@ export const useAppStore = create<AppState>()(
       currentConversationId: undefined,
       chatState: {},
       sidebarCollapsed: false,
-      selectedModel: 'deepseek/deepseek-chat-v3.1',
+      // ❌ REMOVED: selectedModel: 'deepseek/deepseek-chat-v3.1',
       
       // User actions
       setUser: (user) => set({ user }),
@@ -127,7 +126,7 @@ export const useAppStore = create<AppState>()(
       
       // UI actions
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
-      setSelectedModel: (selectedModel) => set({ selectedModel }),
+      // ❌ REMOVED: setSelectedModel
       
       // Async actions
       initializeUser: async () => {
@@ -248,9 +247,9 @@ export const useAppStore = create<AppState>()(
       name: 'chatterstack-storage',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        // Only persist UI preferences and selected model
+        // Only persist UI preferences
+        // ❌ REMOVED: selectedModel (handled by ModelSelectionContext with its own persistence)
         sidebarCollapsed: state.sidebarCollapsed,
-        selectedModel: state.selectedModel,
       }),
     }
   )
@@ -263,7 +262,7 @@ export const useConversations = () => useAppStore((state) => state.conversations
 export const useConversationsLoading = () => useAppStore((state) => state.conversationsLoading);
 export const useCurrentConversationId = () => useAppStore((state) => state.currentConversationId);
 export const useSidebarCollapsed = () => useAppStore((state) => state.sidebarCollapsed);
-export const useSelectedModel = () => useAppStore((state) => state.selectedModel);
+// ❌ REMOVED: useSelectedModel (use useModelSelection from context instead)
 
 // Get chat state for specific conversation
 export const useChatState = (conversationId: string) =>

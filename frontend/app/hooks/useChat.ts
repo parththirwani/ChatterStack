@@ -1,6 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
 import { useAppStore } from '../store/useAppStore';
+import { useModelSelection } from '../context/ModelSelectionContext'; // ✅ ADD THIS
 import type { Message } from '../types';
 
 interface CouncilProgress {
@@ -18,7 +19,9 @@ const DEFAULT_CHAT_STATE = {
 
 export const useChatOptimized = () => {
   const currentConversationId = useAppStore((state) => state.currentConversationId);
-  const selectedModel = useAppStore((state) => state.selectedModel);
+  
+  // ✅ FIX: Get selectedModel from ModelSelectionContext instead of Zustand
+  const { selectedModel } = useModelSelection();
   
   // Use a stable selector with useCallback to prevent infinite loops
   const chatState = useAppStore(
@@ -52,7 +55,9 @@ export const useChatOptimized = () => {
       // Get current state from store
       const store = useAppStore.getState();
       const conversationKey = store.currentConversationId || 'new';
-      const isCouncilMode = store.selectedModel === 'council';
+      
+      // ✅ FIX: Use selectedModel from context (via closure)
+      const isCouncilMode = selectedModel === 'council';
       const currentChatState = store.chatState[conversationKey] || DEFAULT_CHAT_STATE;
 
       const userMessage: Message = {
@@ -73,7 +78,7 @@ export const useChatOptimized = () => {
       const aiMessage: Message = {
         role: 'assistant',
         content: '',
-        modelId: store.selectedModel,
+        modelId: selectedModel, // ✅ FIX: Use selectedModel from context
         createdAt: new Date().toISOString(),
       };
 
@@ -112,7 +117,6 @@ export const useChatOptimized = () => {
             },
             (chunk: string) => {
               fullResponse += chunk;
-              // Get fresh state for each chunk
               const freshState = useAppStore.getState();
               const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
               const currentMessages = freshChatState.messages;
@@ -125,7 +129,6 @@ export const useChatOptimized = () => {
               freshState.setChatState(conversationKey, { messages: updatedMessages });
             },
             (progress: CouncilProgress) => {
-              // Get fresh state for progress updates
               const freshState = useAppStore.getState();
               const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
               
@@ -148,7 +151,6 @@ export const useChatOptimized = () => {
               }
             },
             () => {
-              // Get fresh state when done
               const freshState = useAppStore.getState();
               const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
               const currentMessages = freshChatState.messages;
@@ -163,15 +165,15 @@ export const useChatOptimized = () => {
             handleNewConversation
           );
         } else {
+          // ✅ FIX: Pass selectedModel from context
           await ApiService.sendMessage(
             {
               message,
               conversationId: store.currentConversationId,
-              selectedModel: store.selectedModel,
+              selectedModel: selectedModel, // ✅ THIS WAS THE BUG - it was using store.selectedModel
             },
             (chunk: string) => {
               fullResponse += chunk;
-              // Get fresh state for each chunk
               const freshState = useAppStore.getState();
               const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
               const currentMessages = freshChatState.messages;
@@ -184,14 +186,13 @@ export const useChatOptimized = () => {
               freshState.setChatState(conversationKey, { messages: updatedMessages });
             },
             () => {
-              // Get fresh state when done
               const freshState = useAppStore.getState();
               const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
               const currentMessages = freshChatState.messages;
               
               const updatedMessages = currentMessages.map((msg, idx) =>
                 idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse, id: `${store.selectedModel}-${Date.now()}` }
+                  ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
                   : msg
               );
               freshState.setChatState(conversationKey, { messages: updatedMessages });
@@ -218,7 +219,7 @@ export const useChatOptimized = () => {
         isSendingRef.current = false;
       }
     },
-    [] // No dependencies - we use getState() to get fresh values
+    [selectedModel] // ✅ ADD selectedModel as dependency
   );
 
   const startNewConversation = useCallback(() => {
