@@ -3,9 +3,9 @@ import { createCompletion } from "../openrouter";
 import {
   COUNCIL_MODELS,
   CHAIRMAN_MODEL,
-  Stage1Result,
-  Stage2Result,
-  AggregateRanking,
+  type Stage1Result,
+  type Stage2Result,
+  type AggregateRanking,
 } from "../config/council";
 
 /**
@@ -17,7 +17,7 @@ export async function stage1_collect_responses(
 ): Promise<Stage1Result[]> {
   console.log("=== Stage 1: Collecting Council Responses ===");
 
-  const promises = COUNCIL_MODELS.map(async (model, index) => {
+  const promises = COUNCIL_MODELS.map(async (model) => {
     try {
       if (onProgress) {
         onProgress("stage1", model, 0);
@@ -37,7 +37,7 @@ export async function stage1_collect_responses(
       }
 
       console.log(`Stage 1: ${model} completed`);
-      return { model, response };
+      return { model, response } as Stage1Result;
     } catch (error) {
       console.error(`Stage 1: ${model} failed:`, error);
       return null;
@@ -71,16 +71,20 @@ function parse_ranking_from_text(text: string): string[] {
   // Extract ordered responses like "1. Response C"
   const orderedMatches = rankingSection.matchAll(/\d+\.\s*Response\s+([A-Z])/gi);
   for (const match of orderedMatches) {
-    ranking.push(`Response ${match[1].toUpperCase()}`);
+    if (match[1]) {
+      ranking.push(`Response ${match[1].toUpperCase()}`);
+    }
   }
 
   // Fallback: just find all "Response X" mentions in order
   if (ranking.length === 0) {
     const fallbackMatches = rankingSection.matchAll(/Response\s+([A-Z])/gi);
     for (const match of fallbackMatches) {
-      const label = `Response ${match[1].toUpperCase()}`;
-      if (!ranking.includes(label)) {
-        ranking.push(label);
+      if (match[1]) {
+        const label = `Response ${match[1].toUpperCase()}`;
+        if (!ranking.includes(label)) {
+          ranking.push(label);
+        }
       }
     }
   }
@@ -171,7 +175,7 @@ FINAL RANKING:`;
         model,
         rankingText,
         parsedRanking,
-      };
+      } as Stage2Result;
     } catch (error) {
       console.error(`Stage 2: ${model} failed:`, error);
       return null;
@@ -202,7 +206,10 @@ function calculate_aggregate_rankings(
         if (!modelRanks.has(model)) {
           modelRanks.set(model, []);
         }
-        modelRanks.get(model)!.push(position + 1); // position is 0-indexed, rank is 1-indexed
+        const ranks = modelRanks.get(model);
+        if (ranks) {
+          ranks.push(position + 1); // position is 0-indexed, rank is 1-indexed
+        }
       }
     });
   });

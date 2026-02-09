@@ -5,6 +5,8 @@ import { createCompletion } from "../../openrouter";
 import { prisma } from "../../lib/prisma";
 import { authenticate } from "../../middleware/authentication";
 import crypto from "crypto";
+import { runCouncilProcess } from "../../services/coucilService";
+import { CHAIRMAN_MODEL } from "../../config/council";
 
 const router = Router();
 
@@ -93,21 +95,52 @@ router.post("/", authenticate, async (req, res) => {
 
     res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
 
-    // Get AI response from single selected model
     let fullContent = "";
-    try {
-      fullContent = await createCompletion(
-        messagesForAI,
-        selectedModel,
-        (chunk: string) => {
-          res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
-        }
-      );
-      res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
-      console.log(`AI response complete for ${selectedModel}`);
-    } catch (error) {
-      console.error(`Error with model ${selectedModel}:`, error);
-      res.write(`data: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
+    const modelIdForDb = selectedModel === 'council' ? `council:${CHAIRMAN_MODEL}` : selectedModel;
+
+    // Check if council mode
+    if (selectedModel === 'council') {
+      console.log('=== Using Council Mode ===');
+      
+      try {
+        fullContent = await runCouncilProcess(
+          data.message,
+          (stage: string, model: string, progress: number) => {
+            // Send progress updates
+            res.write(`data: ${JSON.stringify({ 
+              status: "progress", 
+              stage, 
+              model, 
+              progress 
+            })}\n\n`);
+          },
+          (chunk: string) => {
+            // Send response chunks
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          }
+        );
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        console.log('Council process complete');
+      } catch (error) {
+        console.error('Council process error:', error);
+        res.write(`data: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
+      }
+    } else {
+      // Regular single model response
+      try {
+        fullContent = await createCompletion(
+          messagesForAI,
+          selectedModel,
+          (chunk: string) => {
+            res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
+          }
+        );
+        res.write(`data: ${JSON.stringify({ done: true })}\n\n`);
+        console.log(`AI response complete for ${selectedModel}`);
+      } catch (error) {
+        console.error(`Error with model ${selectedModel}:`, error);
+        res.write(`data: ${JSON.stringify({ error: (error as Error).message })}\n\n`);
+      }
     }
 
     // Add AI response to Redis cache
@@ -115,7 +148,7 @@ router.post("/", authenticate, async (req, res) => {
       await store.add(conversationId, {
         role: Role.Assistant,
         content: fullContent,
-        modelId: selectedModel,
+        modelId: modelIdForDb,
       });
     }
 
@@ -133,7 +166,7 @@ router.post("/", authenticate, async (req, res) => {
                 {
                   content: fullContent || "Error generating response",
                   role: Role.Assistant,
-                  modelId: selectedModel,
+                  modelId: modelIdForDb,
                 },
               ],
             },
@@ -160,7 +193,7 @@ router.post("/", authenticate, async (req, res) => {
               conversationId,
               content: fullContent || "Error generating response",
               role: Role.Assistant,
-              modelId: selectedModel,
+              modelId: modelIdForDb,
             },
           ],
         });

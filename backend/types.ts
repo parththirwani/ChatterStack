@@ -1,4 +1,3 @@
-// backend/types.ts
 import { z } from "zod";
 
 const MAX_INPUT_TOKENS = 1000;
@@ -7,7 +6,8 @@ export const SUPPORTED_MODELS = [
   "google/gemini-2.5-flash",
   "openai/gpt-4o",
   "anthropic/claude-sonnet-4.5",
-  "x-ai/grok-2-1212"
+  "x-ai/grok-2-1212",
+  "council", // Add council as a supported model
 ] as const;
 
 export type MODEL = typeof SUPPORTED_MODELS[number];

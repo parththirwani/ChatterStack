@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useRef, useState, useEffect } from 'react';
-import { Send, Loader2, ChevronDown } from 'lucide-react';
+import { Send, Loader2, ChevronDown, Crown } from 'lucide-react';
 import Image from 'next/image';
 import { useModelSelection, AVAILABLE_MODELS } from '@/app/context/ModelSelectionContext';
 
@@ -91,6 +91,9 @@ const MessageInput: React.FC<MessageInputProps> = ({
             <span className="text-gray-300 max-w-[80px] truncate">
               {currentModel?.name || 'Model'}
             </span>
+            {currentModel?.isPro && (
+              <Crown className="w-3 h-3 text-yellow-500" />
+            )}
             <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform ${isModelSelectorOpen ? 'rotate-180' : ''}`} />
           </button>
 
@@ -121,8 +124,16 @@ const MessageInput: React.FC<MessageInputProps> = ({
                         />
                       </div>
                       <div className="flex-1 text-left">
-                        <div className={`text-sm font-medium ${isSelected ? 'text-yellow-400' : 'text-white'}`}>
-                          {model.name}
+                        <div className="flex items-center gap-2">
+                          <div className={`text-sm font-medium ${isSelected ? 'text-yellow-400' : 'text-white'}`}>
+                            {model.name}
+                          </div>
+                          {model.isPro && (
+                            <div className="flex items-center gap-1 px-1.5 py-0.5 bg-yellow-500/20 border border-yellow-500/30 rounded text-xs text-yellow-400">
+                              <Crown className="w-3 h-3" />
+                              <span>Pro</span>
+                            </div>
+                          )}
                         </div>
                         <div className="text-xs text-gray-400 mt-0.5">
                           {model.description}

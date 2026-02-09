@@ -8,6 +8,7 @@ import { ChatInterfaceProps, Message } from '@/app/types';
 import { useChat } from '@/app/hooks/useChat';
 import AIMessage from './AIMessage';
 import UserMessage from './UserMessage';
+import CouncilProgressIndicator from '../Council/ProgressIndicator';
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedConversationId,
@@ -19,6 +20,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     messages,
     loading,
     error,
+    councilProgress,
     sendMessage,
     startNewConversation,
     loadConversation,
@@ -172,6 +174,14 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   );
                 }
               })}
+
+              {/* Show council progress indicator when in council mode */}
+              {loading && councilProgress.length > 0 && (
+                <CouncilProgressIndicator
+                  progress={councilProgress}
+                  isActive={loading}
+                />
+              )}
               
               {/* Scroll anchor */}
               <div ref={messagesEndRef} />

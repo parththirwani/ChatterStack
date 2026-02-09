@@ -1,4 +1,3 @@
-// backend/routes/conversations.ts
 import { Router } from "express";
 import { prisma } from "../../lib/prisma";
 import { authenticate } from "../../middleware/authentication";

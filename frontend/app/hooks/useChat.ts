@@ -3,11 +3,22 @@ import { ApiService } from '../services/api';
 import type { Message, ChatState } from '../types';
 import { useModelSelection } from '../context/ModelSelectionContext';
 
+interface CouncilProgress {
+  stage: string;
+  model: string;
+  progress: number;
+}
+
+interface ExtendedChatState extends ChatState {
+  councilProgress?: CouncilProgress[];
+}
+
 export const useChat = () => {
   const { selectedModel } = useModelSelection();
-  const [state, setState] = useState<ChatState>({
+  const [state, setState] = useState<ExtendedChatState>({
     messages: [],
     loading: false,
+    councilProgress: [],
   });
 
   // Use ref to track if we're currently sending to prevent duplicate sends
@@ -37,6 +48,7 @@ export const useChat = () => {
 
       // Get current conversation ID from state at time of send
       const conversationId = state.currentConversationId;
+      const isCouncilMode = selectedModel === 'council';
 
       const userMessage: Message = {
         role: 'user',
@@ -50,6 +62,7 @@ export const useChat = () => {
         messages: [...prev.messages, userMessage],
         loading: true,
         error: undefined,
+        councilProgress: isCouncilMode ? [] : prev.councilProgress,
       }));
 
       // Create placeholder AI message
@@ -68,48 +81,113 @@ export const useChat = () => {
       let fullResponse = '';
 
       try {
-        await ApiService.sendMessage(
-          {
-            message,
-            conversationId,
-            selectedModel,
-          },
-          (chunk: string) => {
-            fullResponse += chunk;
-            // Use functional update to ensure we're working with latest state
-            setState((prev) => ({
-              ...prev,
-              messages: prev.messages.map((msg, idx) =>
-                idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse }
-                  : msg
-              ),
-            }));
-          },
-          () => {
-            setState((prev) => ({
-              ...prev,
-              messages: prev.messages.map((msg, idx) =>
-                idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
-                  : msg
-              ),
-            }));
-          },
-          (newConversationId: string) => {
-            // Only call onConversationCreated if this is a new conversation
-            if (!conversationId && newConversationId) {
-              console.log('New conversation ID received:', newConversationId);
+        if (isCouncilMode) {
+          // Use council endpoint
+          await ApiService.sendCouncilMessage(
+            {
+              message,
+              conversationId,
+            },
+            (chunk: string) => {
+              fullResponse += chunk;
               setState((prev) => ({
                 ...prev,
-                currentConversationId: newConversationId,
+                messages: prev.messages.map((msg, idx) =>
+                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
+                    ? { ...msg, content: fullResponse }
+                    : msg
+                ),
               }));
-              if (onConversationCreated) {
-                onConversationCreated(newConversationId);
+            },
+            (progress: CouncilProgress) => {
+              setState((prev) => {
+                const existing = prev.councilProgress?.find(
+                  p => p.stage === progress.stage && p.model === progress.model
+                );
+                
+                if (existing) {
+                  return {
+                    ...prev,
+                    councilProgress: prev.councilProgress?.map(p =>
+                      p.stage === progress.stage && p.model === progress.model
+                        ? progress
+                        : p
+                    ),
+                  };
+                } else {
+                  return {
+                    ...prev,
+                    councilProgress: [...(prev.councilProgress || []), progress],
+                  };
+                }
+              });
+            },
+            () => {
+              setState((prev) => ({
+                ...prev,
+                messages: prev.messages.map((msg, idx) =>
+                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
+                    ? { ...msg, content: fullResponse, id: `council-${Date.now()}` }
+                    : msg
+                ),
+              }));
+            },
+            (newConversationId: string) => {
+              if (!conversationId && newConversationId) {
+                console.log('New conversation ID received:', newConversationId);
+                setState((prev) => ({
+                  ...prev,
+                  currentConversationId: newConversationId,
+                }));
+                if (onConversationCreated) {
+                  onConversationCreated(newConversationId);
+                }
               }
             }
-          }
-        );
+          );
+        } else {
+          // Use regular chat endpoint
+          await ApiService.sendMessage(
+            {
+              message,
+              conversationId,
+              selectedModel,
+            },
+            (chunk: string) => {
+              fullResponse += chunk;
+              setState((prev) => ({
+                ...prev,
+                messages: prev.messages.map((msg, idx) =>
+                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
+                    ? { ...msg, content: fullResponse }
+                    : msg
+                ),
+              }));
+            },
+            () => {
+              setState((prev) => ({
+                ...prev,
+                messages: prev.messages.map((msg, idx) =>
+                  idx === prev.messages.length - 1 && msg.role === 'assistant' && !msg.id
+                    ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
+                    : msg
+                ),
+              }));
+            },
+            (newConversationId: string) => {
+              if (!conversationId && newConversationId) {
+                console.log('New conversation ID received:', newConversationId);
+                setState((prev) => ({
+                  ...prev,
+                  currentConversationId: newConversationId,
+                }));
+                if (onConversationCreated) {
+                  onConversationCreated(newConversationId);
+                }
+              }
+            }
+          );
+        }
 
       } catch (error) {
         console.error('Error sending message:', error);
@@ -122,6 +200,7 @@ export const useChat = () => {
         setState((prev) => ({
           ...prev,
           loading: false,
+          councilProgress: [],
         }));
         isSendingRef.current = false;
       }
@@ -153,6 +232,7 @@ export const useChat = () => {
           messages,
           currentConversationId: conversationId,
           loading: false,
+          councilProgress: [],
         });
       } else {
         throw new Error('Conversation not found');
@@ -175,6 +255,7 @@ export const useChat = () => {
       currentConversationId: undefined,
       loading: false,
       error: undefined,
+      councilProgress: [],
     });
     isSendingRef.current = false;
   }, []);
@@ -187,6 +268,7 @@ export const useChat = () => {
     messages: state.messages,
     loading: state.loading,
     error: state.error,
+    councilProgress: state.councilProgress || [],
     currentConversationId,
     sendMessage,
     loadConversation,

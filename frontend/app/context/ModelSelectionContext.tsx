@@ -1,7 +1,17 @@
 "use client"
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
-export const AVAILABLE_MODELS = [
+// Define the model type with optional isPro
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  logo: string;
+  company: string;
+  isPro?: boolean;
+}
+
+export const AVAILABLE_MODELS: readonly ModelInfo[] = [
   {
     id: 'deepseek/deepseek-chat-v3.1',
     name: 'DeepSeek',
@@ -30,6 +40,14 @@ export const AVAILABLE_MODELS = [
     logo: '/claude.svg',
     company: 'Anthropic',
   },
+  {
+    id: 'council',
+    name: 'AI Council',
+    description: '4 expert models working together',
+    logo: '/logo.png',
+    company: 'ChatterStack',
+    isPro: true,
+  },
 ] as const;
 
 export type ModelId = typeof AVAILABLE_MODELS[number]['id'];
@@ -37,7 +55,7 @@ export type ModelId = typeof AVAILABLE_MODELS[number]['id'];
 interface ModelSelectionContextType {
   selectedModel: ModelId;
   setSelectedModel: (modelId: ModelId) => void;
-  getModelInfo: (modelId: ModelId) => typeof AVAILABLE_MODELS[number] | undefined;
+  getModelInfo: (modelId: ModelId) => ModelInfo | undefined;
 }
 
 const ModelSelectionContext = createContext<ModelSelectionContextType | undefined>(undefined);
