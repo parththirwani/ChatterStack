@@ -2,6 +2,17 @@ import { ChatRequest, Conversation, User } from "../types";
 
 export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
 
+interface CouncilChatRequest {
+  message: string;
+  conversationId?: string;
+}
+
+interface CouncilProgress {
+  stage: string;
+  model: string;
+  progress: number;
+}
+
 export class ApiService {
   private static baseUrl = BACKEND_URL;
 
@@ -193,6 +204,102 @@ export class ApiService {
     }
   }
 
+  static async sendCouncilMessage(
+  request: CouncilChatRequest,
+  onChunk?: (chunk: string) => void,
+  onProgress?: (progress: CouncilProgress) => void,
+  onDone?: () => void,
+  onConversationId?: (id: string) => void
+): Promise<{ conversationId?: string }> {
+  try {
+    console.log('=== Sending Council Message ===');
+    console.log('Request:', request);
+
+    const response = await fetch(`${this.baseUrl}/ai/council`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        ...this.getAuthHeaders(),
+        Accept: 'text/event-stream',
+      },
+      body: JSON.stringify(request),
+    });
+
+    console.log('Council chat response status:', response.status);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Council API error:', response.status, errorText);
+      throw new Error(`Council API error: ${response.status} - ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+    let conversationId: string | undefined;
+
+    if (reader) {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          console.log('Council stream completed');
+          break;
+        }
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              console.log('Council stream finished');
+              if (onDone) onDone();
+              return { conversationId };
+            }
+
+            try {
+              const parsed = JSON.parse(data);
+              console.log('Parsed Council SSE data:', parsed);
+
+              if (parsed.status === 'starting' || parsed.status === 'initialization') {
+                continue;
+              }
+              if (parsed.status === 'progress' && onProgress) {
+                onProgress({
+                  stage: parsed.stage,
+                  model: parsed.model,
+                  progress: parsed.progress,
+                });
+              }
+              if (parsed.error) {
+                throw new Error(parsed.error);
+              }
+              if (parsed.conversationId && onConversationId) {
+                conversationId = parsed.conversationId;
+                onConversationId(parsed.conversationId);
+              }
+              if (parsed.chunk && onChunk) {
+                onChunk(parsed.chunk);
+              }
+              if (parsed.done && onDone) {
+                onDone();
+              }
+            } catch (e) {
+              console.log('Invalid JSON in Council SSE:', data);
+            }
+          }
+        }
+      }
+    }
+
+    return { conversationId };
+  } catch (error) {
+    console.error('Send council message failed:', error);
+    throw error;
+  }
+}
+
+
   static async getConversations(): Promise<Conversation[]> {
     try {
       console.log('Fetching conversations...');
@@ -231,3 +338,6 @@ export class ApiService {
     }
   }
 }
+
+
+
