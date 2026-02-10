@@ -10,7 +10,7 @@ const ChatPage: React.FC = () => {
   const pathname = usePathname();
   const router = useRouter();
   
-  // Zustand selectors - only subscribe to what we need
+  // Zustand selectors
   const user = useAppStore((state) => state.user);
   const userLoading = useAppStore((state) => state.userLoading);
   const currentConversationId = useAppStore((state) => state.currentConversationId);
@@ -25,12 +25,14 @@ const ChatPage: React.FC = () => {
 
   // Initialize user on mount - ONLY ONCE
   useEffect(() => {
+    console.log('[ChatPage] Initializing user');
     initializeUser();
   }, [initializeUser]);
 
   // Load conversations when user is authenticated
   useEffect(() => {
     if (user && user.id && user.id !== 'guest') {
+      console.log('[ChatPage] Loading conversations for authenticated user');
       loadConversations();
     }
   }, [user, loadConversations]);
@@ -46,7 +48,7 @@ const ChatPage: React.FC = () => {
 
     // Only update if different to prevent loops
     if (urlConversationId !== currentConversationId) {
-      console.log('URL changed, updating conversation ID:', urlConversationId);
+      console.log('[ChatPage] URL changed, updating conversation ID:', urlConversationId);
       setCurrentConversationId(urlConversationId);
     }
   }, [pathname, currentConversationId, setCurrentConversationId]);
@@ -57,7 +59,7 @@ const ChatPage: React.FC = () => {
 
   const handleUserChange = useCallback((newUser: any | null) => {
     if (!newUser) {
-      // User logged out
+      console.log('[ChatPage] User logged out, resetting state');
       reset();
       if (pathname !== '/') {
         router.push('/');
@@ -66,12 +68,10 @@ const ChatPage: React.FC = () => {
   }, [pathname, router, reset]);
 
   const handleConversationSelect = useCallback((conversationId: string) => {
-    console.log('Conversation selected:', conversationId);
+    console.log('[ChatPage] Conversation selected:', conversationId);
     
-    // Update state WITHOUT navigation
     setCurrentConversationId(conversationId);
     
-    // Update URL without triggering navigation
     const newUrl = `/${conversationId}`;
     if (pathname !== newUrl) {
       window.history.pushState({}, '', newUrl);
@@ -79,27 +79,21 @@ const ChatPage: React.FC = () => {
   }, [pathname, setCurrentConversationId]);
 
   const handleNewChat = useCallback(() => {
-    console.log('New chat requested');
+    console.log('[ChatPage] New chat requested');
     
-    // Clear conversation WITHOUT navigation
     setCurrentConversationId(undefined);
     
-    // Update URL without triggering navigation
     if (pathname !== '/') {
       window.history.pushState({}, '', '/');
     }
   }, [pathname, setCurrentConversationId]);
 
   const handleConversationCreated = useCallback((conversationId: string) => {
-    console.log('New conversation created:', conversationId);
+    console.log('[ChatPage] New conversation created:', conversationId);
     
-    // Update state WITHOUT navigation
     setCurrentConversationId(conversationId);
-    
-    // Reload conversations to get the new one
     loadConversations(true);
     
-    // Update URL without triggering navigation
     const newUrl = `/${conversationId}`;
     if (pathname !== newUrl) {
       window.history.replaceState({}, '', newUrl);
@@ -109,8 +103,7 @@ const ChatPage: React.FC = () => {
   // Handle browser back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
-      console.log('Browser navigation detected');
-      // pathname effect will handle the update
+      console.log('[ChatPage] Browser navigation detected');
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -148,12 +141,11 @@ const ChatPage: React.FC = () => {
   );
 };
 
-// Memoize ChatInterface to prevent unnecessary re-renders
+// Memoized components
 const MemoizedChatInterface = memo(ChatInterface, (prev, next) => {
   return prev.selectedConversationId === next.selectedConversationId;
 });
 
-// Memoize Sidebar to prevent unnecessary re-renders
 const MemoizedSidebar = memo(Sidebar, (prev, next) => {
   return (
     prev.collapsed === next.collapsed &&

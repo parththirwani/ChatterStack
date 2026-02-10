@@ -14,12 +14,12 @@ router.get("/", authenticate, async (req, res) => {
       where: { userId },
       include: { 
         messages: { 
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "asc" }, // Ensure chronological order
           select: {
             id: true,
             content: true,
             role: true,
-            modelId: true, // Changed from model to modelId
+            modelId: true,
             createdAt: true,
           }
         } 
@@ -73,12 +73,12 @@ router.get("/:conversationId", authenticate, async (req, res) => {
       },
       include: { 
         messages: { 
-          orderBy: { createdAt: "asc" },
+          orderBy: { createdAt: "asc" }, // CRITICAL: Chronological order
           select: {
             id: true,
             content: true,
             role: true,
-            modelId: true, // Changed from model to modelId
+            modelId: true,
             createdAt: true,
           }
         }
@@ -92,6 +92,7 @@ router.get("/:conversationId", authenticate, async (req, res) => {
 
     console.log(`Found conversation with ${conversation.messages.length} messages`);
 
+    // Generate title if missing
     let title = conversation.title;
     if (!title) {
       try {
@@ -128,12 +129,14 @@ router.delete("/:conversationId", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Conversation ID is required" });
     }
 
+    // Verify ownership before deletion
     const conversation = await prisma.conversation.findUnique({
       where: { 
         id: conversationId,
         userId 
       },
-      include: {
+      select: {
+        id: true,
         _count: {
           select: { messages: true }
         }
@@ -146,13 +149,14 @@ router.delete("/:conversationId", authenticate, async (req, res) => {
     }
 
     const messageCount = conversation._count.messages;
-    console.log(`Found conversation with ${messageCount} messages to delete`);
+    console.log(`Deleting conversation with ${messageCount} messages`);
 
+    // Delete conversation (cascade will handle messages)
     await prisma.conversation.delete({
       where: { id: conversationId }
     });
 
-    console.log(`Successfully deleted conversation ${conversationId} and ${messageCount} messages`);
+    console.log(`Successfully deleted conversation ${conversationId}`);
 
     res.json({ 
       success: true, 

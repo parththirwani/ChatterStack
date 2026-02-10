@@ -35,7 +35,7 @@ interface AppState {
   removeConversation: (id: string) => void;
   
   // Chat state
-  chatState: Record<string, ChatState>; // Key is conversationId or 'new'
+  chatState: Record<string, ChatState>;
   setChatState: (conversationId: string, state: Partial<ChatState>) => void;
   clearChatState: (conversationId: string) => void;
   
@@ -43,17 +43,12 @@ interface AppState {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
   
-  // ❌ REMOVED: selectedModel (now managed by ModelSelectionContext)
-  // We don't need it here because MessageInput uses ModelSelectionContext
-  
   // Actions
   initializeUser: () => Promise<void>;
   loadConversations: (force?: boolean) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
   deleteConversation: (conversationId: string) => Promise<void>;
   logout: () => Promise<void>;
-  
-  // Reset states
   reset: () => void;
 }
 
@@ -62,6 +57,15 @@ const initialChatState: ChatState = {
   loading: false,
   error: undefined,
   councilProgress: [],
+};
+
+// Helper function to ensure messages are in chronological order
+const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
+  return [...messages].sort((a, b) => {
+    const timeA = new Date(a.createdAt || 0).getTime();
+    const timeB = new Date(b.createdAt || 0).getTime();
+    return timeA - timeB;
+  });
 };
 
 export const useAppStore = create<AppState>()(
@@ -75,7 +79,6 @@ export const useAppStore = create<AppState>()(
       currentConversationId: undefined,
       chatState: {},
       sidebarCollapsed: false,
-      // ❌ REMOVED: selectedModel: 'deepseek/deepseek-chat-v3.1',
       
       // User actions
       setUser: (user) => set({ user }),
@@ -119,14 +122,12 @@ export const useAppStore = create<AppState>()(
       
       clearChatState: (conversationId) =>
         set((state) => {
-          const newChatState = { ...state.chatState };
-          delete newChatState[conversationId];
-          return { chatState: newChatState };
+          const { [conversationId]: removed, ...rest } = state.chatState;
+          return { chatState: rest };
         }),
       
       // UI actions
       setSidebarCollapsed: (sidebarCollapsed) => set({ sidebarCollapsed }),
-      // ❌ REMOVED: setSelectedModel
       
       // Async actions
       initializeUser: async () => {
@@ -147,12 +148,10 @@ export const useAppStore = create<AppState>()(
       loadConversations: async (force = false) => {
         const { user, conversations, conversationsLoading, setConversations, setConversationsLoading } = get();
         
-        // Don't load if not authenticated or already loading
         if (!user || user.id === 'guest' || (conversationsLoading && !force)) {
           return;
         }
         
-        // Skip if we already have conversations and not forcing reload
         if (conversations.length > 0 && !force) {
           return;
         }
@@ -161,9 +160,9 @@ export const useAppStore = create<AppState>()(
           setConversationsLoading(true);
           const convos = await ApiService.getConversations();
           
+          // Sort conversations by update time (most recent first)
           const sortedConvos = convos.sort(
-            (a, b) =>
-              new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+            (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
           );
           
           setConversations(sortedConvos);
@@ -178,17 +177,26 @@ export const useAppStore = create<AppState>()(
       loadConversation: async (conversationId: string) => {
         const { setChatState, setCurrentConversationId } = get();
         
+        console.log(`[Store] Loading conversation: ${conversationId}`);
+        
         try {
           setChatState(conversationId, { loading: true, error: undefined });
           
           const result = await ApiService.getConversation(conversationId);
           
           if (result?.conversation) {
-            const messages = result.conversation.messages.map((msg) => ({
-              ...msg,
-              role: msg.role as 'user' | 'assistant',
-              modelId: msg.modelId,
-            }));
+            // CRITICAL FIX: Ensure messages are in chronological order
+            const messages = sortMessagesByCreatedAt(
+              result.conversation.messages.map((msg) => ({
+                ...msg,
+                role: msg.role as 'user' | 'assistant',
+                modelId: msg.modelId,
+              }))
+            );
+            
+            console.log(`[Store] Loaded ${messages.length} messages in chronological order`);
+            console.log(`[Store] First message role: ${messages[0]?.role}`);
+            console.log(`[Store] Last message role: ${messages[messages.length - 1]?.role}`);
             
             setChatState(conversationId, {
               messages,
@@ -247,22 +255,19 @@ export const useAppStore = create<AppState>()(
       name: 'chatterstack-storage',
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        // Only persist UI preferences
-        // ❌ REMOVED: selectedModel (handled by ModelSelectionContext with its own persistence)
         sidebarCollapsed: state.sidebarCollapsed,
       }),
     }
   )
 );
 
-// Selectors for better performance
+// Optimized selectors
 export const useUser = () => useAppStore((state) => state.user);
 export const useUserLoading = () => useAppStore((state) => state.userLoading);
 export const useConversations = () => useAppStore((state) => state.conversations);
 export const useConversationsLoading = () => useAppStore((state) => state.conversationsLoading);
 export const useCurrentConversationId = () => useAppStore((state) => state.currentConversationId);
 export const useSidebarCollapsed = () => useAppStore((state) => state.sidebarCollapsed);
-// ❌ REMOVED: useSelectedModel (use useModelSelection from context instead)
 
 // Get chat state for specific conversation
 export const useChatState = (conversationId: string) =>

@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
 import { useAppStore } from '../store/useAppStore';
-import { useModelSelection } from '../context/ModelSelectionContext'; // ✅ ADD THIS
+import { useModelSelection } from '../context/ModelSelectionContext';
 import type { Message } from '../types';
 
 interface CouncilProgress {
@@ -10,7 +10,6 @@ interface CouncilProgress {
   progress: number;
 }
 
-// Define default state outside component to maintain reference stability
 const DEFAULT_CHAT_STATE = {
   messages: [],
   loading: false,
@@ -19,11 +18,8 @@ const DEFAULT_CHAT_STATE = {
 
 export const useChatOptimized = () => {
   const currentConversationId = useAppStore((state) => state.currentConversationId);
-  
-  // ✅ FIX: Get selectedModel from ModelSelectionContext instead of Zustand
   const { selectedModel } = useModelSelection();
   
-  // Use a stable selector with useCallback to prevent infinite loops
   const chatState = useAppStore(
     useCallback(
       (state) => {
@@ -47,19 +43,18 @@ export const useChatOptimized = () => {
       onConversationCreated?: (conversationId: string) => void
     ) => {
       if (!message.trim() || isSendingRef.current) {
+        console.warn('[useChat] Message send blocked - empty message or already sending');
         return;
       }
 
       isSendingRef.current = true;
 
-      // Get current state from store
       const store = useAppStore.getState();
       const conversationKey = store.currentConversationId || 'new';
-      
-      // ✅ FIX: Use selectedModel from context (via closure)
       const isCouncilMode = selectedModel === 'council';
       const currentChatState = store.chatState[conversationKey] || DEFAULT_CHAT_STATE;
 
+      // Create user message
       const userMessage: Message = {
         role: 'user',
         content: message,
@@ -78,11 +73,10 @@ export const useChatOptimized = () => {
       const aiMessage: Message = {
         role: 'assistant',
         content: '',
-        modelId: selectedModel, // ✅ FIX: Use selectedModel from context
+        modelId: selectedModel,
         createdAt: new Date().toISOString(),
       };
 
-      // Get fresh state after adding user message and add AI placeholder
       setTimeout(() => {
         const freshStore = useAppStore.getState();
         const freshChatState = freshStore.chatState[conversationKey] || DEFAULT_CHAT_STATE;
@@ -97,16 +91,45 @@ export const useChatOptimized = () => {
         const handleNewConversation = (id: string) => {
           const currentState = useAppStore.getState();
           if (!currentState.currentConversationId && id) {
-            console.log('New conversation created:', id);
+            console.log('[useChat] New conversation created:', id);
             currentState.setCurrentConversationId(id);
-            
-            // Reload conversations list
             currentState.loadConversations(true);
             
             if (onConversationCreated) {
               onConversationCreated(id);
             }
           }
+        };
+
+        const updateMessageContent = (content: string) => {
+          const freshState = useAppStore.getState();
+          const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
+          const currentMessages = freshChatState.messages;
+          
+          const updatedMessages = currentMessages.map((msg, idx) =>
+            idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+              ? { ...msg, content }
+              : msg
+          );
+          freshState.setChatState(conversationKey, { messages: updatedMessages });
+        };
+
+        const finalizeMessage = () => {
+          const freshState = useAppStore.getState();
+          const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
+          const currentMessages = freshChatState.messages;
+          
+          const updatedMessages = currentMessages.map((msg, idx) =>
+            idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+              ? { 
+                  ...msg, 
+                  content: fullResponse, 
+                  id: `${selectedModel}-${Date.now()}`,
+                  createdAt: new Date().toISOString()
+                }
+              : msg
+          );
+          freshState.setChatState(conversationKey, { messages: updatedMessages });
         };
 
         if (isCouncilMode) {
@@ -117,16 +140,7 @@ export const useChatOptimized = () => {
             },
             (chunk: string) => {
               fullResponse += chunk;
-              const freshState = useAppStore.getState();
-              const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
-              const currentMessages = freshChatState.messages;
-              
-              const updatedMessages = currentMessages.map((msg, idx) =>
-                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse }
-                  : msg
-              );
-              freshState.setChatState(conversationKey, { messages: updatedMessages });
+              updateMessageContent(fullResponse);
             },
             (progress: CouncilProgress) => {
               const freshState = useAppStore.getState();
@@ -136,73 +150,37 @@ export const useChatOptimized = () => {
                 p => p.stage === progress.stage && p.model === progress.model
               );
               
-              if (existing) {
-                freshState.setChatState(conversationKey, {
-                  councilProgress: freshChatState.councilProgress?.map(p =>
-                    p.stage === progress.stage && p.model === progress.model
-                      ? progress
-                      : p
-                  ),
-                });
-              } else {
-                freshState.setChatState(conversationKey, {
-                  councilProgress: [...(freshChatState.councilProgress || []), progress],
-                });
-              }
-            },
-            () => {
-              const freshState = useAppStore.getState();
-              const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
-              const currentMessages = freshChatState.messages;
+              const updatedProgress = existing
+                ? freshChatState.councilProgress?.map(p =>
+                    p.stage === progress.stage && p.model === progress.model ? progress : p
+                  )
+                : [...(freshChatState.councilProgress || []), progress];
               
-              const updatedMessages = currentMessages.map((msg, idx) =>
-                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse, id: `council-${Date.now()}` }
-                  : msg
-              );
-              freshState.setChatState(conversationKey, { messages: updatedMessages });
+              freshState.setChatState(conversationKey, {
+                councilProgress: updatedProgress,
+              });
             },
+            finalizeMessage,
             handleNewConversation
           );
         } else {
-          // ✅ FIX: Pass selectedModel from context
           await ApiService.sendMessage(
             {
               message,
               conversationId: store.currentConversationId,
-              selectedModel: selectedModel, // ✅ THIS WAS THE BUG - it was using store.selectedModel
+              selectedModel: selectedModel,
             },
             (chunk: string) => {
               fullResponse += chunk;
-              const freshState = useAppStore.getState();
-              const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
-              const currentMessages = freshChatState.messages;
-              
-              const updatedMessages = currentMessages.map((msg, idx) =>
-                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse }
-                  : msg
-              );
-              freshState.setChatState(conversationKey, { messages: updatedMessages });
+              updateMessageContent(fullResponse);
             },
-            () => {
-              const freshState = useAppStore.getState();
-              const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
-              const currentMessages = freshChatState.messages;
-              
-              const updatedMessages = currentMessages.map((msg, idx) =>
-                idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
-                  ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}` }
-                  : msg
-              );
-              freshState.setChatState(conversationKey, { messages: updatedMessages });
-            },
+            finalizeMessage,
             handleNewConversation
           );
         }
 
       } catch (error) {
-        console.error('Error sending message:', error);
+        console.error('[useChat] Error sending message:', error);
         const finalState = useAppStore.getState();
         const finalChatState = finalState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
         
@@ -219,10 +197,11 @@ export const useChatOptimized = () => {
         isSendingRef.current = false;
       }
     },
-    [selectedModel] // ✅ ADD selectedModel as dependency
+    [selectedModel]
   );
 
   const startNewConversation = useCallback(() => {
+    console.log('[useChat] Starting new conversation');
     const store = useAppStore.getState();
     store.setCurrentConversationId(undefined);
     store.setChatState('new', {
