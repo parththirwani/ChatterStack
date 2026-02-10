@@ -1,0 +1,261 @@
+import { getQdrantClient } from '../../lib/qdrant';
+import { generateEmbedding } from '../embedding/openrouter';
+import { generateSparseVector } from './sparse';
+import { getUserProfile } from '../profile/storage';
+import { rewriteQuery } from './queryTransform';
+import type { RetrievalContext, HybridSearchResult } from './types';
+import type { UserProfile } from 'services/profile/types';
+
+const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
+const TOP_K_DENSE = parseInt(process.env.RAG_TOP_K_DENSE || '10', 10);
+const TOP_K_SPARSE = parseInt(process.env.RAG_TOP_K_SPARSE || '10', 10);
+const TOP_K_FINAL = parseInt(process.env.RAG_TOP_K_FINAL || '5', 10);
+const TIME_WINDOW_DAYS = parseInt(process.env.RAG_TIME_WINDOW_DAYS || '90', 10);
+
+/**
+ * Retrieve relevant context for a user query
+ */
+export async function retrieveContext(params: {
+  userId: string;
+  query: string;
+  currentConversationId?: string;
+  shortTermMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+  timeWindowDays?: number;
+}): Promise<RetrievalContext> {
+  const {
+    userId,
+    query,
+    currentConversationId,
+    shortTermMessages = [],
+    timeWindowDays = TIME_WINDOW_DAYS,
+  } = params;
+
+  try {
+    // 1. Get user profile for query enhancement
+    const profile = await getUserProfile(userId);
+
+    // 2. Rewrite query based on conversation context
+    const rewrittenQuery = await rewriteQuery(query, shortTermMessages, profile);
+    console.log('Rewritten query:', rewrittenQuery);
+
+    // 3. Perform hybrid search
+    const results = await hybridSearch({
+      userId,
+      query: rewrittenQuery,
+      currentConversationId,
+      timeWindowDays,
+      profile,
+    });
+
+    // 4. Format context
+    const chunks = results.slice(0, TOP_K_FINAL).map(r => ({
+      content: r.payload.content,
+      score: r.score,
+      conversationId: r.payload.conversationId,
+      timestamp: r.payload.timestamp,
+      isCode: r.payload.isCode,
+    }));
+
+    return {
+      chunks,
+      shortTermContext: shortTermMessages.slice(-8), // Last 4-8 turns
+    };
+  } catch (error) {
+    console.error('Retrieval error:', error);
+    // Fallback: return only short-term context
+    return {
+      chunks: [],
+      shortTermContext: shortTermMessages.slice(-8),
+    };
+  }
+}
+
+/**
+ * Hybrid search: Dense + Sparse with RRF fusion
+ */
+async function hybridSearch(params: {
+  userId: string;
+  query: string;
+  currentConversationId?: string;
+  timeWindowDays: number;
+  profile: any;
+}): Promise<HybridSearchResult[]> {
+  const { userId, query, currentConversationId, timeWindowDays, profile } = params;
+  
+  const client = getQdrantClient();
+  
+  // Time filter
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - timeWindowDays);
+  
+  // Base filter
+  const baseFilter: any = {
+    must: [
+      { key: 'userId', match: { value: userId } },
+      { key: 'timestamp', range: { gte: cutoffDate.toISOString() } },
+    ],
+  };
+  
+  // Exclude current conversation (optional)
+  if (currentConversationId) {
+    baseFilter.must_not = [
+      { key: 'conversationId', match: { value: currentConversationId } },
+    ];
+  }
+
+  // 1. Dense (semantic) search
+  const queryVector = await generateEmbedding(query);
+  const denseResults = await client.search(COLLECTION_NAME, {
+    vector: queryVector,
+    filter: baseFilter,
+    limit: TOP_K_DENSE,
+    with_payload: true,
+  });
+
+  // 2. Sparse (BM25) search
+  const sparseVector = generateSparseVector(query);
+  const sparseResults = await client.search(COLLECTION_NAME, {
+    vector: {
+      name: 'text',
+      vector: sparseVector,
+    },
+    filter: baseFilter,
+    limit: TOP_K_SPARSE,
+    with_payload: true,
+  });
+
+  // 3. Reciprocal Rank Fusion (RRF)
+  const fused = reciprocalRankFusion(
+    denseResults.map((r, idx) => ({ id: r.id as string, rank: idx + 1, payload: r.payload })),
+    sparseResults.map((r, idx) => ({ id: r.id as string, rank: idx + 1, payload: r.payload }))
+  );
+
+  return fused;
+}
+
+/**
+ * Reciprocal Rank Fusion
+ */
+function reciprocalRankFusion(
+  denseResults: Array<{ id: string; rank: number; payload: any }>,
+  sparseResults: Array<{ id: string; rank: number; payload: any }>,
+  k: number = 60
+): HybridSearchResult[] {
+  const scores = new Map<string, number>();
+  const payloads = new Map<string, any>();
+
+  // Dense scores
+  for (const result of denseResults) {
+    scores.set(result.id, (scores.get(result.id) || 0) + 1 / (k + result.rank));
+    payloads.set(result.id, result.payload);
+  }
+
+  // Sparse scores
+  for (const result of sparseResults) {
+    scores.set(result.id, (scores.get(result.id) || 0) + 1 / (k + result.rank));
+    if (!payloads.has(result.id)) {
+      payloads.set(result.id, result.payload);
+    }
+  }
+
+  // Sort by fused score
+  const fused = Array.from(scores.entries())
+    .map(([id, score]) => ({
+      id,
+      score,
+      payload: payloads.get(id)!,
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  return fused;
+}
+
+/**
+ * Format context for LLM injection
+ */
+export function formatContextForLLM(context: RetrievalContext): string {
+  let formatted = '';
+
+  // Short-term context (recent conversation)
+  if (context.shortTermContext.length > 0) {
+    formatted += '## Recent Conversation\n\n';
+    for (const msg of context.shortTermContext) {
+      formatted += `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.content}\n\n`;
+    }
+  }
+
+  // Long-term context (retrieved from RAG)
+  if (context.chunks.length > 0) {
+    formatted += '## Relevant Context from Past Conversations\n\n';
+    for (const chunk of context.chunks) {
+      const date = new Date(chunk.timestamp).toLocaleDateString();
+      formatted += `[${date}] ${chunk.content}\n\n`;
+    }
+  }
+
+  return formatted;
+}
+
+/**
+ * Enhance query based on user profile
+ */
+function enhanceQueryWithProfile(
+  query: string,
+  profile: UserProfile | null
+): string {
+  if (!profile) return query;
+
+  // Add implicit context based on profile
+  const enhancements: string[] = [];
+
+  // Technical level
+  if (profile.technicalLevel === 'beginner') {
+    enhancements.push('explain simply');
+  } else if (profile.technicalLevel === 'expert') {
+    enhancements.push('advanced technical details');
+  }
+
+  // Explanation style
+  if (profile.explanationStyle === 'code-first') {
+    enhancements.push('focus on code examples');
+  } else if (profile.explanationStyle === 'analogy-heavy') {
+    enhancements.push('use analogies');
+  }
+
+  // Topic boosting (implicit filtering)
+  const topTopics = Object.entries(profile.topicFrequency)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 2)
+    .map(([topic]) => topic);
+
+  if (topTopics.length > 0) {
+    enhancements.push(`context: ${topTopics.join(', ')}`);
+  }
+
+  return enhancements.length > 0
+    ? `${query} [${enhancements.join(', ')}]`
+    : query;
+}
+
+/**
+ * Graceful degradation when Qdrant is unavailable
+ */
+export async function retrieveContextWithFallback(params: {
+  userId: string;
+  query: string;
+  currentConversationId?: string;
+  shortTermMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+}): Promise<RetrievalContext> {
+  try {
+    // Try full RAG retrieval
+    return await retrieveContext(params);
+  } catch (error) {
+    console.error('RAG retrieval failed, using short-term memory only:', error);
+    
+    // Fallback: return only short-term context
+    return {
+      chunks: [],
+      shortTermContext: params.shortTermMessages || [],
+    };
+  }
+}

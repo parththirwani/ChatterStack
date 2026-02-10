@@ -4,17 +4,19 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import aiRouter from "./routes/ai";
 import authRouter from "./routes/auth";
-import { RedisStore } from "store/RedisStore";
-
+import ragRouter from "./routes/rag"; 
+import { RedisStore } from "./store/RedisStore";
+import { initializeQdrantCollection } from "./lib/qdrant"; 
+import { startProfileRefreshWorker } from "./workers/profileRefresh"; 
 
 dotenv.config(); 
 
 const app: express.Application = express();
 
-// CORS configuration - Allow frontend to access backend
+// CORS configuration
 const corsOptions = {
-  origin: process.env.FRONTEND_URL || "http://localhost:3001", // Allow your frontend origin
-  credentials: true, // Allow cookies to be sent
+  origin: process.env.FRONTEND_URL || "http://localhost:3001",
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS','PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'Cookie'],
 };
@@ -29,7 +31,8 @@ app.options('*', cors(corsOptions));
 
 // Routes
 app.use("/ai", aiRouter);
-app.use("/auth", authRouter); 
+app.use("/auth", authRouter);
+app.use("/rag", ragRouter); 
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -42,7 +45,7 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
   res.status(500).json({ error: 'Internal server error' });
 });
 
-// Server initialization with Redis
+// Server initialization
 const PORT = process.env.PORT || 3000;
 
 async function startServer() {
@@ -52,10 +55,21 @@ async function startServer() {
     await store.connect();
     console.log('✓ Redis store initialized');
 
+    // NEW: Initialize Qdrant (if enabled)
+    if (process.env.RAG_ENABLED === 'true') {
+      await initializeQdrantCollection();
+      console.log('✓ Qdrant initialized');
+      
+      // Start background workers
+      startProfileRefreshWorker();
+      console.log('✓ Profile refresh worker started');
+    }
+
     // Start Express server
     app.listen(PORT, () => {
       console.log(`✓ Server running at http://localhost:${PORT}`);
       console.log(`✓ CORS enabled for: ${process.env.FRONTEND_URL || "http://localhost:3001"}`);
+      console.log(`✓ RAG enabled: ${process.env.RAG_ENABLED === 'true'}`);
     });
 
     // Graceful shutdown handlers

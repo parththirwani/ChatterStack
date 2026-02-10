@@ -5,10 +5,17 @@ import { createCompletion } from "../../openrouter";
 import { prisma } from "../../lib/prisma";
 import { authenticate } from "../../middleware/authentication";
 import crypto from "crypto";
-import { runCouncilProcess } from "../../services/coucilService";
+
 import { CHAIRMAN_MODEL } from "../../config/council";
+import { ingestMessage } from "../../services/rag/ingest";
+import { retrieveContextWithFallback, formatContextForLLM } from "../../services/rag/retrieval";
+import { incrementalProfileUpdate } from "../../services/profile/profiler";
+import { runCouncilProcess } from "services/coucilService";
 
 const router = Router();
+
+// NEW: Feature flag for RAG
+const RAG_ENABLED = process.env.RAG_ENABLED === 'true';
 
 router.post("/", authenticate, async (req, res) => {
   try {
@@ -27,8 +34,6 @@ router.post("/", authenticate, async (req, res) => {
 
     const userId = (req as any).user.id;
     const conversationId = data.conversationId ?? crypto.randomUUID();
-
-    // Get selected model from request
     const selectedModel = data.selectedModel;
 
     console.log("Selected model for this request:", selectedModel);
@@ -80,18 +85,50 @@ router.post("/", authenticate, async (req, res) => {
       console.log("Redis cache repopulated");
     }
 
+    // NEW: RAG Context Retrieval
+    let ragContext = '';
+    if (RAG_ENABLED) {
+      try {
+        console.log('Retrieving RAG context...');
+        const context = await retrieveContextWithFallback({
+          userId,
+          query: data.message,
+          currentConversationId: conversationId,
+          shortTermMessages: conversationHistory.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        });
+        
+        ragContext = formatContextForLLM(context);
+        console.log(`RAG context: ${context.chunks.length} chunks retrieved`);
+      } catch (error) {
+        console.error('RAG retrieval failed:', error);
+        // Continue without RAG context
+      }
+    }
+
     // Add new user message
     await store.add(conversationId, {
       role: Role.User,
       content: data.message,
     });
 
+    // NEW: Prepare messages with RAG context
     const messagesForAI = [
       ...conversationHistory,
       { role: Role.User, content: data.message }
     ];
 
-    console.log(`Sending to AI: ${messagesForAI.length} total messages`);
+    // Inject RAG context as system message (if available)
+    if (ragContext) {
+      messagesForAI.unshift({
+        role: Role.Assistant,
+        content: `Context from user's past conversations:\n\n${ragContext}\n\nUse this context to provide more personalized and relevant responses.`
+      });
+    }
+
+    console.log(`Sending to AI: ${messagesForAI.length} total messages (RAG: ${!!ragContext})`);
 
     res.write(`data: ${JSON.stringify({ status: "starting" })}\n\n`);
 
@@ -104,12 +141,10 @@ router.post("/", authenticate, async (req, res) => {
       console.log(`Passing ${conversationHistory.length} messages as context`);
       
       try {
-        // Pass conversation history to council
         fullContent = await runCouncilProcess(
           data.message,
-          conversationHistory, // Pass the history!
+          conversationHistory,
           (stage: string, model: string, progress: number) => {
-            // Send progress updates
             res.write(`data: ${JSON.stringify({ 
               status: "progress", 
               stage, 
@@ -118,7 +153,6 @@ router.post("/", authenticate, async (req, res) => {
             })}\n\n`);
           },
           (chunk: string) => {
-            // Send response chunks
             res.write(`data: ${JSON.stringify({ chunk })}\n\n`);
           }
         );
@@ -149,10 +183,41 @@ router.post("/", authenticate, async (req, res) => {
     // Add AI response to Redis cache
     if (fullContent) {
       await store.add(conversationId, {
-        role: Role.Assistant,
+        role: Role.System,
         content: fullContent,
         modelId: modelIdForDb,
       });
+    }
+
+    // NEW: Async RAG ingestion & profile update
+    if (RAG_ENABLED && fullContent) {
+      const userMessageId = crypto.randomUUID();
+      const aiMessageId = crypto.randomUUID();
+      
+      // Ingest user message
+      ingestMessage({
+        userId,
+        conversationId,
+        messageId: userMessageId,
+        content: data.message,
+        role: 'user',
+      }).catch(err => console.error('User message ingestion failed:', err));
+      
+      // Ingest AI response
+      ingestMessage({
+        userId,
+        conversationId,
+        messageId: aiMessageId,
+        content: fullContent,
+        role: 'assistant',
+        modelUsed: modelIdForDb,
+      }).catch(err => console.error('AI message ingestion failed:', err));
+      
+      // Update profile
+      incrementalProfileUpdate(userId, {
+        role: 'user',
+        content: data.message,
+      }).catch(err => console.error('Profile update failed:', err));
     }
 
     // Persist to database
