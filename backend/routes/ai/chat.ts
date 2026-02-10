@@ -71,7 +71,7 @@ router.post("/", authenticate, async (req, res) => {
       }
 
       console.log(`Found ${conversation.messages.length} messages in database`);
-      
+
       conversationHistory = conversation.messages.map((m) => ({
         role: m.role as Role,
         content: m.content,
@@ -99,7 +99,7 @@ router.post("/", authenticate, async (req, res) => {
             content: m.content,
           })),
         });
-        
+
         ragContext = formatContextForLLM(context);
         console.log(`RAG context: ${context.chunks.length} chunks retrieved`);
       } catch (error) {
@@ -139,17 +139,17 @@ router.post("/", authenticate, async (req, res) => {
     if (selectedModel === 'council') {
       console.log('=== Using Council Mode ===');
       console.log(`Passing ${conversationHistory.length} messages as context`);
-      
+
       try {
         fullContent = await runCouncilProcess(
           data.message,
           conversationHistory,
           (stage: string, model: string, progress: number) => {
-            res.write(`data: ${JSON.stringify({ 
-              status: "progress", 
-              stage, 
-              model, 
-              progress 
+            res.write(`data: ${JSON.stringify({
+              status: "progress",
+              stage,
+              model,
+              progress
             })}\n\n`);
           },
           (chunk: string) => {
@@ -183,7 +183,7 @@ router.post("/", authenticate, async (req, res) => {
     // Add AI response to Redis cache
     if (fullContent) {
       await store.add(conversationId, {
-        role: Role.System,
+        role: Role.Assistant,
         content: fullContent,
         modelId: modelIdForDb,
       });
@@ -193,7 +193,7 @@ router.post("/", authenticate, async (req, res) => {
     if (RAG_ENABLED && fullContent) {
       const userMessageId = crypto.randomUUID();
       const aiMessageId = crypto.randomUUID();
-      
+
       // Ingest user message
       ingestMessage({
         userId,
@@ -202,7 +202,7 @@ router.post("/", authenticate, async (req, res) => {
         content: data.message,
         role: 'user',
       }).catch(err => console.error('User message ingestion failed:', err));
-      
+
       // Ingest AI response
       ingestMessage({
         userId,
@@ -212,7 +212,7 @@ router.post("/", authenticate, async (req, res) => {
         role: 'assistant',
         modelUsed: modelIdForDb,
       }).catch(err => console.error('AI message ingestion failed:', err));
-      
+
       // Update profile
       incrementalProfileUpdate(userId, {
         role: 'user',
@@ -224,17 +224,26 @@ router.post("/", authenticate, async (req, res) => {
     if (!data.conversationId) {
       console.log("Creating new conversation in database");
       try {
+        // Use explicit timestamps to ensure correct order
+        const userMessageTime = new Date();
+        const aiMessageTime = new Date(userMessageTime.getTime() + 1); // 1ms after user message
+
         const conversation = await prisma.conversation.create({
           data: {
             id: conversationId,
             userId,
             messages: {
               create: [
-                { content: data.message, role: Role.User },
+                {
+                  content: data.message,
+                  role: Role.User,
+                  createdAt: userMessageTime,
+                },
                 {
                   content: fullContent || "Error generating response",
                   role: Role.Assistant,
                   modelId: modelIdForDb,
+                  createdAt: aiMessageTime,
                 },
               ],
             },
@@ -254,14 +263,24 @@ router.post("/", authenticate, async (req, res) => {
     } else {
       console.log("Adding messages to existing conversation in database");
       try {
+        // Use explicit timestamps to ensure correct order
+        const userMessageTime = new Date();
+        const aiMessageTime = new Date(userMessageTime.getTime() + 1); // 1ms after user message
+
         await prisma.message.createMany({
           data: [
-            { conversationId, content: data.message, role: Role.User },
+            {
+              conversationId,
+              content: data.message,
+              role: Role.User,
+              createdAt: userMessageTime,
+            },
             {
               conversationId,
               content: fullContent || "Error generating response",
               role: Role.Assistant,
               modelId: modelIdForDb,
+              createdAt: aiMessageTime,
             },
           ],
         });
