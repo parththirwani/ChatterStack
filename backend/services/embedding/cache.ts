@@ -78,11 +78,22 @@ export async function getCachedEmbeddings(
 /**
  * Cache multiple embeddings
  */
+/**
+ * Cache multiple embeddings
+ */
 export async function cacheEmbeddings(
   texts: string[],
   embeddings: number[][]
 ): Promise<void> {
-  const promises = texts.map((text, i) => cacheEmbedding(text, embeddings[i]));
+  const promises = texts.map((text, i) => {
+    const embedding = embeddings[i];
+    // Only cache if embedding exists
+    if (embedding) {
+      return cacheEmbedding(text, embedding);
+    }
+    return Promise.resolve(); // Return resolved promise for undefined embeddings
+  });
+  
   await Promise.allSettled(promises);
 }
 

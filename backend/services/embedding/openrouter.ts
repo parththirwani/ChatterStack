@@ -25,8 +25,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const redis = RedisStore.getInstance();
   
   try {
-    // Access through public getter method instead of private client
-    const cached = await redis.client.get(cacheKey);
+    const cached = await redis.getKey(cacheKey); 
     if (cached) {
       return JSON.parse(cached);
     }
@@ -54,9 +53,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const data = await response.json();
   const embedding = data.data[0].embedding;
 
-  // Cache the result - use setEx (capitalized E)
+  // Cache the result
   try {
-    await redis.client.setEx(cacheKey, CACHE_TTL, JSON.stringify(embedding));
+    await redis.setKey(cacheKey, JSON.stringify(embedding), CACHE_TTL); 
   } catch (err) {
     console.warn('Embedding cache write failed:', err);
   }
@@ -76,6 +75,8 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   const uncachedIndices: number[] = [];
   const uncachedTexts: string[] = [];
 
+  const redis = RedisStore.getInstance(); 
+
   // Check cache for each text
   for (let i = 0; i < texts.length; i++) {
     const text = texts[i];
@@ -83,7 +84,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
     const cacheKey = `embedding:${EMBEDDING_MODEL}:${hashText(text)}`;
     try {
-      const cached = await RedisStore.getInstance().client.get(cacheKey);
+      const cached = await redis.getKey(cacheKey);
       if (cached) {
         embeddings[i] = JSON.parse(cached);
       } else {
@@ -128,11 +129,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
         // Cache
         const cacheKey = `embedding:${EMBEDDING_MODEL}:${hashText(originalText)}`;
         try {
-          await RedisStore.getInstance().client.setEx(
-            cacheKey,
-            CACHE_TTL,
-            JSON.stringify(embedding)
-          );
+          await redis.setKey(cacheKey, JSON.stringify(embedding), CACHE_TTL); 
         } catch (err) {
           console.warn('Batch embedding cache write failed:', err);
         }

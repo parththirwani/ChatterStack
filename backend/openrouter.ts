@@ -1,153 +1,96 @@
-import { RedisStore } from "store/RedisStore";
+import { getChatterStackSystemPrompt } from "config/systemPrompt";
+import { Role } from "./types";
 
 
-const EMBEDDING_MODEL = process.env.OPENROUTER_EMBEDDING_MODEL || 'openai/text-embedding-3-small';
-const CACHE_TTL = parseInt(process.env.OPENROUTER_EMBEDDING_CACHE_TTL || '86400', 10);
-
-interface EmbeddingResponse {
-  embedding: number[];
-  model: string;
-  usage: {
-    prompt_tokens: number;
-    total_tokens: number;
-  };
+interface OpenRouterMessage {
+  role: string;
+  content: string;
 }
 
-/**
- * Generate embedding for a single text
- */
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function createCompletion(
+  messages: { role: Role; content: string }[],
+  model: string = "gpt-3.5-turbo",
+  onChunk: (chunk: string) => void
+): Promise<string> {
   if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY is not set');
+    throw new Error("OPENROUTER_API_KEY is not set");
   }
 
-  // Check cache first
-  const cacheKey = `embedding:${EMBEDDING_MODEL}:${hashText(text)}`;
-  const redis = RedisStore.getInstance();
-  
-  try {
-    const cached = await redis.getKey(cacheKey);
-    if (cached) {
-      return JSON.parse(cached);
-    }
-  } catch (err) {
-    console.warn('Embedding cache read failed:', err);
-  }
+  // Add ChatterStack system prompt context with model information
+  const systemPrompt = getChatterStackSystemPrompt(model);
 
-  // Generate embedding
-  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
-    method: 'POST',
+  const openRouterMessages: OpenRouterMessage[] = [
+    {
+      role: "system",
+      content: systemPrompt,
+    },
+    ...messages.map(msg => ({
+      role: msg.role === Role.User ? "user" : "assistant",
+      content: msg.content
+    })),
+  ];
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
     headers: {
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
+      "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.BACKEND_URL || "http://localhost:3000",
+      "X-Title": "ChatterStack"
     },
     body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: text,
-    }),
+      model: model,
+      messages: openRouterMessages,
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 4000,
+    })
   });
 
   if (!response.ok) {
-    throw new Error(`Embedding API error: ${response.status}`);
+    const errorText = await response.text();
+    console.error("OpenRouter API error:", response.status, errorText);
+    throw new Error(`OpenRouter API error: ${response.status}`);
   }
 
-  const data = await response.json();
-  const embedding = data.data[0].embedding;
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
 
-  // Cache the result
-  try {
-    await redis.setKey(cacheKey, JSON.stringify(embedding), CACHE_TTL);
-  } catch (err) {
-    console.warn('Embedding cache write failed:', err);
+  if (!reader) {
+    throw new Error("No response body");
   }
 
-  return embedding;
-}
+  let fullContent = "";
 
-/**
- * Batch generate embeddings for multiple texts
- */
-export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY is not set');
-  }
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
 
-  const embeddings: (number[] | undefined)[] = new Array(texts.length);
-  const uncachedIndices: number[] = [];
-  const uncachedTexts: string[] = [];
+    const chunk = decoder.decode(value);
+    const lines = chunk.split('\n');
 
-  // Check cache for each text
-  for (let i = 0; i < texts.length; i++) {
-    const text = texts[i];
-    if (!text) continue;
-
-    const cacheKey = `embedding:${EMBEDDING_MODEL}:${hashText(text)}`;
-    try {
-      const cached = await RedisStore.getInstance().getKey(cacheKey);
-      if (cached) {
-        embeddings[i] = JSON.parse(cached);
-      } else {
-        uncachedIndices.push(i);
-        uncachedTexts.push(text);
-      }
-    } catch (err) {
-      uncachedIndices.push(i);
-      uncachedTexts.push(text);
-    }
-  }
-
-  // Generate embeddings for uncached texts (batch)
-  if (uncachedTexts.length > 0) {
-    const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        model: EMBEDDING_MODEL,
-        input: uncachedTexts,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Batch embedding API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    // Fill in embeddings and cache
-    for (let i = 0; i < uncachedTexts.length; i++) {
-      const embedding = data.data[i].embedding;
-      const originalIndex = uncachedIndices[i];
-      const originalText = uncachedTexts[i];
-      
-      if (originalIndex !== undefined && originalText !== undefined) {
-        embeddings[originalIndex] = embedding;
-
-        // Cache
-        const cacheKey = `embedding:${EMBEDDING_MODEL}:${hashText(originalText)}`;
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const data = line.slice(6).trim();
+        
+        if (data === '[DONE]') {
+          return fullContent;
+        }
+        
         try {
-          await RedisStore.getInstance().setKey(
-            cacheKey,
-            JSON.stringify(embedding),
-            CACHE_TTL
-          );
-        } catch (err) {
-          console.warn('Batch embedding cache write failed:', err);
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+          
+          if (content) {
+            fullContent += content;
+            onChunk(content);
+          }
+        } catch (e) {
+          // Ignore invalid JSON chunks
         }
       }
     }
   }
 
-  // Filter out undefined values and return properly typed array
-  return embeddings.filter((e): e is number[] => e !== undefined);
-}
-
-/**
- * Simple hash function for cache keys
- */
-function hashText(text: string): string {
-  const crypto = require('crypto');
-  return crypto.createHash('sha256').update(text).digest('hex').substring(0, 16);
+  return fullContent;
 }

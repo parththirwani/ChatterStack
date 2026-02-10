@@ -114,26 +114,42 @@ Respond in JSON format:
 export async function incrementalProfileUpdate(
   userId: string,
   newMessage: { role: 'user' | 'assistant'; content: string }
-): Promise<void> {
-  const profile = await getOrCreateProfile(userId);
-  
-  // Update message count
-  profile.messageCount += 1;
+) {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { profile: true, profileUpdated: true },
+    });
 
-  // Extract topics from user messages
-  if (newMessage.role === 'user') {
-    const topics = extractTopics(newMessage.content);
-    for (const topic of topics) {
-      profile.topicFrequency[topic] = (profile.topicFrequency[topic] || 0) + 1;
+    if (!user) return;
+
+    // Initialize profile with default structure
+    let profile: UserProfile = user.profile
+      ? (typeof user.profile === 'string' ? JSON.parse(user.profile) : user.profile)
+      : {
+          interests: [],
+          preferences: {},
+          topicFrequency: {},        // ← ADD THIS
+          recentContext: [],
+          lastUpdated: new Date().toISOString(),
+        };
+
+    // Ensure topicFrequency exists even if profile was incomplete
+    if (!profile.topicFrequency) {
+      profile.topicFrequency = {};   // ← ADD THIS
     }
-  }
 
-  // Trigger full inference every N messages
-  if (profile.messageCount % PROFILE_UPDATE_THRESHOLD === 0) {
-    console.log(`Triggering full profile inference for user ${userId}`);
-    await inferUserProfile(userId);
-  } else {
-    await saveUserProfile(profile);
+    // Extract topics from user messages
+    if (newMessage.role === 'user') {
+      const topics = extractTopics(newMessage.content);
+      for (const topic of topics) {
+        profile.topicFrequency[topic] = (profile.topicFrequency[topic] || 0) + 1;
+      }
+    }
+
+    // ... rest of the function
+  } catch (error) {
+    console.error('Profile update failed:', error);
   }
 }
 
