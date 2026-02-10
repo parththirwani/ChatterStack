@@ -59,6 +59,17 @@ export class RedisStore {
   }
 
   /**
+   * Public getter for Redis client - USE WITH CAUTION
+   * Prefer using the built-in methods when possible
+   */
+  public getClient(): RedisClientType {
+    if (!this.isConnected || !this.client.isOpen) {
+      throw new Error('Redis client is not connected');
+    }
+    return this.client;
+  }
+
+  /**
    * Connect to Redis - must be called before using the store
    */
   async connect(): Promise<void> {
@@ -75,6 +86,43 @@ export class RedisStore {
   }
 
   /**
+   * Generic get method for any key
+   */
+  async getKey(key: string): Promise<string | null> {
+    if (!this.isReady()) {
+      throw new Error('Redis is not connected');
+    }
+    return await this.client.get(key);
+  }
+
+  /**
+   * Generic set method with TTL
+   */
+  async setKey(key: string, value: string, ttl?: number): Promise<void> {
+    if (!this.isReady()) {
+      throw new Error('Redis is not connected');
+    }
+    
+    if (ttl) {
+      await this.client.setEx(key, ttl, value);
+    } else {
+      await this.client.set(key, value);
+    }
+  }
+
+  /**
+   * Generic delete method
+   */
+  async deleteKey(key: string): Promise<boolean> {
+    if (!this.isReady()) {
+      throw new Error('Redis is not connected');
+    }
+    
+    const deleted = await this.client.del(key);
+    return deleted > 0;
+  }
+
+  /**
    * Add a message to a conversation
    * Automatically sets/refreshes TTL for the conversation
    */
@@ -84,7 +132,7 @@ export class RedisStore {
         throw new Error('Redis is not connected');
       }
 
-      const key = this.getKey(conversationId);
+      const key = this.getConversationKey(conversationId);
       
       // Get existing messages
       const existing = await this.client.get(key);
@@ -122,7 +170,7 @@ export class RedisStore {
         // Or return empty array: return [];
       }
 
-      const key = this.getKey(conversationId);
+      const key = this.getConversationKey(conversationId);
       const data = await this.client.get(key);
       
       if (!data) {
@@ -148,7 +196,7 @@ export class RedisStore {
         throw new Error('Redis is not connected');
       }
 
-      const key = this.getKey(conversationId);
+      const key = this.getConversationKey(conversationId);
       const deleted = await this.client.del(key);
       console.log(`Deleted conversation: ${conversationId}`);
       return deleted > 0;
@@ -167,7 +215,7 @@ export class RedisStore {
         return false;
       }
 
-      const key = this.getKey(conversationId);
+      const key = this.getConversationKey(conversationId);
       const exists = await this.client.exists(key);
       return exists === 1;
     } catch (error) {
@@ -205,7 +253,7 @@ export class RedisStore {
         return -2;
       }
 
-      const key = this.getKey(conversationId);
+      const key = this.getConversationKey(conversationId);
       return await this.client.ttl(key);
     } catch (error) {
       console.error('Error getting TTL from Redis:', error);
@@ -280,7 +328,7 @@ export class RedisStore {
   /**
    * Generate Redis key for a conversation
    */
-  private getKey(conversationId: string): string {
+  private getConversationKey(conversationId: string): string {
     return `conversation:${conversationId}`;
   }
 }

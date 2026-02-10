@@ -23,14 +23,26 @@ router.post('/', authenticate, async (req, res) => {
       return res.status(400).json({ error: 'Query is required' });
     }
 
-    // Retrieve context with fallback
-    const context = await retrieveContextWithFallback({
+    // Retrieve context with fallback - pass timeWindowDays if provided
+    const retrievalParams: {
+      userId: string;
+      query: string;
+      currentConversationId?: string;
+      shortTermMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
+      timeWindowDays?: number;
+    } = {
       userId,
       query,
       currentConversationId,
       shortTermMessages: shortTermMessages || [],
-      timeWindowDays,
-    });
+    };
+
+    // Only add timeWindowDays if it's defined
+    if (timeWindowDays !== undefined) {
+      retrievalParams.timeWindowDays = timeWindowDays;
+    }
+
+    const context = await retrieveContextWithFallback(retrievalParams);
 
     // Format for LLM
     const formattedContext = formatContextForLLM(context);
