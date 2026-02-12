@@ -14,7 +14,7 @@ function tokenize(text: string): string[] {
     .toLowerCase()
     .replace(/[^\w\s]/g, ' ')
     .split(/\s+/)
-    .filter(t => t.length > 0);
+    .filter((t) => t.length > 0);
 }
 
 // Build vocabulary (in production, use a pre-built vocab)
@@ -34,23 +34,23 @@ function getTokenId(token: string): number {
 export function generateSparseVector(text: string): SparseVector {
   const tokens = tokenize(text);
   const termFreq = new Map<number, number>();
-  
+
   // Count term frequencies
   for (const token of tokens) {
     const id = getTokenId(token);
     termFreq.set(id, (termFreq.get(id) || 0) + 1);
   }
-  
+
   // Normalize
   const totalTerms = tokens.length;
   const indices: number[] = [];
   const values: number[] = [];
-  
+
   for (const [id, freq] of termFreq.entries()) {
     indices.push(id);
     values.push(freq / totalTerms); // Simple TF normalization
   }
-  
+
   return { indices, values };
 }
 

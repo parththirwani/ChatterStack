@@ -1,9 +1,9 @@
 import { getQdrantClient } from '@/src/lib/qdrant';
-import { generateEmbeddings } from '../embedding/openrouter';
 import { chunkMessage } from './chunker';
 import { generateSparseVector } from './sparse';
 import type { RagPoint } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import { generateEmbeddings } from './openrouter';
 
 const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
 
@@ -37,7 +37,7 @@ export async function ingestMessage(params: {
     console.log(`Chunking message ${messageId}: ${chunks.length} chunks`);
 
     // 2. Generate dense embeddings (batch)
-    const chunkTexts = chunks.map(c => c.content);
+    const chunkTexts = chunks.map((c) => c.content);
     const denseVectors = await generateEmbeddings(chunkTexts);
 
     if (!denseVectors || denseVectors.length === 0) {
@@ -45,7 +45,7 @@ export async function ingestMessage(params: {
     }
 
     // 3. Generate sparse vectors (BM25)
-    const sparseVectors = chunks.map(c => generateSparseVector(c.content));
+    const sparseVectors = chunks.map((c) => generateSparseVector(c.content));
 
     // 4. Prepare Qdrant points
     const points: RagPoint[] = chunks.map((chunk, idx) => ({
@@ -70,7 +70,7 @@ export async function ingestMessage(params: {
     const client = getQdrantClient();
     await client.upsert(COLLECTION_NAME, {
       wait: true,
-      points: points.map(p => ({
+      points: points.map((p) => ({
         id: p.id,
         vector: {
           '': p.vector, // Default vector name
@@ -105,7 +105,7 @@ export async function batchIngestMessages(
   const CONCURRENCY = 3;
   for (let i = 0; i < messages.length; i += CONCURRENCY) {
     const batch = messages.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map(msg => ingestMessage(msg)));
+    await Promise.all(batch.map((msg) => ingestMessage(msg)));
   }
   console.log(`✓ Batch ingested ${messages.length} messages`);
 }
@@ -113,9 +113,12 @@ export async function batchIngestMessages(
 /**
  * Delete all chunks for a conversation
  */
-export async function deleteConversation(userId: string, conversationId: string): Promise<void> {
+export async function deleteConversation(
+  userId: string,
+  conversationId: string
+): Promise<void> {
   const client = getQdrantClient();
-  
+
   await client.delete(COLLECTION_NAME, {
     filter: {
       must: [
@@ -124,19 +127,22 @@ export async function deleteConversation(userId: string, conversationId: string)
       ],
     },
   });
-  
+
   console.log(`✓ Deleted chunks for conversation ${conversationId}`);
 }
 
 /**
  * Purge old data (privacy compliance)
  */
-export async function purgeOldData(userId: string, daysOld: number = 30): Promise<void> {
+export async function purgeOldData(
+  userId: string,
+  daysOld: number = 30
+): Promise<void> {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - daysOld);
-  
+
   const client = getQdrantClient();
-  
+
   await client.delete(COLLECTION_NAME, {
     filter: {
       must: [
@@ -145,6 +151,6 @@ export async function purgeOldData(userId: string, daysOld: number = 30): Promis
       ],
     },
   });
-  
+
   console.log(`✓ Purged data older than ${daysOld} days for user ${userId}`);
 }

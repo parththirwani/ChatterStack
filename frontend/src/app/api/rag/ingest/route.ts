@@ -1,20 +1,18 @@
-import { ingestMessage } from '@/src/app/services/rag/ingest';
 import { NextRequest, NextResponse } from 'next/server';
-/**
- * POST /api/rag/ingest
- * Ingest a message into the RAG system
- */
-async function handler(request: NextRequest, userId: string) {
+import { auth } from '@/src/lib/auth';
+import { ingestMessage } from '@/src/app/services/rag/ingest';
+
+export async function POST(request: NextRequest) {
   try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const userId = session.user.id;
     const body = await request.json();
-    const {
-      conversationId,
-      messageId,
-      content,
-      role,
-      modelUsed,
-      timestamp,
-    } = body;
+    const { conversationId, messageId, content, role, modelUsed, timestamp } = body;
 
     // Validation
     if (!conversationId || !messageId || !content || !role) {
@@ -35,21 +33,16 @@ async function handler(request: NextRequest, userId: string) {
       role,
       modelUsed,
       timestamp: timestamp ? new Date(timestamp) : undefined,
-    }).catch(err => {
+    }).catch((err) => {
       console.error('Async ingestion failed:', err);
     });
 
-    return NextResponse.json({ 
-      success: true, 
-      message: 'Ingestion initiated' 
+    return NextResponse.json({
+      success: true,
+      message: 'Ingestion initiated',
     });
   } catch (error) {
     console.error('Ingest route error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
-
-export const POST = withAuth(handler);

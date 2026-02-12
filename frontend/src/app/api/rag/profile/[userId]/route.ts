@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
-import { enforceUserScope } from '@/src/lib/middleware/auth';
+import { enforceUserScope } from '@/src/middleware/authMiddleware';
 import { getUserProfile, saveUserProfile } from '@/src/services/profile/storage';
+
 
 /**
  * GET /api/rag/profile/[userId]
@@ -13,22 +14,16 @@ export async function GET(
 ) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const authenticatedUserId = session.user.id;
     const targetUserId = params.userId;
 
     if (!targetUserId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
     // Users can only access their own profile
@@ -40,19 +35,13 @@ export async function GET(
     const profile = await getUserProfile(targetUserId);
 
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
     return NextResponse.json({ profile });
   } catch (error) {
     console.error('Get profile error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
@@ -66,22 +55,16 @@ export async function PUT(
 ) {
   try {
     const session = await auth();
-    
+
     if (!session?.user?.id) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const authenticatedUserId = session.user.id;
     const targetUserId = params.userId;
 
     if (!targetUserId) {
-      return NextResponse.json(
-        { error: 'User ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
     // Users can only update their own profile
@@ -95,16 +78,14 @@ export async function PUT(
 
     let profile = await getUserProfile(targetUserId);
     if (!profile) {
-      return NextResponse.json(
-        { error: 'Profile not found' },
-        { status: 404 }
-      );
+      return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
     // Update allowed fields
     if (explanationStyle) profile.explanationStyle = explanationStyle;
     if (technicalLevel) profile.technicalLevel = technicalLevel;
-    if (preferences) profile.preferences = { ...profile.preferences, ...preferences };
+    if (preferences)
+      profile.preferences = { ...profile.preferences, ...preferences };
 
     profile.lastUpdated = new Date();
 
@@ -113,9 +94,6 @@ export async function PUT(
     return NextResponse.json({ success: true, profile });
   } catch (error) {
     console.error('Update profile error:', error);
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

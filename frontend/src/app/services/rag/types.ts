@@ -22,6 +22,7 @@ export interface RagPoint {
     content: string;
     timestamp: string;
     isCode: boolean;
+    role: string;
     modelUsed?: string;
     profileTags?: string[];
   };

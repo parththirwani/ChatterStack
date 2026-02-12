@@ -1,14 +1,22 @@
 import { redisStore } from '@/src/lib/redis';
 import crypto from 'crypto';
 
-const EMBEDDING_MODEL = process.env.OPENROUTER_EMBEDDING_MODEL || 'openai/text-embedding-3-small';
-const CACHE_TTL = parseInt(process.env.OPENROUTER_EMBEDDING_CACHE_TTL || '86400', 10);
+const EMBEDDING_MODEL =
+  process.env.OPENROUTER_EMBEDDING_MODEL || 'openai/text-embedding-3-small';
+const CACHE_TTL = parseInt(
+  process.env.OPENROUTER_EMBEDDING_CACHE_TTL || '86400',
+  10
+);
 
 /**
  * Generate cache key for embedding
  */
 function generateCacheKey(text: string, model: string = EMBEDDING_MODEL): string {
-  const hash = crypto.createHash('sha256').update(text).digest('hex').substring(0, 16);
+  const hash = crypto
+    .createHash('sha256')
+    .update(text)
+    .digest('hex')
+    .substring(0, 16);
   return `embedding:${model}:${hash}`;
 }
 
@@ -22,7 +30,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 
   // Check cache first
   const cacheKey = generateCacheKey(text);
-  
+
   try {
     const cached = await redisStore.getKey(cacheKey);
     if (cached) {
@@ -36,7 +44,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
@@ -99,7 +107,7 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
@@ -113,13 +121,13 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     }
 
     const data = await response.json();
-    
+
     // Fill in embeddings and cache
     for (let i = 0; i < uncachedTexts.length; i++) {
       const embedding = data.data[i].embedding;
       const originalIndex = uncachedIndices[i];
       const originalText = uncachedTexts[i];
-      
+
       if (originalIndex !== undefined && originalText !== undefined) {
         embeddings[originalIndex] = embedding;
 
