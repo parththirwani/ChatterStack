@@ -100,6 +100,43 @@ class RedisStore {
 
     await this.client?.flushDb();
   }
+
+  /**
+   * Generic get method for any key
+   */
+  async getKey(key: string): Promise<string | null> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
+    }
+    return await this.client?.get(key) || null;
+  }
+
+  /**
+   * Generic set method with TTL
+   */
+  async setKey(key: string, value: string, ttl?: number): Promise<void> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
+    }
+    
+    if (ttl) {
+      await this.client?.setEx(key, ttl, value);
+    } else {
+      await this.client?.set(key, value);
+    }
+  }
+
+  /**
+   * Generic delete method
+   */
+  async deleteKey(key: string): Promise<boolean> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
+    }
+    
+    const deleted = await this.client?.del(key);
+    return (deleted || 0) > 0;
+  }
 }
 
 export const redisStore = new RedisStore();
