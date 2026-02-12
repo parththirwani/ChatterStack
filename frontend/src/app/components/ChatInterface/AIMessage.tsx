@@ -6,8 +6,9 @@ import rehypeKatex from 'rehype-katex';
 import rehypeHighlight from 'rehype-highlight';
 import 'highlight.js/styles/github-dark.css';
 import 'katex/dist/katex.min.css';
-import MessageActions from '@/app/MessageFunctionality/MessageActions';
+
 import Image from 'next/image';
+import MessageActions from '../../MessageFunctionality/MessageActions';
 
 interface AIMessageProps {
   content: string;

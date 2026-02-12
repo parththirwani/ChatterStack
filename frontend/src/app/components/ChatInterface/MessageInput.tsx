@@ -3,7 +3,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Send, Loader2, ChevronDown, Crown } from 'lucide-react';
 import Image from 'next/image';
-import { useModelSelection, AVAILABLE_MODELS } from '@/app/context/ModelSelectionContext';
+import { AVAILABLE_MODELS, useModelSelection } from '../../context/ModelSelectionContext';
+
 
 interface MessageInputProps {
   message: string;
