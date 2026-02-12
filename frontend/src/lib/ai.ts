@@ -1,5 +1,4 @@
-import { ChatRequest, Conversation } from "../types";
-
+import { Conversation, ChatRequest } from "../types";
 interface CouncilChatRequest {
   message: string;
   conversationId?: string;

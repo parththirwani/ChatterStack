@@ -1,161 +1,105 @@
-import { createClient, RedisClientType } from 'redis'
+import { createClient } from 'redis';
 
-export interface Message {
-  role: 'user' | 'assistant'
-  content: string
-  modelId?: string
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  modelId?: string;
 }
 
-const EVICTION_TIME = 5 * 60 // 5 minutes in seconds
-const MAX_MESSAGES_PER_CONVERSATION = 100
+class RedisStore {
+  private client: ReturnType<typeof createClient> | null = null;
+  private isConnected = false;
 
-export class RedisStore {
-  private static instance: RedisStore
-  private client: RedisClientType
-  private isConnected: boolean = false
+  async connect() {
+    if (this.isConnected) return;
 
-  private constructor() {
-    this.client = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
-      socket: {
-        reconnectStrategy: (retries) => {
-          if (retries > 10) {
-            console.error('Redis: Too many reconnection attempts')
-            return new Error('Too many reconnection attempts')
-          }
-          return Math.min(retries * 50, 2000)
+    try {
+      this.client = createClient({
+        url: process.env.REDIS_URL || 'redis://localhost:6379',
+        socket: {
+          reconnectStrategy: (retries) => {
+            if (retries > 10) {
+              return new Error('Redis reconnection failed');
+            }
+            return retries * 100;
+          },
         },
-      },
-    })
+      });
 
-    this.client.on('error', (err) => {
-      console.error('Redis Client Error:', err)
-      this.isConnected = false
-    })
+      this.client.on('error', (err) => {
+        console.error('Redis Client Error:', err);
+      });
 
-    this.client.on('connect', () => {
-      console.log('Redis: Connected')
-      this.isConnected = true
-    })
+      this.client.on('connect', () => {
+        console.log('Redis connected');
+      });
 
-    this.client.on('ready', () => {
-      console.log('Redis: Ready to accept commands')
-    })
-
-    this.client.on('reconnecting', () => {
-      console.log('Redis: Reconnecting...')
-    })
-
-    this.client.on('end', () => {
-      console.log('Redis: Connection closed')
-      this.isConnected = false
-    })
-  }
-
-  static getInstance(): RedisStore {
-    if (!RedisStore.instance) {
-      RedisStore.instance = new RedisStore()
-    }
-    return RedisStore.instance
-  }
-
-  async connect(): Promise<void> {
-    if (!this.isConnected && !this.client.isOpen) {
-      await this.client.connect()
+      await this.client.connect();
+      this.isConnected = true;
+    } catch (error) {
+      console.error('Failed to connect to Redis:', error);
+      throw error;
     }
   }
 
-  isReady(): boolean {
-    return this.isConnected && this.client.isOpen
-  }
-
-  async getKey(key: string): Promise<string | null> {
-    if (!this.isReady()) {
-      await this.connect()
+  async disconnect() {
+    if (this.client && this.isConnected) {
+      await this.client.quit();
+      this.isConnected = false;
     }
-    return await this.client.get(key)
-  }
-
-  async setKey(key: string, value: string, ttl?: number): Promise<void> {
-    if (!this.isReady()) {
-      await this.connect()
-    }
-
-    if (ttl) {
-      await this.client.setEx(key, ttl, value)
-    } else {
-      await this.client.set(key, value)
-    }
-  }
-
-  async deleteKey(key: string): Promise<boolean> {
-    if (!this.isReady()) {
-      await this.connect()
-    }
-
-    const deleted = await this.client.del(key)
-    return deleted > 0
-  }
-
-  async add(conversationId: string, message: Message): Promise<void> {
-    if (!this.isReady()) {
-      await this.connect()
-    }
-
-    const key = this.getConversationKey(conversationId)
-    const existing = await this.client.get(key)
-    const messages: Message[] = existing ? JSON.parse(existing) : []
-
-    messages.push(message)
-
-    if (messages.length > MAX_MESSAGES_PER_CONVERSATION) {
-      messages.shift()
-    }
-
-    await this.client.setEx(key, EVICTION_TIME, JSON.stringify(messages))
   }
 
   async get(conversationId: string): Promise<Message[]> {
-    if (!this.isReady()) {
-      await this.connect()
+    if (!this.client || !this.isConnected) {
+      await this.connect();
     }
 
-    const key = this.getConversationKey(conversationId)
-    const data = await this.client.get(key)
+    const key = `conversation:${conversationId}`;
+    const data = await this.client?.get(key);
 
     if (!data) {
-      return []
+      return [];
     }
 
-    await this.client.expire(key, EVICTION_TIME)
-    return JSON.parse(data) as Message[]
-  }
-
-  async delete(conversationId: string): Promise<boolean> {
-    if (!this.isReady()) {
-      await this.connect()
-    }
-
-    const key = this.getConversationKey(conversationId)
-    const deleted = await this.client.del(key)
-    return deleted > 0
-  }
-
-  async destroy(): Promise<void> {
-    if (this.isConnected && this.client.isOpen) {
-      await this.client.quit()
-      this.isConnected = false
+    try {
+      return JSON.parse(data);
+    } catch (error) {
+      console.error('Failed to parse conversation data:', error);
+      return [];
     }
   }
 
-  getClient(): RedisClientType {
-    if (!this.isConnected || !this.client.isOpen) {
-      throw new Error('Redis client is not connected')
+  async add(conversationId: string, message: Message): Promise<void> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
     }
-    return this.client
+
+    const key = `conversation:${conversationId}`;
+    const existingData = await this.get(conversationId);
+
+    existingData.push(message);
+
+    await this.client?.set(key, JSON.stringify(existingData), {
+      EX: 60 * 60 * 24 * 7, // 7 days TTL
+    });
   }
 
-  private getConversationKey(conversationId: string): string {
-    return `conversation:${conversationId}`
+  async delete(conversationId: string): Promise<void> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
+    }
+
+    const key = `conversation:${conversationId}`;
+    await this.client?.del(key);
+  }
+
+  async clear(): Promise<void> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
+    }
+
+    await this.client?.flushDb();
   }
 }
+
+export const redisStore = new RedisStore();

@@ -1,58 +1,58 @@
-// frontend/src/app/api/conversations/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 import { prisma } from '@/src/lib/prisma';
-import { generateTitle } from '@/src/services/titleService';
 
-// GET /api/conversations - Get all conversations for authenticated user
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
-    
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
+    const { searchParams } = new URL(request.url);
+    const limit = parseInt(searchParams.get('limit') || '50');
+    const offset = parseInt(searchParams.get('offset') || '0');
 
     const conversations = await prisma.conversation.findMany({
-      where: { userId },
+      where: {
+        userId: session.user.id,
+      },
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            content: true,
-            role: true,
-            modelId: true,
-            createdAt: true,
-          },
+          take: 1, // Only get first message for preview
         },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: {
+        updatedAt: 'desc',
+      },
+      take: limit,
+      skip: offset,
     });
 
-    // Generate titles for conversations without titles
-    const conversationsWithTitles = await Promise.all(
-      conversations.map(async (conv) => {
-        if (!conv.title && conv.messages.length > 0) {
-          try {
-            const title = await generateTitle(conv.id);
-            return { ...conv, title };
-          } catch (error) {
-            console.error(`Failed to generate title for conversation ${conv.id}:`, error);
-            return { ...conv, title: 'New Chat' };
-          }
-        }
-        return conv;
-      })
-    );
+    const total = await prisma.conversation.count({
+      where: {
+        userId: session.user.id,
+      },
+    });
 
-    return NextResponse.json(conversationsWithTitles);
+    return NextResponse.json({
+      conversations: conversations.map((c) => ({
+        id: c.id,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+        preview: c.messages[0]?.content.substring(0, 100) || '',
+      })),
+      total,
+      limit,
+      offset,
+    });
   } catch (error) {
-    console.error('Error getting conversations:', error);
+    console.error('Error fetching conversations:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: error instanceof Error ? error.message : 'Failed to fetch conversations',
+      },
       { status: 500 }
     );
   }

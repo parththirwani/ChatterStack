@@ -1,58 +1,94 @@
-// frontend/src/app/api/conversations/route.ts
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 import { prisma } from '@/src/lib/prisma';
-import { generateTitle } from '@/src/services/titleService';
 
-// GET /api/conversations - Get all conversations for authenticated user
-export async function GET(request: NextRequest) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
   try {
     const session = await auth();
-    
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const userId = session.user.id;
-
-    const conversations = await prisma.conversation.findMany({
-      where: { userId },
+    const conversation = await prisma.conversation.findUnique({
+      where: {
+        id: params.id,
+        userId: session.user.id,
+      },
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
-          select: {
-            id: true,
-            content: true,
-            role: true,
-            modelId: true,
-            createdAt: true,
-          },
         },
       },
-      orderBy: { updatedAt: 'desc' },
     });
 
-    // Generate titles for conversations without titles
-    const conversationsWithTitles = await Promise.all(
-      conversations.map(async (conv) => {
-        if (!conv.title && conv.messages.length > 0) {
-          try {
-            const title = await generateTitle(conv.id);
-            return { ...conv, title };
-          } catch (error) {
-            console.error(`Failed to generate title for conversation ${conv.id}:`, error);
-            return { ...conv, title: 'New Chat' };
-          }
-        }
-        return conv;
-      })
-    );
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
 
-    return NextResponse.json(conversationsWithTitles);
+    return NextResponse.json({
+      id: conversation.id,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+      messages: conversation.messages.map((m) => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        modelId: m.modelId,
+        createdAt: m.createdAt,
+      })),
+    });
   } catch (error) {
-    console.error('Error getting conversations:', error);
+    console.error('Error fetching conversation:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      {
+        error: error instanceof Error ? error.message : 'Failed to fetch conversation',
+      },
+      { status: 500 }
+    );
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const conversation = await prisma.conversation.findUnique({
+      where: {
+        id: params.id,
+        userId: session.user.id,
+      },
+    });
+
+    if (!conversation) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
+
+    await prisma.conversation.delete({
+      where: {
+        id: params.id,
+      },
+    });
+
+    // Also clear from Redis cache
+    const { redisStore } = await import('@/src/lib/redis');
+    await redisStore.delete(params.id);
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting conversation:', error);
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : 'Failed to delete conversation',
+      },
       { status: 500 }
     );
   }
