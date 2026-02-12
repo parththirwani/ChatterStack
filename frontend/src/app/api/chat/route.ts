@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
-import { prisma } from "@src/lib/prisma";
-import { redisStore } from "@src/lib/redis";
+import { NextRequest } from "next/server";
+import { auth } from "@/src/lib/auth";
+import { prisma } from "@/src/lib/prisma";
+import { redisStore } from "@/src/lib/redis";
 import crypto from "crypto";
 import { z } from "zod";
-import { auth } from "@/src/lib/auth";
 
 const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -22,6 +22,79 @@ interface Message {
   modelId?: string;
 }
 
+// OpenRouter API integration
+async function createCompletion(
+  messages: Array<{ role: string; content: string }>,
+  model: string,
+  onChunk: (chunk: string) => void
+): Promise<string> {
+  if (!process.env.OPENROUTER_API_KEY) {
+    throw new Error("OPENROUTER_API_KEY is not set");
+  }
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3001",
+      "X-Title": "ChatterStack",
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: messages,
+      stream: true,
+      temperature: 0.7,
+      max_tokens: 4000,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`OpenRouter API error: ${response.status}`);
+  }
+
+  const reader = response.body?.getReader();
+  const decoder = new TextDecoder();
+
+  if (!reader) {
+    throw new Error("No response body");
+  }
+
+  let fullContent = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    const chunk = decoder.decode(value);
+    const lines = chunk.split("\n");
+
+    for (const line of lines) {
+      if (line.startsWith("data: ")) {
+        const data = line.slice(6).trim();
+
+        if (data === "[DONE]") {
+          return fullContent;
+        }
+
+        try {
+          const parsed = JSON.parse(data);
+          const content = parsed.choices?.[0]?.delta?.content;
+
+          if (content) {
+            fullContent += content;
+            onChunk(content);
+          }
+        } catch (e) {
+          // Ignore invalid JSON chunks
+        }
+      }
+    }
+  }
+
+  return fullContent;
+}
+
 // SSE streaming helper
 function createSSEStream(
   onStream: (controller: ReadableStreamDefaultController) => Promise<void>
@@ -35,7 +108,9 @@ function createSSEStream(
       } catch (error) {
         controller.enqueue(
           encoder.encode(
-            `data: ${JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" })}\n\n`
+            `data: ${JSON.stringify({ 
+              error: error instanceof Error ? error.message : "Unknown error" 
+            })}\n\n`
           )
         );
       } finally {
@@ -65,7 +140,10 @@ export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
     }
 
     const userId = session.user.id;
@@ -73,12 +151,15 @@ export async function POST(request: NextRequest) {
 
     const { success, data, error: validationError } = ChatRequestSchema.safeParse(body);
     if (!success) {
-      return NextResponse.json(
-        {
+      return new Response(
+        JSON.stringify({
           message: "Incorrect inputs",
           errors: validationError?.errors,
-        },
-        { status: 400 }
+        }),
+        {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }
       );
     }
 
@@ -121,26 +202,58 @@ export async function POST(request: NextRequest) {
       const messagesForAI = [
         ...conversationHistory,
         { role: Role.User, content: data.message },
-      ];
+      ].map((m) => ({
+        role: m.role === Role.User ? "user" : "assistant",
+        content: m.content,
+      }));
 
       let fullContent = "";
 
-      // Call AI service (you'll need to implement this)
-      // For now, this is a placeholder
-      const { createCompletion } = await import("@/lib/ai");
-      
-      try {
-        fullContent = await createCompletion(
-          messagesForAI,
-          selectedModel,
-          (chunk: string) => {
-            sseData(controller, { chunk });
-          }
-        );
+      // Check if council mode
+      if (selectedModel === "council") {
+        try {
+          // Import council service
+          const { runCouncilProcess } = await import("@/src/services/council");
+          
+          fullContent = await runCouncilProcess(
+            data.message,
+            conversationHistory,
+            (stage: string, model: string, progress: number) => {
+              sseData(controller, {
+                status: "progress",
+                stage,
+                model,
+                progress,
+              });
+            },
+            (chunk: string) => {
+              sseData(controller, { chunk });
+            }
+          );
 
-        sseData(controller, { done: true });
-      } catch (error) {
-        sseData(controller, { error: (error as Error).message });
+          sseData(controller, { done: true });
+        } catch (error) {
+          sseData(controller, { 
+            error: error instanceof Error ? error.message : "Council process failed" 
+          });
+        }
+      } else {
+        // Regular single model response
+        try {
+          fullContent = await createCompletion(
+            messagesForAI,
+            selectedModel,
+            (chunk: string) => {
+              sseData(controller, { chunk });
+            }
+          );
+
+          sseData(controller, { done: true });
+        } catch (error) {
+          sseData(controller, { 
+            error: error instanceof Error ? error.message : "Failed to generate response" 
+          });
+        }
       }
 
       // Add AI response to cache
@@ -148,7 +261,7 @@ export async function POST(request: NextRequest) {
         await redisStore.add(conversationId, {
           role: Role.Assistant,
           content: fullContent,
-          modelId: selectedModel,
+          modelId: selectedModel === "council" ? `council:google/gemini-3-pro-preview` : selectedModel,
         });
       }
 
@@ -171,7 +284,9 @@ export async function POST(request: NextRequest) {
                 {
                   content: fullContent || "Error generating response",
                   role: Role.Assistant,
-                  modelId: selectedModel,
+                  modelId: selectedModel === "council" 
+                    ? `council:google/gemini-3-pro-preview` 
+                    : selectedModel,
                   createdAt: aiMessageTime,
                 },
               ],
@@ -196,7 +311,9 @@ export async function POST(request: NextRequest) {
               conversationId,
               content: fullContent || "Error generating response",
               role: Role.Assistant,
-              modelId: selectedModel,
+              modelId: selectedModel === "council" 
+                ? `council:google/gemini-3-pro-preview` 
+                : selectedModel,
               createdAt: aiMessageTime,
             },
           ],
@@ -205,9 +322,14 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error("Error in chat:", error);
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Unknown error occurred" },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Unknown error occurred",
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "application/json" },
+      }
     );
   }
 }
