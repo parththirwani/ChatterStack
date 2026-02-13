@@ -9,6 +9,30 @@ const TOP_K_SPARSE = parseInt(process.env.RAG_TOP_K_SPARSE || '10', 10);
 const TOP_K_FINAL = parseInt(process.env.RAG_TOP_K_FINAL || '5', 10);
 const TIME_WINDOW_DAYS = parseInt(process.env.RAG_TIME_WINDOW_DAYS || '90', 10);
 
+// Qdrant filter types
+interface QdrantMatchFilter {
+  key: string;
+  match: { value: string };
+}
+
+interface QdrantRangeFilter {
+  key: string;
+  range: { gte?: string; lt?: string };
+}
+
+type QdrantFilterCondition = QdrantMatchFilter | QdrantRangeFilter;
+
+interface QdrantFilter {
+  must: QdrantFilterCondition[];
+  must_not?: QdrantMatchFilter[];
+}
+
+interface RankResult {
+  id: string;
+  rank: number;
+  payload: Record<string, unknown>;
+}
+
 /**
  * Retrieve relevant context for a user query
  */
@@ -38,11 +62,11 @@ export async function retrieveContext(params: {
 
     // Format context
     const chunks = results.slice(0, TOP_K_FINAL).map(r => ({
-      content: r.payload.content,
+      content: r.payload.content as string,
       score: r.score,
-      conversationId: r.payload.conversationId,
-      timestamp: r.payload.timestamp,
-      isCode: r.payload.isCode,
+      conversationId: r.payload.conversationId as string,
+      timestamp: r.payload.timestamp as string,
+      isCode: r.payload.isCode as boolean,
     }));
 
     return {
@@ -77,7 +101,7 @@ async function hybridSearch(params: {
   cutoffDate.setDate(cutoffDate.getDate() - timeWindowDays);
   
   // Base filter
-  const baseFilter: any = {
+  const baseFilter: QdrantFilter = {
     must: [
       { key: 'userId', match: { value: userId } },
       { key: 'timestamp', range: { gte: cutoffDate.toISOString() } },
@@ -114,8 +138,8 @@ async function hybridSearch(params: {
 
   // 3. Reciprocal Rank Fusion (RRF)
   const fused = reciprocalRankFusion(
-    denseResults.map((r, idx) => ({ id: r.id as string, rank: idx + 1, payload: r.payload })),
-    sparseResults.map((r, idx) => ({ id: r.id as string, rank: idx + 1, payload: r.payload }))
+    denseResults.map((r, idx) => ({ id: r.id as string, rank: idx + 1, payload: r.payload as Record<string, unknown> })),
+    sparseResults.map((r, idx) => ({ id: r.id as string, rank: idx + 1, payload: r.payload as Record<string, unknown> }))
   );
 
   return fused;
@@ -125,12 +149,12 @@ async function hybridSearch(params: {
  * Reciprocal Rank Fusion
  */
 function reciprocalRankFusion(
-  denseResults: Array<{ id: string; rank: number; payload: any }>,
-  sparseResults: Array<{ id: string; rank: number; payload: any }>,
+  denseResults: RankResult[],
+  sparseResults: RankResult[],
   k: number = 60
 ): HybridSearchResult[] {
   const scores = new Map<string, number>();
-  const payloads = new Map<string, any>();
+  const payloads = new Map<string, Record<string, unknown>>();
 
   // Dense scores
   for (const result of denseResults) {
@@ -155,7 +179,7 @@ function reciprocalRankFusion(
     }))
     .sort((a, b) => b.score - a.score);
 
-  return fused;
+  return fused as HybridSearchResult[];
 }
 
 /**

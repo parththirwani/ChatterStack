@@ -1,7 +1,5 @@
 import { ChatRequest, Conversation, User } from "../types";
 
-export const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-
 interface CouncilChatRequest {
   message: string;
   conversationId?: string;
@@ -14,38 +12,27 @@ interface CouncilProgress {
 }
 
 export class ApiService {
-  private static baseUrl = BACKEND_URL;
+  // All API calls go to Next.js API routes on port 3000
+  private static baseUrl = '/api';
 
   private static getAuthHeaders(): Record<string, string> {
-    const headers: Record<string, string> = {
+    return {
       'Content-Type': 'application/json',
     };
-
-    const accessToken = document.cookie
-      .split('; ')
-      .find(row => row.startsWith('access_token='))
-      ?.split('=')[1];
-
-    if (accessToken) {
-      headers['Authorization'] = `Bearer ${accessToken}`;
-    }
-
-    return headers;
   }
 
   private static async fetchWithCredentials(url: string, options: RequestInit = {}) {
-    console.log(`API Call: ${options.method || 'GET'} ${url}`);
+    const fullUrl = url.startsWith('/') ? url : `${this.baseUrl}/${url}`;
+    console.log(`API Call: ${options.method || 'GET'} ${fullUrl}`);
     
-    const response = await fetch(`${this.baseUrl}${url}`, {
+    const response = await fetch(fullUrl, {
       ...options,
-      credentials: 'include',
       headers: {
         ...this.getAuthHeaders(),
         ...options.headers,
       },
+      credentials: 'include',
     });
-
-    console.log(`API Response: ${response.status} ${response.statusText}`);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -56,289 +43,126 @@ export class ApiService {
     return response;
   }
 
-  static async getCurrentUser(): Promise<User | null> {
-    try {
-      console.log('Getting current user...');
-      const result = await this.validateAuth();
-      if (result.ok && result.user) {
-        console.log('Current user:', result.user);
-        return result.user;
-      }
-      console.log('No authenticated user');
-      return null;
-    } catch (error) {
-      console.error('Get current user failed:', error);
-      return null;
-    }
-  }
-
+  // ============= AUTH - NextAuth Only =============
+  
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
     try {
-      console.log('Validating authentication...');
-      const response = await this.fetchWithCredentials('/auth/validate', {
-        method: 'POST',
-      });
-      const result = await response.json();
-      console.log('Auth validation result:', result);
-      return result;
+      // Use NextAuth session endpoint
+      const response = await fetch('/api/auth/session');
+      const session = await response.json();
+      
+      if (session?.user) {
+        return { 
+          ok: true, 
+          user: {
+            id: session.user.id,
+            email: session.user.email || '',
+            name: session.user.name || '',
+            avatarUrl: session.user.image,
+            provider: session.user.provider || 'unknown',
+          }
+        };
+      }
+      
+      return { ok: false };
     } catch (error) {
       console.error('Auth validation failed:', error);
       return { ok: false };
     }
   }
 
-  static async logout(): Promise<{ success: boolean }> {
-    try {
-      console.log('Logging out...');
-      const response = await this.fetchWithCredentials('/auth/logout', {
-        method: 'POST',
-      });
-      const result = await response.json();
-      console.log('Logout result:', result);
-      return result;
-    } catch (error) {
-      console.error('Logout failed:', error);
-      return { success: false };
-    }
+  // Login/Logout handled by NextAuth - redirect to sign-in page
+  static getLoginUrl(): string {
+    return '/api/auth/signin';
   }
 
-  static async refreshToken(): Promise<{ success: boolean; accessToken?: string }> {
-    try {
-      console.log('Refreshing token...');
-      const response = await this.fetchWithCredentials('/auth/refresh', {
-        method: 'POST',
-      });
-      const result = await response.json();
-      console.log('Token refresh result:', result);
-      return result;
-    } catch (error) {
-      console.error('Token refresh failed:', error);
-      return { success: false };
-    }
+  static getLogoutUrl(): string {
+    return '/api/auth/signout';
   }
 
-  static async sendMessage(
-    request: ChatRequest,
-    onChunk?: (chunk: string) => void,
-    onDone?: () => void,
-    onConversationId?: (id: string) => void
-  ): Promise<{ conversationId?: string }> {
-    try {
-      console.log('=== Sending Message ===');
-      console.log('Request:', request);
+  // ============= CHAT =============
 
-      const response = await fetch(`${this.baseUrl}/ai/chat`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...this.getAuthHeaders(),
-          Accept: 'text/event-stream',
-        },
-        body: JSON.stringify(request),
-      });
+  static async sendMessage(request: ChatRequest): Promise<ReadableStream> {
+    const response = await this.fetchWithCredentials('/api/chat', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
 
-      console.log('Chat response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Chat API error:', response.status, errorText);
-        throw new Error(`Chat API error: ${response.status} - ${errorText}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let conversationId: string | undefined;
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.log('Stream completed');
-            break;
-          }
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                console.log('Stream finished');
-                if (onDone) onDone();
-                return { conversationId };
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                console.log('Parsed SSE data:', parsed);
-
-                if (parsed.status === 'starting') {
-                  continue;
-                }
-                if (parsed.error) {
-                  throw new Error(parsed.error);
-                }
-                if (parsed.conversationId && onConversationId) {
-                  conversationId = parsed.conversationId;
-                  onConversationId(parsed.conversationId);
-                }
-                if (parsed.chunk && onChunk) {
-                  onChunk(parsed.chunk);
-                }
-                if (parsed.done && onDone) {
-                  onDone();
-                }
-              } catch {
-                console.log('Invalid JSON in SSE:', data);
-              }
-            }
-          }
-        }
-      }
-
-      return { conversationId };
-    } catch (error) {
-      console.error('Send message failed:', error);
-      throw error;
+    if (!response.body) {
+      throw new Error('No response body');
     }
+
+    return response.body;
   }
 
-  // Council now uses the same endpoint as regular chat
-  static async sendCouncilMessage(
-    request: CouncilChatRequest,
-    onChunk?: (chunk: string) => void,
-    onProgress?: (progress: CouncilProgress) => void,
-    onDone?: () => void,
-    onConversationId?: (id: string) => void
-  ): Promise<{ conversationId?: string }> {
-    try {
-      console.log('=== Sending Council Message ===');
-      console.log('Request:', request);
-
-      const response = await fetch(`${this.baseUrl}/ai/chat`, {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          ...this.getAuthHeaders(),
-          Accept: 'text/event-stream',
-        },
-        body: JSON.stringify({
-          message: request.message,
-          conversationId: request.conversationId,
-          selectedModel: 'council',
-        }),
-      });
-
-      console.log('Council chat response status:', response.status);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Council API error:', response.status, errorText);
-        throw new Error(`Council API error: ${response.status} - ${errorText}`);
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let conversationId: string | undefined;
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) {
-            console.log('Council stream completed');
-            break;
-          }
-
-          const chunk = decoder.decode(value);
-          const lines = chunk.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              const data = line.slice(6);
-              if (data === '[DONE]') {
-                console.log('Council stream finished');
-                if (onDone) onDone();
-                return { conversationId };
-              }
-
-              try {
-                const parsed = JSON.parse(data);
-                console.log('Parsed Council SSE data:', parsed);
-
-                if (parsed.status === 'starting' || parsed.status === 'initialization') {
-                  continue;
-                }
-                if (parsed.status === 'progress' && onProgress) {
-                  onProgress({
-                    stage: parsed.stage,
-                    model: parsed.model,
-                    progress: parsed.progress,
-                  });
-                }
-                if (parsed.error) {
-                  throw new Error(parsed.error);
-                }
-                if (parsed.conversationId && onConversationId) {
-                  conversationId = parsed.conversationId;
-                  onConversationId(parsed.conversationId);
-                }
-                if (parsed.chunk && onChunk) {
-                  onChunk(parsed.chunk);
-                }
-                if (parsed.done && onDone) {
-                  onDone();
-                }
-              } catch (e) {
-                console.log('Invalid JSON in Council SSE:', data);
-              }
-            }
-          }
-        }
-      }
-
-      return { conversationId };
-    } catch (error) {
-      console.error('Send council message failed:', error);
-      throw error;
-    }
-  }
+  // ============= CONVERSATIONS =============
 
   static async getConversations(): Promise<Conversation[]> {
+    const response = await this.fetchWithCredentials('/api/conversations');
+    return response.json();
+  }
+
+  static async getConversation(id: string): Promise<Conversation> {
+    const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
+    return response.json();
+  }
+
+  static async deleteConversation(id: string): Promise<void> {
+    await this.fetchWithCredentials(`/api/conversations/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  static async updateConversationTitle(id: string, title: string): Promise<void> {
+    await this.fetchWithCredentials(`/api/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  // ============= MODELS =============
+
+  static async getModels() {
     try {
-      console.log('Fetching conversations...');
-      const response = await this.fetchWithCredentials('/ai/conversations');
-      const conversations = await response.json();
-      console.log('Fetched conversations:', conversations.length);
-      return conversations;
-    } catch (error) {
-      console.error('Get conversations failed:', error);
-      return [];
+      const response = await this.fetchWithCredentials('/api/models');
+      return response.json();
+    } catch (e) {
+      console.error('Failed to fetch models:', e);
+      return { models: [] };
     }
   }
 
-  static async getConversation(conversationId: string): Promise<{ conversation: Conversation } | null> {
-    try {
-      console.log('Fetching conversation:', conversationId);
-      const response = await this.fetchWithCredentials(`/ai/conversations/${conversationId}`);
-      const result = await response.json();
-      console.log('Fetched conversation:', result);
-      return result;
-    } catch (error) {
-      console.error('Get conversation failed:', error);
-      return null;
+  // ============= COUNCIL =============
+
+  static async sendCouncilMessage(request: CouncilChatRequest): Promise<ReadableStream> {
+    const response = await this.fetchWithCredentials('/api/council', {
+      method: 'POST',
+      body: JSON.stringify(request),
+    });
+
+    if (!response.body) {
+      throw new Error('No response body');
     }
+
+    return response.body;
   }
 
-  static async deleteConversation(conversationId: string): Promise<void> {
-    try {
-      await this.fetchWithCredentials(`/ai/conversations/${conversationId}`, {
-        method: 'DELETE',
-      });
-      console.log(`Conversation ${conversationId} deleted successfully`);
-    } catch (error) {
-      console.error('Error deleting conversation:', error);
-      throw error;
-    }
+  // ============= RAG =============
+
+  static async refreshProfile(): Promise<void> {
+    await this.fetchWithCredentials('/api/rag/profile/refresh', {
+      method: 'POST',
+    });
+  }
+
+  static async getUserProfile(userId?: string): Promise<any> {
+    const url = userId 
+      ? `/api/rag/profile/${userId}` 
+      : '/api/rag/profile/me';
+    
+    const response = await this.fetchWithCredentials(url);
+    return response.json();
   }
 }
+
+export default ApiService;

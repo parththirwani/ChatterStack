@@ -5,7 +5,6 @@ import { redisStore } from '@/src/lib/redis';
 import crypto from 'crypto';
 import { z } from 'zod';
 
-
 import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
 import { runCouncilProcess } from '@/src/services/councilService';
 import { ingestMessage } from '../../services/rag/ingest';
@@ -22,7 +21,7 @@ enum Role {
   User = 'user',
 }
 
-interface Message {
+interface MessageType {
   role: Role;
   content: string;
   modelId?: string;
@@ -30,6 +29,18 @@ interface Message {
 
 // Feature flag for RAG
 const RAG_ENABLED = process.env.RAG_ENABLED === 'true';
+
+// SSE Data types
+interface SSEData {
+  status?: string;
+  chunk?: string;
+  error?: string;
+  conversationId?: string;
+  done?: boolean;
+  progress?: number;
+  stage?: string;
+  model?: string;
+}
 
 // OpenRouter API integration
 async function createCompletion(
@@ -94,7 +105,7 @@ async function createCompletion(
             fullContent += content;
             onChunk(content);
           }
-        } catch (e) {
+        } catch {
           // Ignore invalid JSON chunks
         }
       }
@@ -140,7 +151,7 @@ function createSSEStream(
 }
 
 // Helper to send SSE data
-function sseData(controller: ReadableStreamDefaultController, data: any) {
+function sseData(controller: ReadableStreamDefaultController, data: SSEData) {
   const encoder = new TextEncoder();
   controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
 }
@@ -190,7 +201,7 @@ export async function POST(request: NextRequest) {
         });
 
         if (conversation) {
-          conversationHistory = conversation.messages.map((m: { role: Role; content: any; modelId: any; }) => ({
+          conversationHistory = conversation.messages.map((m) => ({
             role: m.role as Role,
             content: m.content,
             modelId: m.modelId ?? undefined,

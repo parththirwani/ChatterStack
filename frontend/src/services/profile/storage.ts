@@ -1,4 +1,5 @@
 import { prisma } from '@/src/lib/prisma';
+import { Prisma } from '@prisma/client';
 
 export type TechnicalLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
 
@@ -51,12 +52,18 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
       return null;
     }
 
-    // Parse JSON profile
-    const profile = user.profile as any;
+    // Parse JSON profile - Prisma returns JsonValue
+    const profileData = user.profile as Prisma.JsonObject;
+    
     return {
-      ...profile,
       userId,
-      lastUpdated: user.profileUpdated || new Date(),
+      technicalLevel: (profileData.technicalLevel as TechnicalLevel) || 'intermediate',
+      explanationStyle: (profileData.explanationStyle as ExplanationStyle) || 'detailed',
+      topicFrequency: (profileData.topicFrequency as Record<string, number>) || {},
+      preferences: (profileData.preferences as { likes?: string[]; dislikes?: string[] }) || { likes: [], dislikes: [] },
+      messageCount: (profileData.messageCount as number) || 0,
+      lastUpdated: user.profileUpdated ? new Date(user.profileUpdated) : new Date(),
+      version: (profileData.version as number) || 1,
     };
   } catch (error) {
     console.error('Failed to get user profile:', error);
@@ -69,10 +76,22 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
  */
 export async function saveUserProfile(profile: UserProfile): Promise<void> {
   try {
+    // Convert to plain object for JSON storage
+    const profileData = {
+      userId: profile.userId,
+      technicalLevel: profile.technicalLevel,
+      explanationStyle: profile.explanationStyle,
+      topicFrequency: profile.topicFrequency,
+      preferences: profile.preferences,
+      messageCount: profile.messageCount,
+      lastUpdated: profile.lastUpdated.toISOString(),
+      version: profile.version,
+    };
+
     await prisma.user.update({
       where: { id: profile.userId },
       data: {
-        profile: profile as any,
+        profile: profileData,
         profileUpdated: new Date(),
       },
     });
@@ -101,11 +120,11 @@ export async function initializeProfile(userId: string): Promise<UserProfile> {
  * Get or create profile
  */
 export async function getOrCreateProfile(userId: string): Promise<UserProfile> {
-  let profile = await getUserProfile(userId);
+  const existingProfile = await getUserProfile(userId);
 
-  if (!profile) {
-    profile = await initializeProfile(userId);
+  if (!existingProfile) {
+    return await initializeProfile(userId);
   }
 
-  return profile;
+  return existingProfile;
 }

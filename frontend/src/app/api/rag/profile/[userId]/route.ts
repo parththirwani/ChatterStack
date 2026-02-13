@@ -76,7 +76,7 @@ export async function PUT(
     const body = await request.json();
     const { explanationStyle, technicalLevel, preferences } = body;
 
-    let profile = await getUserProfile(targetUserId);
+    const profile = await getUserProfile(targetUserId);
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }

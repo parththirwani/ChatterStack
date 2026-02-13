@@ -35,10 +35,10 @@ export function enforceUserScope(
 /**
  * Higher-order function to wrap route handlers with authentication
  */
-export function withAuth(
-  handler: (request: NextRequest, userId: string, ...args: any[]) => Promise<NextResponse>
+export function withAuth<T extends unknown[]>(
+  handler: (request: NextRequest, userId: string, ...args: T) => Promise<NextResponse>
 ) {
-  return async (request: NextRequest, ...args: any[]) => {
+  return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
     const session = await auth();
 
     if (!session?.user?.id) {

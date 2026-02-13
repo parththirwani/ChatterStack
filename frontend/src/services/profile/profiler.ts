@@ -29,7 +29,7 @@ export async function inferUserProfile(userId: string): Promise<UserProfile> {
   }
 
   // Flatten messages
-  const allMessages = conversations.flatMap((c: { messages: any; }) => c.messages);
+  const allMessages = conversations.flatMap((c: { messages: unknown[] }) => c.messages);
 
   // Get current profile
   const currentProfile = await getOrCreateProfile(userId);
@@ -64,20 +64,34 @@ export async function incrementalProfileUpdate(
     if (!user) return;
 
     // Initialize profile with default structure
-    let profile: UserProfile = user.profile
-      ? typeof user.profile === 'string'
-        ? JSON.parse(user.profile)
-        : user.profile
-      : {
-          userId,
-          technicalLevel: 'intermediate' as const,
-          explanationStyle: 'detailed' as const,
-          preferences: {},
-          topicFrequency: {},
-          messageCount: 0,
-          lastUpdated: new Date(),
-          version: 1,
-        };
+    const storedProfile = user.profile as Record<string, unknown> | null;
+    
+    let profile: UserProfile;
+    if (storedProfile && typeof storedProfile === 'object') {
+      profile = {
+        userId,
+        technicalLevel: (storedProfile.technicalLevel as UserProfile['technicalLevel']) || 'intermediate',
+        explanationStyle: (storedProfile.explanationStyle as UserProfile['explanationStyle']) || 'detailed',
+        preferences: (storedProfile.preferences as UserProfile['preferences']) || {},
+        topicFrequency: (storedProfile.topicFrequency as Record<string, number>) || {},
+        messageCount: (storedProfile.messageCount as number) || 0,
+        lastUpdated: storedProfile.lastUpdated 
+          ? new Date(storedProfile.lastUpdated as string) 
+          : new Date(),
+        version: (storedProfile.version as number) || 1,
+      };
+    } else {
+      profile = {
+        userId,
+        technicalLevel: 'intermediate',
+        explanationStyle: 'detailed',
+        preferences: {},
+        topicFrequency: {},
+        messageCount: 0,
+        lastUpdated: new Date(),
+        version: 1,
+      };
+    }
 
     // Ensure topicFrequency exists
     if (!profile.topicFrequency) {

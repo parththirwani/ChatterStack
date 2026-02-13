@@ -23,7 +23,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 days
+    maxAge: 30 * 24 * 60 * 60,
   },
   pages: {
     signIn: '/auth/signin',
@@ -33,44 +33,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          prompt: 'consent',
-          access_type: 'offline',
-          response_type: 'code',
-        },
-      },
-      profile(profile) {
-        return {
-          id: profile.sub,
-          name: profile.name,
-          email: profile.email,
-          image: profile.picture,
-          provider: 'google',
-          providerId: profile.sub,
-        };
-      },
+      allowDangerousEmailAccountLinking: true,
     }),
     GithubProvider({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
-      profile(profile) {
-        return {
-          id: profile.id.toString(),
-          name: profile.name || profile.login,
-          email: profile.email,
-          image: profile.avatar_url,
-          provider: 'github',
-          providerId: profile.id.toString(),
-        };
-      },
+      allowDangerousEmailAccountLinking: true,
     }),
   ],
   callbacks: {
     async jwt({ token, user, account }) {
       if (user) {
         token.id = user.id;
-        token.provider = account?.provider || user.provider || 'unknown';
+        token.provider = account?.provider || 'unknown';
       }
       return token;
     },
@@ -81,11 +56,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
-    async signIn({ user, account, profile }) {
+    async signIn({ user, account }) {
       if (!account) return false;
 
       try {
-        // Check if user exists by provider ID
         const existingUser = await prisma.user.findFirst({
           where: {
             provider: account.provider,
@@ -94,7 +68,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         });
 
         if (existingUser) {
-          // Update user info if needed
           await prisma.user.update({
             where: { id: existingUser.id },
             data: {
@@ -104,39 +77,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               updatedAt: new Date(),
             },
           });
-        } else {
-          // Check if email exists with different provider
-          const emailUser = await prisma.user.findUnique({
-            where: { email: user.email || '' },
-          });
-
-          if (emailUser) {
-            // Link accounts by updating provider info
-            await prisma.user.update({
-              where: { id: emailUser.id },
-              data: {
-                provider: account.provider,
-                providerId: account.providerAccountId,
-                name: user.name || emailUser.name,
-                avatarUrl: user.image || emailUser.avatarUrl,
-                updatedAt: new Date(),
-              },
-            });
-          } else {
-            // Create new user
-            await prisma.user.create({
-              data: {
-                email: user.email!,
-                name: user.name,
-                avatarUrl: user.image,
-                provider: account.provider,
-                providerId: account.providerAccountId,
-                profile: {},
-                profileUpdated: new Date(),
-              },
-            });
-          }
+          return true;
         }
+
+        const emailUser = user.email ? await prisma.user.findUnique({
+          where: { email: user.email },
+        }) : null;
+
+        if (emailUser) {
+          await prisma.user.update({
+            where: { id: emailUser.id },
+            data: {
+              provider: account.provider,
+              providerId: account.providerAccountId,
+              name: user.name || emailUser.name,
+              avatarUrl: user.image || emailUser.avatarUrl,
+              updatedAt: new Date(),
+            },
+          });
+          return true;
+        }
+
+        await prisma.user.create({
+          data: {
+            email: user.email!,
+            name: user.name,
+            avatarUrl: user.image,
+            provider: account.provider,
+            providerId: account.providerAccountId,
+            profile: {},
+            profileUpdated: new Date(),
+          },
+        });
 
         return true;
       } catch (error) {
