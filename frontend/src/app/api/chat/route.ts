@@ -9,6 +9,7 @@ import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
 import { runCouncilProcess } from '@/src/services/councilService';
 import { ingestMessage } from '../../services/rag/ingest';
 import { formatContextForLLM, retrieveContextWithFallback } from '@/src/services/retrievalService';
+import { formatMessagesWithSystemContext } from '@/src/services/promptService';
 
 const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -42,7 +43,7 @@ interface SSEData {
   model?: string;
 }
 
-// OpenRouter API integration
+// OpenRouter API integration with system prompts
 async function createCompletion(
   messages: Array<{ role: string; content: string }>,
   model: string,
@@ -52,17 +53,20 @@ async function createCompletion(
     throw new Error('OPENROUTER_API_KEY is not set');
   }
 
+  // Format messages with system context
+  const formattedMessages = formatMessagesWithSystemContext(messages, model);
+
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001',
+      'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
       'X-Title': 'ChatterStack',
     },
     body: JSON.stringify({
       model: model,
-      messages: messages,
+      messages: formattedMessages,
       stream: true,
       temperature: 0.7,
       max_tokens: 4000,
@@ -251,12 +255,12 @@ export async function POST(request: NextRequest) {
         content: m.content,
       }));
 
-      // Inject RAG context as system message (if available)
-      if (ragContext) {
-        messagesForAI.unshift({
-          role: 'assistant',
-          content: `Context from user's past conversations:\n\n${ragContext}\n\nUse this context to provide more personalized and relevant responses.`,
-        });
+      // Inject RAG context as a user message prefix (if available)
+      if (ragContext && messagesForAI.length > 0) {
+        const lastMessage = messagesForAI[messagesForAI.length - 1];
+        if (lastMessage && lastMessage.role === 'user') {
+          lastMessage.content = `Context from past conversations:\n\n${ragContext}\n\n---\n\nCurrent question: ${lastMessage.content}`;
+        }
       }
 
       let fullContent = '';

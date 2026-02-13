@@ -39,9 +39,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       conversations: conversations.map((c) => ({
         id: c.id,
+        title: c.title,
+        userId: c.userId,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
-        preview: c.messages[0]?.content.substring(0, 100) || '',
+        messages: c.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          modelId: m.modelId,
+          createdAt: m.createdAt,
+          updatedAt: m.updatedAt,
+        })),
       })),
       total,
       limit,

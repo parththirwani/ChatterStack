@@ -80,13 +80,25 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   }, []);
 
   const filteredConversations = React.useMemo(() => {
-    return conversations.filter(
-      (conv) =>
-        conv.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        conv.messages.some((msg) =>
-          msg.content.toLowerCase().includes(searchQuery.toLowerCase())
-        )
-    );
+    if (!searchQuery.trim()) {
+      return conversations;
+    }
+    
+    return conversations.filter((conv) => {
+      // Search in title
+      if (conv.title?.toLowerCase().includes(searchQuery.toLowerCase())) {
+        return true;
+      }
+      
+      // Search in messages (safely handle undefined messages array)
+      if (conv.messages && Array.isArray(conv.messages)) {
+        return conv.messages.some((msg) =>
+          msg.content?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+      }
+      
+      return false;
+    });
   }, [conversations, searchQuery]);
 
   const isAuthenticated = user && user.id && user.id !== 'guest';
@@ -96,7 +108,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
       <div
         className={`${
           collapsed ? 'w-20' : 'w-80'
-        } h-screen flex-shrink-0 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`}
+        } h-screen shrink-0 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`}
         style={{ backgroundColor: '#141017' }}
       >
         <SidebarHeader

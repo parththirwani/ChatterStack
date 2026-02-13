@@ -75,9 +75,9 @@ const ChatPage: React.FC = () => {
     
     const newUrl = `/${conversationId}`;
     if (pathname !== newUrl) {
-      window.history.pushState({}, '', newUrl);
+      router.push(newUrl);
     }
-  }, [pathname, setCurrentConversationId]);
+  }, [pathname, router, setCurrentConversationId]);
 
   const handleNewChat = useCallback(() => {
     console.log('[ChatPage] New chat requested');
@@ -85,9 +85,9 @@ const ChatPage: React.FC = () => {
     setCurrentConversationId(undefined);
     
     if (pathname !== '/') {
-      window.history.pushState({}, '', '/');
+      router.push('/');
     }
-  }, [pathname, setCurrentConversationId]);
+  }, [pathname, router, setCurrentConversationId]);
 
   const handleConversationCreated = useCallback((conversationId: string) => {
     console.log('[ChatPage] New conversation created:', conversationId);
@@ -97,9 +97,9 @@ const ChatPage: React.FC = () => {
     
     const newUrl = `/${conversationId}`;
     if (pathname !== newUrl) {
-      window.history.replaceState({}, '', newUrl);
+      router.replace(newUrl);
     }
-  }, [pathname, setCurrentConversationId, loadConversations]);
+  }, [pathname, router, setCurrentConversationId, loadConversations]);
 
   // Handle browser back/forward buttons
   useEffect(() => {
@@ -115,7 +115,10 @@ const ChatPage: React.FC = () => {
   if (userLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#201d26]">
-        <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="text-center">
+          <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-400">Loading...</p>
+        </div>
       </div>
     );
   }

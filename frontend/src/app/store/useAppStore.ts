@@ -158,7 +158,10 @@ export const useAppStore = create<AppState>()(
         
         try {
           setConversationsLoading(true);
-          const convos = await ApiService.getConversations();
+          const result = await ApiService.getConversations();
+          
+          // Extract conversations array from the response
+          const convos = result.conversations || [];
           
           // Sort conversations by update time (most recent first)
           const sortedConvos = convos.sort(
@@ -184,36 +187,59 @@ export const useAppStore = create<AppState>()(
           
           const result = await ApiService.getConversation(conversationId);
           
-          if (result?.conversation) {
+          console.log('[Store] API Result:', result);
+          
+          if (result && result.conversation) {
+            const conversation = result.conversation;
+            
+            // Ensure messages array exists
+            const messagesArray = Array.isArray(conversation.messages) 
+              ? conversation.messages 
+              : [];
+            
             // CRITICAL FIX: Ensure messages are in chronological order
             const messages = sortMessagesByCreatedAt(
-              result.conversation.messages.map((msg) => ({
-                ...msg,
+              messagesArray.map((msg) => ({
+                id: msg.id,
                 role: msg.role as 'user' | 'assistant',
+                content: msg.content || '',
                 modelId: msg.modelId,
+                createdAt: msg.createdAt,
+                updatedAt: msg.updatedAt,
               }))
             );
             
             console.log(`[Store] Loaded ${messages.length} messages in chronological order`);
-            console.log(`[Store] First message role: ${messages[0]?.role}`);
-            console.log(`[Store] Last message role: ${messages[messages.length - 1]?.role}`);
+            if (messages.length > 0) {
+              console.log(`[Store] First message role: ${messages[0]?.role}`);
+              console.log(`[Store] Last message role: ${messages[messages.length - 1]?.role}`);
+            }
             
             setChatState(conversationId, {
               messages,
               loading: false,
+              error: undefined,
               councilProgress: [],
             });
             
             setCurrentConversationId(conversationId);
           } else {
-            throw new Error('Conversation not found');
+            console.error('[Store] Invalid response from API:', result);
+            throw new Error('Invalid conversation data received');
           }
         } catch (error) {
-          console.error('Error loading conversation:', error);
+          console.error('[Store] Error loading conversation:', error);
+          const errorMessage = error instanceof Error ? error.message : 'Failed to load conversation.';
+          
           setChatState(conversationId, {
             loading: false,
-            error: 'Failed to load conversation.',
+            error: errorMessage,
+            messages: [],
+            councilProgress: [],
           });
+          
+          // Don't clear current conversation ID - let user see the error
+          // setCurrentConversationId(undefined);
         }
       },
       

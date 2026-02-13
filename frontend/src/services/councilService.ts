@@ -1,16 +1,20 @@
-// Council service - ported from Express backend
-// Handles 3-stage council process: parallel responses, peer rankings, chairman synthesis
+// Council service with integrated system prompts
+import {
+  getCouncilStage1Prompt,
+  getCouncilStage2Prompt,
+  getCouncilChairmanPrompt,
+} from './promptService';
 
-const COUNCIL_MODELS = [
+export const COUNCIL_MODELS = [
   "openai/gpt-5.1",
   "google/gemini-3-pro-preview",
   "anthropic/claude-sonnet-4.5",
   "x-ai/grok-4",
 ] as const;
 
-const CHAIRMAN_MODEL = "google/gemini-3-pro-preview" as const;
+export const CHAIRMAN_MODEL = "google/gemini-3-pro-preview" as const;
 
-type CouncilModel = typeof COUNCIL_MODELS[number];
+export type CouncilModel = typeof COUNCIL_MODELS[number];
 
 interface Message {
   role: 'user' | 'assistant';
@@ -18,18 +22,18 @@ interface Message {
   modelId?: string;
 }
 
-interface Stage1Result {
+export interface Stage1Result {
   model: CouncilModel;
   response: string;
 }
 
-interface Stage2Result {
+export interface Stage2Result {
   model: CouncilModel;
   rankingText: string;
   parsedRanking: string[];
 }
 
-interface AggregateRanking {
+export interface AggregateRanking {
   model: string;
   averageRank: number;
   rankingsCount: number;
@@ -52,7 +56,7 @@ async function createCompletion(
     headers: {
       Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
       'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001',
+      'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
       'X-Title': 'ChatterStack',
     },
     body: JSON.stringify({
@@ -126,14 +130,18 @@ async function stage1_collect_responses(
   console.log('=== Stage 1: Collecting Council Responses ===');
   console.log(`Conversation history: ${conversationHistory.length} messages`);
 
+  // Get the stage 1 system prompt
+  const systemPrompt = getCouncilStage1Prompt();
+
   const promises = COUNCIL_MODELS.map(async (model) => {
     try {
       if (onProgress) {
         onProgress('stage1', model, 0);
       }
 
-      // Include conversation history for context
+      // Build messages with system prompt and conversation history
       const messages = [
+        { role: 'system', content: systemPrompt },
         ...conversationHistory.map(m => ({
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.content,
@@ -229,48 +237,8 @@ async function stage2_collect_rankings(
     };
   });
 
-  // Build ranking prompt
-  const responsesText = anonymizedResponses
-    .map((r) => `${r.label}:\n${r.response}\n`)
-    .join('\n');
-
-  const contextSummary =
-    conversationHistory.length > 0
-      ? `\n\nCONVERSATION CONTEXT:\n${conversationHistory
-          .slice(-4)
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n')}\n`
-      : '';
-
-  const rankingPrompt = `You are an expert evaluator analyzing different AI responses to the same question.
-${contextSummary}
-ORIGINAL QUESTION:
-${userQuery}
-
-RESPONSES TO EVALUATE:
-${responsesText}
-
-YOUR TASK:
-1. Critically evaluate each response for:
-   - Accuracy and correctness
-   - Completeness and depth
-   - Clarity and organization
-   - Practical usefulness
-   - Consistency with conversation history (if applicable)
-   - Any errors or misconceptions
-
-2. Provide detailed critiques for each response.
-
-3. End with a FINAL RANKING section that lists the responses in order from best to worst.
-   Format: Use numbered list like:
-   1. Response C
-   2. Response A
-   3. Response B
-   etc.
-
-Be thorough in your analysis and decisive in your ranking.
-
-FINAL RANKING:`;
+  // Get the stage 2 prompt with anonymized responses
+  const rankingPrompt = getCouncilStage2Prompt(userQuery, anonymizedResponses);
 
   // Query all models in parallel for rankings
   const promises = COUNCIL_MODELS.map(async (model) => {
@@ -373,61 +341,22 @@ async function stage3_synthesize_final(
   // Calculate aggregate rankings
   const aggregateRankings = calculate_aggregate_rankings(stage2Results, labelToModel);
 
-  // Build context from Stage 1
-  const stage1Context = stage1Results
-    .map((r) => `Model: ${r.model}\nResponse: ${r.response}`)
-    .join('\n\n---\n\n');
-
-  // Build context from Stage 2
-  const stage2Context = stage2Results
-    .map((r) => `Model: ${r.model}\nRanking: ${r.rankingText}`)
-    .join('\n\n---\n\n');
-
-  // Build ranking summary
-  const rankingSummary = aggregateRankings
-    .map((r, i) => `${i + 1}. ${r.model} (avg rank: ${r.averageRank.toFixed(2)})`)
-    .join('\n');
-
-  const contextSummary =
-    conversationHistory.length > 0
-      ? `\n\nCONVERSATION HISTORY:\n${conversationHistory
-          .slice(-6)
-          .map((m) => `${m.role}: ${m.content}`)
-          .join('\n\n')}\n`
-      : '';
-
-  const synthesisPrompt = `You are the chairman of an AI council. Multiple expert AI models have analyzed this question and peer-reviewed each other's responses.
-${contextSummary}
-CURRENT QUESTION:
-${userQuery}
-
-COUNCIL RESPONSES:
-${stage1Context}
-
-PEER REVIEWS:
-${stage2Context}
-
-AGGREGATE RANKINGS (based on peer review):
-${rankingSummary}
-
-YOUR TASK:
-Synthesize a comprehensive, authoritative answer that:
-1. Incorporates the best insights from all council members
-2. Maintains continuity with the conversation history (if any)
-3. Resolves disagreements by weighing evidence and rankings
-4. Provides a clear, unified response
-5. Acknowledges any remaining uncertainties or different perspectives
-6. Delivers practical, actionable information
-
-Create the definitive answer that represents the council's collective wisdom.`;
+  // Get chairman prompt
+  const chairmanPrompt = getCouncilChairmanPrompt(
+    userQuery,
+    stage1Results,
+    aggregateRankings,
+    conversationHistory
+  );
 
   // Include conversation history in the chairman's messages
   const chairmanMessages = [
+    { role: 'system', content: chairmanPrompt },
     ...conversationHistory.map(m => ({
       role: m.role === 'user' ? 'user' : 'assistant',
       content: m.content,
     })),
-    { role: 'user', content: synthesisPrompt },
+    { role: 'user', content: userQuery },
   ];
 
   let finalResponse = '';

@@ -67,13 +67,14 @@ export interface Message {
   modelId?: string; // Track which LLM generated the response
 }
 
+// Conversation type - messages may be undefined in list view
 export interface Conversation {
   id: string;
   title?: string;
   userId: string;
   createdAt: string;
   updatedAt: string;
-  messages: Message[];
+  messages?: Message[]; // Optional because API may not return all messages in list view
 }
 
 export interface ChatState {

@@ -22,7 +22,7 @@ export class ApiService {
 
   private static async fetchWithCredentials(url: string, options: RequestInit = {}) {
     const fullUrl = url.startsWith('/') ? url : `${this.baseUrl}/${url}`;
-    console.log(`API Call: ${options.method || 'GET'} ${fullUrl}`);
+    console.log(`[API] ${options.method || 'GET'} ${fullUrl}`);
     
     const response = await fetch(fullUrl, {
       ...options,
@@ -35,7 +35,7 @@ export class ApiService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('API Error:', response.status, errorText);
+      console.error(`[API] Error ${response.status}:`, errorText);
       throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
 
@@ -64,7 +64,7 @@ export class ApiService {
       
       return { ok: false };
     } catch (error) {
-      console.error('Auth validation failed:', error);
+      console.error('[API] Auth validation failed:', error);
       return { ok: false };
     }
   }
@@ -89,6 +89,8 @@ export class ApiService {
     onDone?: () => void,
     onConversationId?: (id: string) => void
   ): Promise<void> {
+    console.log('[API] Sending message:', { conversationId: request.conversationId, model: request.selectedModel });
+    
     const response = await fetch('/api/chat', {
       method: 'POST',
       credentials: 'include',
@@ -162,16 +164,40 @@ export class ApiService {
   // ============= CONVERSATIONS =============
 
   static async getConversations(): Promise<{ conversations: Conversation[] }> {
-    const response = await this.fetchWithCredentials('/api/conversations');
-    return response.json();
+    console.log('[API] Fetching conversations list');
+    try {
+      const response = await this.fetchWithCredentials('/api/conversations');
+      const data = await response.json();
+      console.log('[API] Conversations received:', data);
+      return data;
+    } catch (error) {
+      console.error('[API] Failed to fetch conversations:', error);
+      throw error;
+    }
   }
 
-  static async getConversation(id: string): Promise<{ conversation: Conversation }> {
-    const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
-    return response.json();
+  static async getConversation(id: string): Promise<{ conversation: Conversation } | null> {
+    console.log(`[API] Fetching conversation: ${id}`);
+    try {
+      const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
+      const data = await response.json();
+      console.log('[API] Conversation received:', data);
+      
+      // Validate the response
+      if (!data || !data.conversation) {
+        console.error('[API] Invalid response structure:', data);
+        return null;
+      }
+      
+      return data;
+    } catch (error) {
+      console.error(`[API] Failed to fetch conversation ${id}:`, error);
+      return null;
+    }
   }
 
   static async deleteConversation(id: string): Promise<void> {
+    console.log(`[API] Deleting conversation: ${id}`);
     await this.fetchWithCredentials(`/api/conversations/${id}`, {
       method: 'DELETE',
     });
@@ -184,7 +210,7 @@ export class ApiService {
       const response = await this.fetchWithCredentials('/api/models');
       return response.json();
     } catch (e) {
-      console.error('Failed to fetch models:', e);
+      console.error('[API] Failed to fetch models:', e);
       return { models: [] };
     }
   }

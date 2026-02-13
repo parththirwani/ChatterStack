@@ -4,16 +4,18 @@ import { prisma } from '@/src/lib/prisma';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // Changed: params is now a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
+      console.log('[API] Unauthorized - no session');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Await params
     const { id } = await params;
+    console.log(`[API] Fetching conversation ${id} for user ${session.user.id}`);
 
     const conversation = await prisma.conversation.findUnique({
       where: {
@@ -28,23 +30,34 @@ export async function GET(
     });
 
     if (!conversation) {
+      console.log(`[API] Conversation ${id} not found`);
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
 
-    return NextResponse.json({
-      id: conversation.id,
-      createdAt: conversation.createdAt,
-      updatedAt: conversation.updatedAt,
-      messages: conversation.messages.map((m) => ({
-        id: m.id,
-        role: m.role,
-        content: m.content,
-        modelId: m.modelId,
-        createdAt: m.createdAt,
-      })),
-    });
+    console.log(`[API] Found conversation ${id} with ${conversation.messages.length} messages`);
+
+    const response = {
+      conversation: {
+        id: conversation.id,
+        title: conversation.title,
+        userId: conversation.userId,
+        createdAt: conversation.createdAt.toISOString(),
+        updatedAt: conversation.updatedAt.toISOString(),
+        messages: conversation.messages.map((m) => ({
+          id: m.id,
+          role: m.role,
+          content: m.content,
+          modelId: m.modelId,
+          createdAt: m.createdAt.toISOString(),
+          updatedAt: m.updatedAt.toISOString(),
+        })),
+      }
+    };
+
+    console.log('[API] Returning conversation data');
+    return NextResponse.json(response);
   } catch (error) {
-    console.error('Error fetching conversation:', error);
+    console.error('[API] Error fetching conversation:', error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to fetch conversation',
@@ -56,7 +69,7 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // Changed: params is now a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -66,6 +79,7 @@ export async function DELETE(
 
     // Await params
     const { id } = await params;
+    console.log(`[API] Deleting conversation ${id} for user ${session.user.id}`);
 
     const conversation = await prisma.conversation.findUnique({
       where: {
@@ -88,9 +102,10 @@ export async function DELETE(
     const { redisStore } = await import('@/src/lib/redis');
     await redisStore.delete(id);
 
+    console.log(`[API] Deleted conversation ${id}`);
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error deleting conversation:', error);
+    console.error('[API] Error deleting conversation:', error);
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : 'Failed to delete conversation',

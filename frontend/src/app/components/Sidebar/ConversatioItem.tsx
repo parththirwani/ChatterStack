@@ -1,7 +1,7 @@
 import React, { useState, useCallback, memo } from 'react';
 import { Trash2 } from 'lucide-react';
-import { Conversation } from '@/app/types';
 import DeleteConversationModal from './DeleteModal';
+import { Conversation } from '../../types';
 
 interface ConversationItemProps {
   conversation: Conversation;
@@ -54,6 +54,26 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     }
   }, [isDeleting]);
 
+  // Safely get preview text
+  const getPreviewText = () => {
+    // Use title if available
+    if (conversation.title) {
+      return conversation.title;
+    }
+    
+    // Use first message content if available
+    if (conversation.messages && conversation.messages.length > 0) {
+      const firstMessage = conversation.messages[0];
+      return firstMessage?.content?.substring(0, 100) || 'No content';
+    }
+    
+    // Fallback
+    return 'New Chat';
+  };
+
+  const displayTitle = conversation.title || 'New Chat';
+  const previewText = getPreviewText();
+
   return (
     <>
       <div
@@ -71,11 +91,10 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
                 isActive ? 'text-yellow-300' : 'text-white'
               }`}
             >
-              {conversation.title || 'New Chat'}
+              {displayTitle}
             </p>
             <p className="text-xs text-gray-400 mb-2 line-clamp-2">
-              {conversation.messages[0]?.content?.substring(0, 100) ||
-                'No messages'}
+              {previewText}
             </p>
             <p className="text-xs text-gray-500">
               {formatDate(conversation.updatedAt)}
@@ -99,7 +118,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           isOpen={showDeleteModal}
           onClose={handleCloseModal}
           onConfirm={handleConfirmDelete}
-          conversationTitle={conversation.title || 'New Chat'}
+          conversationTitle={displayTitle}
           isDeleting={isDeleting}
           error={deleteError}
         />
