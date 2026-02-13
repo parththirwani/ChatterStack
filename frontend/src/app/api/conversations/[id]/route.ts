@@ -4,7 +4,7 @@ import { prisma } from '@/src/lib/prisma';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // Changed: params is now a Promise
 ) {
   try {
     const session = await auth();
@@ -12,9 +12,12 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Await params
+    const { id } = await params;
+
     const conversation = await prisma.conversation.findUnique({
       where: {
-        id: params.id,
+        id: id,
         userId: session.user.id,
       },
       include: {
@@ -53,7 +56,7 @@ export async function GET(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> } // Changed: params is now a Promise
 ) {
   try {
     const session = await auth();
@@ -61,9 +64,12 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    // Await params
+    const { id } = await params;
+
     const conversation = await prisma.conversation.findUnique({
       where: {
-        id: params.id,
+        id: id,
         userId: session.user.id,
       },
     });
@@ -74,13 +80,13 @@ export async function DELETE(
 
     await prisma.conversation.delete({
       where: {
-        id: params.id,
+        id: id,
       },
     });
 
     // Also clear from Redis cache
     const { redisStore } = await import('@/src/lib/redis');
-    await redisStore.delete(params.id);
+    await redisStore.delete(id);
 
     return NextResponse.json({ success: true });
   } catch (error) {

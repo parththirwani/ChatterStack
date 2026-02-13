@@ -3,14 +3,9 @@ import { auth } from '@/src/lib/auth';
 import { enforceUserScope } from '@/src/middleware/authMiddleware';
 import { getUserProfile, saveUserProfile } from '@/src/services/profile/storage';
 
-
-/**
- * GET /api/rag/profile/[userId]
- * Get user profile
- */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> } // Changed
 ) {
   try {
     const session = await auth();
@@ -20,13 +15,12 @@ export async function GET(
     }
 
     const authenticatedUserId = session.user.id;
-    const targetUserId = params.userId;
+    const { userId: targetUserId } = await params; // Await params
 
     if (!targetUserId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    // Users can only access their own profile
     const scopeCheck = enforceUserScope(authenticatedUserId, targetUserId);
     if (!scopeCheck.allowed) {
       return scopeCheck.error!;
@@ -45,13 +39,9 @@ export async function GET(
   }
 }
 
-/**
- * PUT /api/rag/profile/[userId]
- * Manually update profile preferences
- */
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { userId: string } }
+  { params }: { params: Promise<{ userId: string }> } // Changed
 ) {
   try {
     const session = await auth();
@@ -61,13 +51,12 @@ export async function PUT(
     }
 
     const authenticatedUserId = session.user.id;
-    const targetUserId = params.userId;
+    const { userId: targetUserId } = await params; // Await params
 
     if (!targetUserId) {
       return NextResponse.json({ error: 'User ID is required' }, { status: 400 });
     }
 
-    // Users can only update their own profile
     const scopeCheck = enforceUserScope(authenticatedUserId, targetUserId);
     if (!scopeCheck.allowed) {
       return scopeCheck.error!;
@@ -81,7 +70,6 @@ export async function PUT(
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    // Update allowed fields
     if (explanationStyle) profile.explanationStyle = explanationStyle;
     if (technicalLevel) profile.technicalLevel = technicalLevel;
     if (preferences)

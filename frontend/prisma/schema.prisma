@@ -6,32 +6,30 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// User model - compatible with NextAuth
 model User {
-  id             String   @id @default(cuid())
-  provider       String   // 'google' or 'github'
-  providerId     String   @unique
-  email          String?  @unique
+  id             String    @id @default(cuid())
   name           String?
-  avatarUrl      String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  profile        Json?    @default("{}")
-  profileUpdated DateTime @default(now())
-  
-  // NextAuth adapter fields
+  email          String    @unique
   emailVerified  DateTime?
   image          String?
   
-  // Relations
-  conversations  Conversation[]
+  // Make custom fields OPTIONAL
+  provider       String?
+  providerId     String?
+  avatarUrl      String?
+  profile        Json?
+  profileUpdated DateTime?
+  
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
   accounts       Account[]
   sessions       Session[]
+  conversations  Conversation[]
 
   @@map("users")
 }
 
-// NextAuth adapter models
 model Account {
   id                String  @id @default(cuid())
   userId            String
@@ -49,6 +47,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([provider, providerAccountId])
+  @@map("accounts")
 }
 
 model Session {
@@ -57,6 +56,8 @@ model Session {
   userId       String
   expires      DateTime
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
 }
 
 model VerificationToken {
@@ -65,16 +66,16 @@ model VerificationToken {
   expires    DateTime
 
   @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
-// Application models
 model Conversation {
   id        String    @id @default(uuid())
   title     String?
   userId    String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-
+  
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   messages  Message[]
 
@@ -84,12 +85,12 @@ model Conversation {
 model Message {
   id             String       @id @default(uuid())
   conversationId String
-  content        String
+  content        String       @db.Text
   role           String
   modelId        String?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-
+  
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([modelId])
