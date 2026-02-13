@@ -1,8 +1,7 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import Image from 'next/image';
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+import { signIn } from 'next-auth/react';
 
 type User = {
   id: string;
@@ -19,7 +18,7 @@ interface LoginModalProps {
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = React.useState(false);
 
   // Only check for OAuth redirect params when modal opens
   useEffect(() => {
@@ -35,23 +34,18 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess
     }
   }, [isOpen, onClose]);
 
-  // OAuth login redirect
-  const handleLogin = (provider: "google" | "github") => {
+  // OAuth login using NextAuth
+  const handleLogin = async (provider: "google" | "github") => {
     setLoading(true);
-    window.location.href = `${BACKEND_URL}/auth/${provider}`;
-  };
-
-  // Logout
-  const handleLogout = async () => {
     try {
-      await fetch(`${BACKEND_URL}/auth/logout`, {
-        method: "POST",
-        credentials: "include",
+      // Use NextAuth's signIn function
+      await signIn(provider, {
+        callbackUrl: '/',
+        redirect: true,
       });
-      onLoginSuccess?.(null);
-      onClose();
-    } catch (err) {
-      console.error("Error logging out", err);
+    } catch (error) {
+      console.error('Login error:', error);
+      setLoading(false);
     }
   };
 

@@ -26,8 +26,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     maxAge: 30 * 24 * 60 * 60,
   },
   pages: {
-    signIn: '/auth/signin',
-    error: '/auth/error',
+    signIn: '/', // Redirect to home page for signin
+    error: '/', // Redirect to home page on error
   },
   providers: [
     GoogleProvider({

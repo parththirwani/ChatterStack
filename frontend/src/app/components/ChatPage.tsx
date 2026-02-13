@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import ChatInterface from './ChatInterface/ChatInterface';
 import Sidebar from './Sidebar';
 import { useAppStore } from '../store/useAppStore';
+import { User } from '../types';
 
 const ChatPage: React.FC = () => {
   const pathname = usePathname();
@@ -57,7 +58,7 @@ const ChatPage: React.FC = () => {
     setSidebarCollapsed(!sidebarCollapsed);
   }, [sidebarCollapsed, setSidebarCollapsed]);
 
-  const handleUserChange = useCallback((newUser: any | null) => {
+  const handleUserChange = useCallback((newUser: User | null) => {
     if (!newUser) {
       console.log('[ChatPage] User logged out, resetting state');
       reset();
