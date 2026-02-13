@@ -12,7 +12,6 @@ interface CouncilProgress {
 }
 
 export class ApiService {
-  // All API calls go to Next.js API routes on port 3000
   private static baseUrl = '/api';
 
   private static getAuthHeaders(): Record<string, string> {
@@ -43,12 +42,11 @@ export class ApiService {
     return response;
   }
 
-  // ============= AUTH - NextAuth Only =============
+  // ============= AUTH =============
   
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
     try {
-      // Use NextAuth session endpoint
-      const response = await fetch('/api/auth/session');
+      const response = await fetch('/api/auth/session', { credentials: 'include' });
       const session = await response.json();
       
       if (session?.user) {
@@ -71,38 +69,104 @@ export class ApiService {
     }
   }
 
-  // Login/Logout handled by NextAuth - redirect to sign-in page
-  static getLoginUrl(): string {
-    return '/api/auth/signin';
+  static async getCurrentUser(): Promise<User> {
+    const result = await this.validateAuth();
+    if (!result.ok || !result.user) {
+      throw new Error('Not authenticated');
+    }
+    return result.user;
   }
 
-  static getLogoutUrl(): string {
-    return '/api/auth/signout';
+  static async logout(): Promise<void> {
+    window.location.href = '/api/auth/signout';
   }
 
   // ============= CHAT =============
 
-  static async sendMessage(request: ChatRequest): Promise<ReadableStream> {
-    const response = await this.fetchWithCredentials('/api/chat', {
+  static async sendMessage(
+    request: ChatRequest,
+    onChunk?: (chunk: string) => void,
+    onDone?: () => void,
+    onConversationId?: (id: string) => void
+  ): Promise<void> {
+    const response = await fetch('/api/chat', {
       method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      },
       body: JSON.stringify(request),
     });
 
-    if (!response.body) {
+    if (!response.ok) {
+      throw new Error(`Chat API error: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    const decoder = new TextDecoder();
+
+    if (!reader) {
       throw new Error('No response body');
     }
 
-    return response.body;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value);
+      const lines = chunk.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const data = line.slice(6);
+          if (data === '[DONE]') {
+            onDone?.();
+            return;
+          }
+
+          try {
+            const parsed = JSON.parse(data);
+            if (parsed.error) throw new Error(parsed.error);
+            if (parsed.conversationId) onConversationId?.(parsed.conversationId);
+            if (parsed.chunk) onChunk?.(parsed.chunk);
+            if (parsed.done) onDone?.();
+          } catch (e) {
+            // Ignore invalid JSON
+          }
+        }
+      }
+    }
+  }
+
+  static async sendCouncilMessage(
+    request: CouncilChatRequest,
+    onChunk: (chunk: string) => void,
+    onProgress: (progress: CouncilProgress) => void,
+    onDone: () => void,
+    onConversationId: (id: string) => void
+  ): Promise<void> {
+    // Council mode uses the same /api/chat endpoint with model='council'
+    await this.sendMessage(
+      {
+        message: request.message,
+        conversationId: request.conversationId,
+        selectedModel: 'council',
+      },
+      onChunk,
+      onDone,
+      onConversationId
+    );
   }
 
   // ============= CONVERSATIONS =============
 
-  static async getConversations(): Promise<Conversation[]> {
+  static async getConversations(): Promise<{ conversations: Conversation[] }> {
     const response = await this.fetchWithCredentials('/api/conversations');
     return response.json();
   }
 
-  static async getConversation(id: string): Promise<Conversation> {
+  static async getConversation(id: string): Promise<{ conversation: Conversation }> {
     const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
     return response.json();
   }
@@ -110,13 +174,6 @@ export class ApiService {
   static async deleteConversation(id: string): Promise<void> {
     await this.fetchWithCredentials(`/api/conversations/${id}`, {
       method: 'DELETE',
-    });
-  }
-
-  static async updateConversationTitle(id: string, title: string): Promise<void> {
-    await this.fetchWithCredentials(`/api/conversations/${id}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ title }),
     });
   }
 
@@ -130,21 +187,6 @@ export class ApiService {
       console.error('Failed to fetch models:', e);
       return { models: [] };
     }
-  }
-
-  // ============= COUNCIL =============
-
-  static async sendCouncilMessage(request: CouncilChatRequest): Promise<ReadableStream> {
-    const response = await this.fetchWithCredentials('/api/council', {
-      method: 'POST',
-      body: JSON.stringify(request),
-    });
-
-    if (!response.body) {
-      throw new Error('No response body');
-    }
-
-    return response.body;
   }
 
   // ============= RAG =============
