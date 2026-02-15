@@ -271,7 +271,7 @@ async function stage2_collect_rankings(
   }
 
     `Stage 2 complete: ${stage2Results.length}/${COUNCIL_MODELS.length} models provided rankings`
-  );
+  ;
   
   return { stage2Results, labelToModel };
 }
