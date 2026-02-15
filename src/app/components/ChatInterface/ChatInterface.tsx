@@ -6,7 +6,7 @@ import MessageInput from './MessageInput';
 import AIMessage from './AIMessage';
 import UserMessage from '../../../components/chat/messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../../../components/council/progress/ProgressIndicator';
-import { useChatOptimized } from '../../hooks/useChat';
+import { useChatOptimized } from '../../../hooks/useChat';
 import { ChatInterfaceProps } from '../../types';
 
 

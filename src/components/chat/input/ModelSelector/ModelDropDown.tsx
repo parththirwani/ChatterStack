@@ -3,7 +3,7 @@
 import React from 'react';
 import { Crown } from 'lucide-react';
 import Image from 'next/image';
-import { AVAILABLE_MODELS, type ModelId } from '@/src/app/context/ModelSelectionContext';
+import { AVAILABLE_MODELS, type ModelId } from '@/src/context/ModelSelectionContext';
 
 interface ModelDropdownProps {
   selectedModel: ModelId;

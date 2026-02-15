@@ -1,7 +1,7 @@
 "use client";
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import { useModelSelection } from '@/src/app/context/ModelSelectionContext';
+import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { ModelDropdown } from './ModelDropdown';
 
 export const ModelSelector = () => {

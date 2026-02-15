@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
-import { ingestMessage } from '@/src/app/services/rag/ingest';
+import { ingestMessage } from '@/src/services/rag/ingest';
 
 export async function POST(request: NextRequest) {
   try {

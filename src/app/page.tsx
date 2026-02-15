@@ -1,7 +1,7 @@
 "use client"
 
-import ChatterStackPage from "./components/ChatPage";
+import ChatPage from "@/src/components/pages/ChatPage";
 
 export default function Home() {
-  return <ChatterStackPage />;
+  return <ChatPage />;
 }

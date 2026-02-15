@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { ApiService } from '../services/api';
-import type { Message, ChatState } from '../types';
+import type { Message, ChatState } from '../app/types';
 
 interface CouncilProgress {
   stage: string;

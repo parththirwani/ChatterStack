@@ -1,6 +1,6 @@
 "use client"
 
-import ChatPage from '../components/ChatPage';
+import ChatPage from '@/src/components/pages/ChatPage';
 
 export const dynamic = 'force-dynamic';
 export const dynamicParams = true;

@@ -1,8 +1,8 @@
 import { useCallback, useRef } from 'react';
 import { ApiService } from '../services/api';
-import { useAppStore } from '../store/useAppStore';
+import { useAppStore } from '../app/store/useAppStore';
 import { useModelSelection } from '../context/ModelSelectionContext';
-import type { Message } from '../types';
+import type { Message } from '../app/types';
 
 interface CouncilProgress {
   stage: string;

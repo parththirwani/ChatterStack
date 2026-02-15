@@ -3,7 +3,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import CoucilChatInterface from './interface/CouncilChatInterface';
 import type { User } from '../../app/types';
 import Sidebar from '../../app/components/Sidebar';
-import { ApiService } from '../../app/services/api';
+import { ApiService } from '../../services/api';
 import CouncilChatInterface from './interface/CouncilChatInterface';
 
 const CouncilPage: React.FC = () => {

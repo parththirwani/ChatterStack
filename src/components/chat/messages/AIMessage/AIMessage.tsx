@@ -1,6 +1,7 @@
-import { AIMessageHeader } from './AIMessageHeader';
-import { AIMessageContent } from './AIMessageContent';
-import { AIMessageActions } from './AIMessageActions';
+import { AIMessageActions } from "./Actions";
+import { AIMessageContent } from "./Content";
+import { AIMessageHeader } from "./Header";
+
 
 export const AIMessage = ({ content, modelId, loading, isLastMessage }) => {
   return (
@@ -10,7 +11,7 @@ export const AIMessage = ({ content, modelId, loading, isLastMessage }) => {
           <AIMessageHeader modelId={modelId} />
           <div className="flex-1">
             <AIMessageContent content={content} loading={loading} />
-            {!loading && <AIMessageActions content={content} />}
+            {!loading && <AIMessageActions content={content} filename={undefined} />}
           </div>
         </div>
       </div>

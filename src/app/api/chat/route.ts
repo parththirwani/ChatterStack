@@ -7,7 +7,7 @@ import { z } from 'zod';
 
 import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
 import { runCouncilProcess } from '@/src/services/councilService';
-import { ingestMessage } from '../../services/rag/ingest';
+import { ingestMessage } from '../../../services/rag/ingest';
 import { formatContextForLLM, retrieveContextWithFallback } from '@/src/services/retrievalService';
 import { formatMessagesWithSystemContext } from '@/src/services/promptService';
 

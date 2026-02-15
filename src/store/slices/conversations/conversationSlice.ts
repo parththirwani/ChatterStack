@@ -1,5 +1,5 @@
 import { StateCreator } from 'zustand';
-import { ApiService } from '../../../app/services/api';
+import { ApiService } from '../../../services/api';
 import type { Conversation } from '../../../app/types';
 import type { Message, ChatState, initialChatState } from '../chat/chatSlice';
 
