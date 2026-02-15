@@ -1,18 +1,12 @@
-
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { createUserSlice, UserSlice } from './slices/user/userSlice';
+import { createChatSlice, ChatSlice } from './slices/chat/chatSlice';
+import { createUISlice, UISlice } from './slices/ui/uiSlice';
+import { ConversationsSlice, createConversationsSlice } from './slices/conversations/conversationSlice';
 
-import { createUserSlice } from './slices/user/userSlice';
-import { createChatSlice } from './slices/chat/chatSlice';
-import { createConversationsSlice } from './slices/conversations/conversationsSlice';
-import { createUISlice } from './slices/ui/uiSlice';
-
-import type { UserSlice } from './slices/user/userSlice';
-import type { ChatSlice } from './slices/chat/chatSlice';
-import type { ConversationsSlice } from './slices/conversations/conversationsSlice';
-import type { UISlice } from './slices/ui/uiSlice';
-
-type AppState = UserSlice &
+// Export the full AppState type
+export type AppState = UserSlice &
   ChatSlice &
   ConversationsSlice &
   UISlice & {

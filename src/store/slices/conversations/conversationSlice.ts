@@ -1,6 +1,7 @@
 import { StateCreator } from 'zustand';
-import { ApiService } from '../../../services/api';
-import type { Conversation, Message } from '../../../types';
+import { ApiService } from '../../../app/services/api';
+import type { Conversation } from '../../../app/types';
+import type { Message, ChatState, initialChatState } from '../chat/chatSlice';
 
 const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
   return [...messages].sort((a, b) => {
@@ -26,6 +27,16 @@ export interface ConversationsSlice {
   loadConversations: (force?: boolean) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
   deleteConversation: (conversationId: string) => Promise<void>;
+}
+
+// Helper type for accessing other slices
+interface StoreWithChat {
+  user: any;
+  conversations: Conversation[];
+  conversationsLoading: boolean;
+  chatState: Record<string, ChatState>;
+  setChatState: (id: string, state: Partial<ChatState>) => void;
+  clearChatState: (id: string) => void;
 }
 
 export const createConversationsSlice: StateCreator<
@@ -62,29 +73,31 @@ export const createConversationsSlice: StateCreator<
     })),
 
   loadConversations: async (force = false) => {
-    const { user, conversations, conversationsLoading, setConversations, setConversationsLoading } = get() as any; // temporary any – will improve later
+    const state = get() as unknown as StoreWithChat;
+    const { user, conversations, conversationsLoading } = state;
 
     if (!user || user.id === 'guest' || (conversationsLoading && !force)) return;
     if (conversations.length > 0 && !force) return;
 
     try {
-      setConversationsLoading(true);
+      set({ conversationsLoading: true });
       const result = await ApiService.getConversations();
       const convos = result.conversations || [];
       const sortedConvos = convos.sort(
         (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
       );
-      setConversations(sortedConvos);
+      set({ conversations: sortedConvos });
     } catch (error) {
       console.error('Failed to load conversations:', error);
-      setConversations([]);
+      set({ conversations: [] });
     } finally {
-      setConversationsLoading(false);
+      set({ conversationsLoading: false });
     }
   },
 
   loadConversation: async (conversationId: string) => {
-    const { setChatState, setCurrentConversationId, chatState } = get() as any;
+    const state = get() as unknown as StoreWithChat;
+    const { setChatState } = state;
 
     console.log(`[Store] Loading conversation: ${conversationId}`);
 
@@ -110,10 +123,6 @@ export const createConversationsSlice: StateCreator<
         );
 
         console.log(`[Store] Loaded ${messages.length} messages in chronological order`);
-        if (messages.length > 0) {
-          console.log(`[Store] First message role: ${messages[0]?.role}`);
-          console.log(`[Store] Last message role: ${messages[messages.length - 1]?.role}`);
-        }
 
         setChatState(conversationId, {
           messages,
@@ -122,14 +131,15 @@ export const createConversationsSlice: StateCreator<
           councilProgress: [],
         });
 
-        setCurrentConversationId(conversationId);
+        set({ currentConversationId: conversationId });
       } else {
         throw new Error('Invalid conversation data received');
       }
     } catch (error) {
       console.error('[Store] Error loading conversation:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to load conversation.';
-      setChatState(conversationId, {
+      const state = get() as unknown as StoreWithChat;
+      state.setChatState(conversationId, {
         loading: false,
         error: errorMessage,
         messages: [],
@@ -139,11 +149,22 @@ export const createConversationsSlice: StateCreator<
   },
 
   deleteConversation: async (conversationId: string) => {
-    const { removeConversation, clearChatState } = get() as any;
+    const state = get() as unknown as StoreWithChat;
+    
     try {
       await ApiService.deleteConversation(conversationId);
-      removeConversation(conversationId);
-      clearChatState(conversationId);
+      
+      // Remove from conversations list
+      set((currentState) => ({
+        conversations: currentState.conversations.filter((conv) => conv.id !== conversationId),
+        currentConversationId:
+          currentState.currentConversationId === conversationId
+            ? undefined
+            : currentState.currentConversationId,
+      }));
+      
+      // Clear chat state
+      state.clearChatState(conversationId);
     } catch (error) {
       console.error('Failed to delete conversation:', error);
       throw error;

@@ -1,4 +1,4 @@
-import type { AppState } from '../../rootStore';
+import { AppState } from '../../rootStore';
 import { initialChatState } from './chatSlice';
 
 export const selectChatStateForConversation = (conversationId: string) => 

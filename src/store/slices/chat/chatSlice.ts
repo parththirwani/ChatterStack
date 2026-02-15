@@ -1,7 +1,28 @@
 import { StateCreator } from 'zustand';
-import type { ChatState } from '../../../types'; // adjust path
 
-const initialChatState: ChatState = {
+export interface CouncilProgress {
+  stage: string;
+  model: string;
+  progress: number;
+}
+
+export interface Message {
+  id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt?: string;
+  updatedAt?: string;
+  modelId?: string;
+}
+
+export interface ChatState {
+  messages: Message[];
+  loading: boolean;
+  error?: string;
+  councilProgress: CouncilProgress[];
+}
+
+export const initialChatState: ChatState = {
   messages: [],
   loading: false,
   error: undefined,
