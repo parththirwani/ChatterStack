@@ -3,6 +3,8 @@ import { ApiService } from '../../../services/api';
 import type { Conversation } from '../../../types/conversation.types';
 import type { Message } from '../../../types/chat.types';
 import type { ChatState } from '../chat/chatSlice';
+import { OptimisticChat, optimisticChatManager } from '@/src/lib/api/chat/optimistic-chat-manager';
+
 
 const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
   return [...messages].sort((a, b) => {
@@ -16,6 +18,7 @@ export interface ConversationsSlice {
   conversations: Conversation[];
   conversationsLoading: boolean;
   currentConversationId?: string;
+  optimisticChats: OptimisticChat[];
 
   setConversations: (conversations: Conversation[]) => void;
   setConversationsLoading: (loading: boolean) => void;
@@ -25,9 +28,23 @@ export interface ConversationsSlice {
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
   removeConversation: (id: string) => void;
 
+  createOptimisticChat: (userId: string, firstMessage: string) => string;
+  linkOptimisticChatId: (tempId: string, realId: string) => void;
+  finalizeOptimisticChat: (chatId: string, realConversation: Conversation) => void;
+  updateOptimisticChatStatus: (
+    chatId: string,
+    status: OptimisticChat['status'],
+    error?: string
+  ) => void;
+  removeOptimisticChat: (chatId: string) => void;
+  refreshOptimisticChats: () => void;
+
   loadConversations: (force?: boolean) => Promise<void>;
   loadConversation: (conversationId: string) => Promise<void>;
   deleteConversation: (conversationId: string) => Promise<void>;
+  
+  // NEW: Get merged list of real + optimistic chats
+  getAllChatsForSidebar: () => (Conversation | OptimisticChat)[];
 }
 
 // Helper type for accessing other slices
@@ -49,6 +66,7 @@ export const createConversationsSlice: StateCreator<
   conversations: [],
   conversationsLoading: false,
   currentConversationId: undefined,
+  optimisticChats: [],
 
   setConversations: (conversations) => set({ conversations }),
   setConversationsLoading: (conversationsLoading) => set({ conversationsLoading }),
@@ -72,6 +90,88 @@ export const createConversationsSlice: StateCreator<
       currentConversationId:
         state.currentConversationId === id ? undefined : state.currentConversationId,
     })),
+
+  // NEW: Optimistic chat methods
+  createOptimisticChat: (userId: string, firstMessage: string) => {
+    const optimisticChat = optimisticChatManager.createOptimisticChat({
+      userId,
+      firstMessage,
+    });
+    
+    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
+    return optimisticChat.tempId;
+  },
+
+  linkOptimisticChatId: (tempId: string, realId: string) => {
+    optimisticChatManager.linkRealId(tempId, realId);
+    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
+  },
+
+  finalizeOptimisticChat: (chatId: string, realConversation: Conversation) => {
+    optimisticChatManager.finalizeChat(chatId, realConversation);
+    
+    // Add to real conversations if not already there
+    const state = get();
+    const exists = state.conversations.some((c) => c.id === realConversation.id);
+    if (!exists) {
+      set((s) => ({
+        conversations: [realConversation, ...s.conversations],
+      }));
+    }
+    
+    // Cleanup completed optimistic chats
+    setTimeout(() => {
+      optimisticChatManager.cleanupCompleted();
+      set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
+    }, 1000); // Delay cleanup to ensure smooth UI transition
+  },
+
+  updateOptimisticChatStatus: (
+    chatId: string,
+    status: OptimisticChat['status'],
+    error?: string
+  ) => {
+    optimisticChatManager.updateStreamingStatus(chatId, status, error);
+    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
+  },
+
+  removeOptimisticChat: (chatId: string) => {
+    optimisticChatManager.removeChat(chatId);
+    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
+  },
+
+  refreshOptimisticChats: () => {
+    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
+  },
+
+  // NEW: Merged list for sidebar
+  getAllChatsForSidebar: () => {
+    const state = get();
+    const merged: (Conversation | OptimisticChat)[] = [];
+    const seenRealIds = new Set<string>();
+    
+    // Add optimistic chats first (they're more recent)
+    for (const optimistic of state.optimisticChats) {
+      merged.push(optimistic);
+      // Track real ID to avoid duplicates
+      if (optimistic.realId) {
+        seenRealIds.add(optimistic.realId);
+      }
+    }
+    
+    // Add real conversations that aren't already represented by optimistic chats
+    for (const conversation of state.conversations) {
+      if (!seenRealIds.has(conversation.id)) {
+        merged.push(conversation);
+      }
+    }
+    
+    // Sort by updatedAt descending
+    return merged.sort(
+      (a, b) =>
+        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+  },
 
   loadConversations: async (force = false) => {
     const state = get() as unknown as StoreWithChat;
@@ -101,6 +201,13 @@ export const createConversationsSlice: StateCreator<
     const { setChatState } = state;
 
     console.log(`[Store] Loading conversation: ${conversationId}`);
+
+    // Check if this is a temp ID
+    if (conversationId.startsWith('temp_')) {
+      console.log('[Store] Skipping load for optimistic temp ID:', conversationId);
+      // Don't try to load from API - optimistic chat is already in state
+      return;
+    }
 
     try {
       setChatState(conversationId, { loading: true, error: undefined });
@@ -134,7 +241,7 @@ export const createConversationsSlice: StateCreator<
 
         set({ currentConversationId: conversationId });
       } else {
-        throw new Error('Invalid conversation data received');
+        throw new Error('Conversation not found or invalid data received');
       }
     } catch (error) {
       console.error('[Store] Error loading conversation:', error);

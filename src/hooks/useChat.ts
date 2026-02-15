@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { ApiService } from '../services/api';
 import { useModelSelection } from '../context/ModelSelectionContext';
 import { Message } from '@/src/types/chat.types';
@@ -17,6 +18,7 @@ const DEFAULT_CHAT_STATE = {
 };
 
 export const useChatOptimized = () => {
+  const router = useRouter();
   const currentConversationId = useAppStore((state) => state.currentConversationId);
   const { selectedModel } = useModelSelection();
   
@@ -35,6 +37,14 @@ export const useChatOptimized = () => {
   const loadConversation = useAppStore((state) => state.loadConversation);
   const loadConversations = useAppStore((state) => state.loadConversations);
   
+  // NEW: Optimistic chat methods
+  const createOptimisticChat = useAppStore((state) => state.createOptimisticChat);
+  const linkOptimisticChatId = useAppStore((state) => state.linkOptimisticChatId);
+  const finalizeOptimisticChat = useAppStore((state) => state.finalizeOptimisticChat);
+  const updateOptimisticChatStatus = useAppStore((state) => state.updateOptimisticChatStatus);
+  const refreshOptimisticChats = useAppStore((state) => state.refreshOptimisticChats);
+  const user = useAppStore((state) => state.user);
+  
   const isSendingRef = useRef(false);
 
   const sendMessage = useCallback(
@@ -42,15 +52,32 @@ export const useChatOptimized = () => {
       message: string,
       onConversationCreated?: (conversationId: string) => void
     ) => {
-      if (!message.trim() || isSendingRef.current) {
+      if (!message.trim() || isSendingRef.current || !user) {
         return;
       }
 
       isSendingRef.current = true;
 
       const store = useAppStore.getState();
-      const conversationKey = store.currentConversationId || 'new';
+      const isNewConversation = !store.currentConversationId;
       const isCouncilMode = selectedModel === 'council';
+      
+      let workingConversationId = store.currentConversationId;
+      let tempId: string | undefined;
+
+      // OPTIMISTIC: Create temporary chat for new conversations
+      if (isNewConversation) {
+        tempId = createOptimisticChat(user.id, message);
+        workingConversationId = tempId;
+        
+        // Immediately navigate to temp chat (smooth, no reload!)
+        router.push(`/${tempId}`);
+        setCurrentConversationId(tempId);
+        
+        console.log('[useChat] Created optimistic chat:', tempId);
+      }
+
+      const conversationKey = workingConversationId || 'new';
       const currentChatState = store.chatState[conversationKey] || DEFAULT_CHAT_STATE;
 
       // Create user message
@@ -67,6 +94,11 @@ export const useChatOptimized = () => {
         error: undefined,
         councilProgress: isCouncilMode ? [] : currentChatState.councilProgress,
       });
+
+      // Update optimistic status
+      if (tempId) {
+        updateOptimisticChatStatus(tempId, 'streaming');
+      }
 
       // Add placeholder AI message
       const aiMessage: Message = {
@@ -85,13 +117,25 @@ export const useChatOptimized = () => {
       }, 0);
 
       let fullResponse = '';
+      let realConversationId: string | undefined;
 
       try {
         const handleNewConversation = (id: string) => {
+          realConversationId = id;
+          console.log('[useChat] Real conversation ID received:', id);
+          
           const currentState = useAppStore.getState();
-          if (!currentState.currentConversationId && id) {
+          
+          // Link temp ID to real ID
+          if (tempId) {
+            linkOptimisticChatId(tempId, id);
+            
+            // Smoothly replace URL with real ID (no reload!)
+            router.replace(`/${id}`, { scroll: false });
+          }
+          
+          if (!currentState.currentConversationId || currentState.currentConversationId === tempId) {
             currentState.setCurrentConversationId(id);
-            currentState.loadConversations(true);
             
             if (onConversationCreated) {
               onConversationCreated(id);
@@ -110,6 +154,11 @@ export const useChatOptimized = () => {
               : msg
           );
           freshState.setChatState(conversationKey, { messages: updatedMessages });
+          
+          // Update optimistic chat status
+          if (tempId || realConversationId) {
+            refreshOptimisticChats();
+          }
         };
 
         const finalizeMessage = () => {
@@ -128,6 +177,17 @@ export const useChatOptimized = () => {
               : msg
           );
           freshState.setChatState(conversationKey, { messages: updatedMessages });
+          
+          // Finalize optimistic chat
+          if (tempId && realConversationId) {
+            // Load the real conversation to finalize
+            loadConversations(true).then(() => {
+              const conversation = freshState.conversations.find(c => c.id === realConversationId);
+              if (conversation) {
+                finalizeOptimisticChat(tempId, conversation);
+              }
+            });
+          }
         };
 
         // Progress handler for council mode
@@ -189,16 +249,43 @@ export const useChatOptimized = () => {
           error: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
           messages: finalChatState.messages.filter((msg) => msg.role !== 'assistant' || msg.id),
         });
+        
+        // Update optimistic status to error
+        if (tempId || realConversationId) {
+          const chatId = realConversationId || tempId!;
+          updateOptimisticChatStatus(
+            chatId,
+            'error',
+            error instanceof Error ? error.message : 'Failed to send message'
+          );
+        }
       } finally {
         const finalState = useAppStore.getState();
         finalState.setChatState(conversationKey, {
           loading: false,
           councilProgress: [],
         });
+        
+        // Mark optimistic chat as complete
+        if (tempId && realConversationId) {
+          updateOptimisticChatStatus(realConversationId, 'complete');
+        }
+        
         isSendingRef.current = false;
       }
     },
-    [selectedModel]
+    [
+      selectedModel,
+      user,
+      router,
+      createOptimisticChat,
+      linkOptimisticChatId,
+      finalizeOptimisticChat,
+      updateOptimisticChatStatus,
+      refreshOptimisticChats,
+      setCurrentConversationId,
+      loadConversations,
+    ]
   );
 
   const startNewConversation = useCallback(() => {
