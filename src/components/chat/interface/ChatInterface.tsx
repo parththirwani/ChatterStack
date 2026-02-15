@@ -1,14 +1,12 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
-import Link from 'next/link';
-import Image from 'next/image';
 import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../../council/progress/ProgressIndicator';
 import { useChatOptimized } from '@/src/hooks/useChat';
 import { ChatInterfaceProps } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
-
+import QuickToolButton from './QuickToolButton';
 
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -53,7 +51,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       isLoadingConversationRef.current = true;
       lastLoadedConversationRef.current = selectedConversationId;
       
-      // Disable auto-scroll when loading a conversation
       autoScrollEnabledRef.current = false;
       userHasScrolledRef.current = true;
       
@@ -64,31 +61,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       console.log('Starting new conversation');
       lastLoadedConversationRef.current = undefined;
       startNewConversation();
-      // Enable auto-scroll for new conversations
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
     }
   }, [selectedConversationId, loadConversation, startNewConversation]);
 
-  // Detect user manual scroll
   const handleScroll = useCallback(() => {
     if (!messagesContainerRef.current) return;
     
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
     
-    // If user scrolls up more than 100px from bottom, disable auto-scroll
     if (distanceFromBottom > 100) {
       autoScrollEnabledRef.current = false;
       userHasScrolledRef.current = true;
     } else if (distanceFromBottom < 10) {
-      // Re-enable if user scrolls back to near bottom
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
     }
   }, []);
 
-  // Attach scroll listener
   useEffect(() => {
     const container = messagesContainerRef.current;
     if (container) {
@@ -97,7 +89,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [handleScroll]);
 
-  // Smooth continuous auto-scroll using requestAnimationFrame
   const smoothScrollToBottom = useCallback(() => {
     if (!messagesContainerRef.current || !autoScrollEnabledRef.current) return;
 
@@ -106,27 +97,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const currentScrollTop = container.scrollTop;
     const distance = targetScrollTop - currentScrollTop;
 
-    // If we're close enough, just jump there
     if (Math.abs(distance) < 1) {
       container.scrollTop = targetScrollTop;
       return;
     }
 
-    // Smooth easing function - adjust speed here (0.1 = slower, 0.3 = faster)
     const easeAmount = 0.15;
     const delta = distance * easeAmount;
 
     container.scrollTop = currentScrollTop + delta;
 
-    // Continue scrolling if we haven't reached the bottom
     if (Math.abs(distance) > 1) {
       scrollAnimationFrameRef.current = requestAnimationFrame(smoothScrollToBottom);
     }
   }, []);
 
-  // Trigger smooth scroll ONLY when actively generating (content changing)
   useEffect(() => {
-    // Cancel any existing animation frame
     if (scrollAnimationFrameRef.current) {
       cancelAnimationFrame(scrollAnimationFrameRef.current);
     }
@@ -134,21 +120,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     const lastMessage = messages[messages.length - 1];
     const currentContentLength = lastMessage?.content?.length || 0;
     
-    // Check if we're actively generating (content is changing)
     const isGenerating = loading && messages.length > 0 && currentContentLength > lastContentLengthRef.current;
     
-    // Only auto-scroll if:
-    // 1. We're generating AND content is changing
-    // 2. Auto-scroll is enabled (user hasn't scrolled up)
     if (isGenerating && autoScrollEnabledRef.current) {
-      // Start smooth scrolling
       smoothScrollToBottom();
     }
     
     lastMessageCountRef.current = messages.length;
     lastContentLengthRef.current = currentContentLength;
 
-    // Cleanup animation frame on unmount
     return () => {
       if (scrollAnimationFrameRef.current) {
         cancelAnimationFrame(scrollAnimationFrameRef.current);
@@ -156,9 +136,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     };
   }, [messages, loading, smoothScrollToBottom]);
 
-  // Re-enable auto-scroll when new message starts (not when loading old messages)
   useEffect(() => {
-    // Only enable auto-scroll if messages length increased (new message added)
     if (loading && messages.length > previousMessagesLengthRef.current) {
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
@@ -172,7 +150,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       const messageToSend = message;
       setMessage('');
       
-      // Re-enable auto-scroll for new message
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
 
@@ -186,7 +163,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [message, loading, sendMessage, onConversationCreated, currentConversationId]);
 
-  // Clear error when user starts typing
   useEffect(() => {
     if (error && message) {
       clearError();
@@ -194,9 +170,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [message, error, clearError]);
 
   return (
-    <div className="h-full flex flex-col bg-[#201d26]">
+    <div className="h-full flex flex-col bg-[#201d26] relative">
+      {/* Subtle grid background */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.015]"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: '50px 50px'
+        }}
+      />
+
       {error && (
-        <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20">
+        <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 relative z-10">
           <div className="max-w-3xl mx-auto px-4 py-3">
             <div className="flex items-center gap-2 text-red-400">
               <AlertCircle className="w-4 h-4" />
@@ -213,38 +200,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       )}
 
       {isFirstMessage ? (
-        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-          <div className="text-center max-w-2xl w-full">
-            <div className="mb-8">
-              <Link href="/" className="inline-block cursor-pointer">
-                <Image
-                  src="/logo.png"
-                  alt="ChatterStack Logo"
-                  width={120}
-                  height={120}
-                  priority
-                  className="mx-auto object-contain pointer-events-none opacity-90"
-                />
-              </Link>
-              <h1 className="text-2xl font-bold text-white mt-6 mb-2">
-                Welcome to <span className="text-yellow-500">ChatterStack</span>
+        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto relative z-10">
+          <div className="text-center max-w-4xl w-full">
+            {/* Welcome Section */}
+            <div className="mb-12 animate-in fade-in duration-700">
+              <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight leading-tight">
+                What's on your mind today?
               </h1>
-              <p className="text-gray-400 text-base">
-                Your AI assistant powered by multiple language models
+              <p className="text-lg text-gray-400">
+                Ask anything, explore ideas, or get help with your work
               </p>
             </div>
 
-            <div className="max-w-2xl mx-auto">
+            {/* Input Section */}
+            <div className="max-w-3xl mx-auto mb-8">
               <MessageInput
                 message={message}
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
                 loading={loading}
+                placeholder="Message AI chat..."
               />
             </div>
 
-            <div className="flex items-center justify-center mt-4 text-xs text-gray-500">
-              <span>Select a model and start chatting</span>
+            {/* Quick Tools */}
+            <div className="flex flex-wrap gap-3 justify-center max-w-4xl mx-auto mb-8">
+              <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
+              <QuickToolButton icon="💻" label="Coding Assistant" onClick={() => setMessage("Help me with coding: ")} />
+              <QuickToolButton icon="📝" label="Essay writer" onClick={() => setMessage("Help me write an essay about ")} />
+              <QuickToolButton icon="💼" label="Business" onClick={() => setMessage("Help me with business advice on ")} />
+              <QuickToolButton icon="🌐" label="Translate" onClick={() => setMessage("Translate this text: ")} />
+              <QuickToolButton icon="🎥" label="YouTube summaries" onClick={() => setMessage("Summarize this YouTube video: ")} />
+              <QuickToolButton icon="✉️" label="AI Email writing" onClick={() => setMessage("Help me write an email about ")} />
+              <QuickToolButton icon="📄" label="AI PDF chat" onClick={() => setMessage("Help me analyze this PDF: ")} />
+              <QuickToolButton icon="🔍" label="Research assistant" onClick={() => setMessage("Research this topic: ")} />
+            </div>
+
+            <div className="text-xs text-gray-500">
+              Powered by advanced AI models • ChatterStack can make mistakes
             </div>
           </div>
         </div>
@@ -253,10 +246,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           {/* Messages Container - Scrollable */}
           <div 
             ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto"
+            className="flex-1 overflow-y-auto relative z-10"
             style={{ 
               willChange: 'scroll-position',
-              scrollBehavior: 'auto' // Use auto for RAF control
+              scrollBehavior: 'auto'
             }}
           >
             <div className="py-6 space-y-6">
@@ -278,7 +271,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }
               })}
 
-              {/* Show council progress ONLY while waiting for response to start */}
               {loading && councilProgress.length > 0 && (
                 <CouncilProgressIndicator
                   progress={councilProgress}
@@ -288,19 +280,19 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 />
               )}
               
-              {/* Scroll anchor */}
               <div ref={messagesEndRef} />
             </div>
           </div>
 
           {/* Input Bar - Fixed at Bottom */}
-          <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm">
+          <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm relative z-10">
             <div className="max-w-3xl mx-auto px-4 py-4">
               <MessageInput
                 message={message}
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
                 loading={loading}
+                placeholder="Message AI chat..."
               />
               <div className="flex items-center justify-center mt-2 text-xs text-gray-500">
                 <span>ChatterStack can make mistakes. Check important info.</span>
@@ -313,7 +305,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   );
 };
 
-// Memoized components to prevent unnecessary re-renders
 const MemoizedUserMessage = memo(UserMessage, (prev, next) => {
   return prev.content === next.content;
 });

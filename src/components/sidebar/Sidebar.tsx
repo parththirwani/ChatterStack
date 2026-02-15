@@ -6,6 +6,7 @@ import SidebarActionButtons from '@/src/components/sidebar/actions/SidebarAction
 import SidebarHeader from '@/src/components/sidebar/header/SidebarHeader';
 import UserSection from '@/src/components/sidebar/user/UserSection';
 import { useAppStore } from '@/src/store/rootStore';
+import { Crown } from 'lucide-react';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -15,7 +16,7 @@ interface SidebarProps {
   onConversationSelect?: (conversationId: string) => void;
   onNewChat?: () => void;
   currentConversationId?: string;
-  refreshTrigger?: number; // Added this prop
+  refreshTrigger?: number;
 }
 
 const SidebarOptimized: React.FC<SidebarProps> = ({
@@ -26,12 +27,11 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   onConversationSelect,
   onNewChat,
   currentConversationId,
-  refreshTrigger, // Added to destructuring
+  refreshTrigger,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   
-  // Get conversations and loading state from Zustand
   const conversations = useAppStore((state) => state.conversations);
   const conversationsLoading = useAppStore((state) => state.conversationsLoading);
   const deleteConversation = useAppStore((state) => state.deleteConversation);
@@ -87,12 +87,10 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
     }
     
     return conversations.filter((conv) => {
-      // Search in title
       if (conv.title?.toLowerCase().includes(searchQuery.toLowerCase())) {
         return true;
       }
       
-      // Search in messages (safely handle undefined messages array)
       if (conv.messages && Array.isArray(conv.messages)) {
         return conv.messages.some((msg: { content: string; }) =>
           msg.content?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -110,8 +108,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
       <div
         className={`${
           collapsed ? 'w-20' : 'w-80'
-        } h-screen shrink-0 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700`}
-        style={{ backgroundColor: '#141017' }}
+        } h-screen shrink-0 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700/50 gradient-dark`}
       >
         <SidebarHeader
           collapsed={collapsed}
@@ -137,6 +134,26 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
           />
         )}
 
+        {/* Premium Upgrade Banner */}
+        {!collapsed && isAuthenticated && (
+          <div className="px-4 pb-4">
+            <div className="bg-gradient-to-br from-yellow-500/15 to-yellow-600/10 border border-yellow-500/20 rounded-xl p-4 backdrop-blur-sm">
+              <div className="flex items-center gap-2 mb-2">
+                <div className="bg-yellow-500 text-black px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1">
+                  <Crown className="w-3 h-3" />
+                  20 days left
+                </div>
+              </div>
+              <p className="text-xs text-gray-300 mb-3 leading-relaxed">
+                Upgrade to premium and enjoy the benefits for a long time
+              </p>
+              <button className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-semibold text-sm py-2.5 rounded-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-yellow-500/30">
+                View Plan
+              </button>
+            </div>
+          </div>
+        )}
+
         <UserSection
           user={user}
           collapsed={collapsed}
@@ -155,7 +172,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   );
 };
 
-// Memoize ChatHistory to prevent unnecessary re-renders
 const MemoizedChatHistory = memo(ChatHistory, (prev, next) => {
   return (
     prev.loadingConversations === next.loadingConversations &&
@@ -172,6 +188,6 @@ export default memo(SidebarOptimized, (prev, next) => {
     prev.collapsed === next.collapsed &&
     prev.user?.id === next.user?.id &&
     prev.currentConversationId === next.currentConversationId &&
-    prev.refreshTrigger === next.refreshTrigger // Added this comparison
+    prev.refreshTrigger === next.refreshTrigger
   );
 });
