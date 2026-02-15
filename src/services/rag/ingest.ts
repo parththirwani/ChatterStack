@@ -9,7 +9,7 @@ const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
 
 /**
  * Ingest a message into the RAG system
- * Now with better error handling for embedding failures
+ * FIXED: Better error handling for embedding failures - doesn't break chat flow
  */
 export async function ingestMessage(params: {
   userId: string;
@@ -32,17 +32,42 @@ export async function ingestMessage(params: {
     profileTags = [],
   } = params;
 
+  // RAG is optional - don't break chat if it fails
+  if (!process.env.RAG_ENABLED || process.env.RAG_ENABLED !== 'true') {
+    console.log('RAG disabled, skipping ingestion');
+    return;
+  }
+
   try {
+    // Validate content
+    if (!content || content.trim().length === 0) {
+      console.log(`Skipping empty message ${messageId}`);
+      return;
+    }
+
     // 1. Chunk the message
     const chunks = chunkMessage(content, messageId);
     console.log(`Chunking message ${messageId}: ${chunks.length} chunks`);
+
+    if (chunks.length === 0) {
+      console.log(`No chunks for message ${messageId}, skipping`);
+      return;
+    }
 
     // 2. Generate dense embeddings (batch)
     const chunkTexts = chunks.map((c) => c.content);
     
     let denseVectors: number[][] = [];
     try {
+      console.log(`Generating embeddings for ${chunkTexts.length} chunks`);
       denseVectors = await generateEmbeddings(chunkTexts);
+      
+      if (!denseVectors || denseVectors.length === 0) {
+        console.warn(`No embeddings generated for message ${messageId}, skipping RAG ingestion`);
+        return;
+      }
+      
+      console.log(`Generated ${denseVectors.length} embeddings`);
     } catch (embeddingError) {
       console.error('Embedding generation failed:', embeddingError);
       // If embeddings fail, skip RAG ingestion but don't fail the entire message
@@ -50,8 +75,9 @@ export async function ingestMessage(params: {
       return;
     }
 
-    if (!denseVectors || denseVectors.length === 0) {
-      console.warn(`No embeddings generated for message ${messageId}, skipping RAG ingestion`);
+    // Validate embeddings match chunks
+    if (denseVectors.length !== chunks.length) {
+      console.warn(`Embedding count mismatch: ${denseVectors.length} vs ${chunks.length} chunks, skipping`);
       return;
     }
 
@@ -94,8 +120,7 @@ export async function ingestMessage(params: {
     console.log(`✓ Ingested ${points.length} chunks for message ${messageId}`);
   } catch (error) {
     console.error('Ingestion error:', error);
-    // Don't throw - log and continue
-    // RAG is a nice-to-have feature, shouldn't break the main flow
+    // RAG is nice-to-have - don't break the main chat flow
     console.warn(`Failed to ingest message ${messageId}, continuing without RAG`);
   }
 }
@@ -129,6 +154,10 @@ export async function deleteConversation(
   userId: string,
   conversationId: string
 ): Promise<void> {
+  if (!process.env.RAG_ENABLED || process.env.RAG_ENABLED !== 'true') {
+    return;
+  }
+
   try {
     const client = getQdrantClient();
 
@@ -144,7 +173,6 @@ export async function deleteConversation(
     console.log(`✓ Deleted chunks for conversation ${conversationId}`);
   } catch (error) {
     console.error('Failed to delete conversation from RAG:', error);
-    // Don't throw - log and continue
   }
 }
 
@@ -155,6 +183,10 @@ export async function purgeOldData(
   userId: string,
   daysOld: number = 30
 ): Promise<void> {
+  if (!process.env.RAG_ENABLED || process.env.RAG_ENABLED !== 'true') {
+    return;
+  }
+
   try {
     const cutoffDate = new Date();
     cutoffDate.setDate(cutoffDate.getDate() - daysOld);
@@ -173,6 +205,5 @@ export async function purgeOldData(
     console.log(`✓ Purged data older than ${daysOld} days for user ${userId}`);
   } catch (error) {
     console.error('Failed to purge old data from RAG:', error);
-    // Don't throw - log and continue
   }
 }

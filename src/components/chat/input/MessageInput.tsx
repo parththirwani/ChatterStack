@@ -2,6 +2,7 @@
 import React, { useRef } from 'react';
 import { Send, Loader2 } from 'lucide-react';
 import { ModelSelector } from './ModelSelector/ModelSelector';
+import LLMTokenIndicator from '../../rate-limit/LLMTokenIndicator'; // 🔥 NEW
 
 interface MessageInputProps {
   message: string;
@@ -19,6 +20,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
   placeholder = "Message AI chat...",
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isCouncilMode, setIsCouncilMode] = React.useState(false);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -40,17 +42,41 @@ const MessageInput: React.FC<MessageInputProps> = ({
     }
   };
 
+  // Check if council mode is selected
+  React.useEffect(() => {
+    const checkCouncilMode = () => {
+      const storedModel = localStorage.getItem('selectedModel');
+      setIsCouncilMode(storedModel === 'council');
+    };
+    
+    checkCouncilMode();
+    window.addEventListener('storage', checkCouncilMode);
+    
+    // Also listen for custom event when model changes
+    const handleModelChange = (e: CustomEvent) => {
+      setIsCouncilMode(e.detail === 'council');
+    };
+    window.addEventListener('modelChanged' as any, handleModelChange);
+    
+    return () => {
+      window.removeEventListener('storage', checkCouncilMode);
+      window.removeEventListener('modelChanged' as any, handleModelChange);
+    };
+  }, []);
+
   return (
     <div className="relative bg-gray-800/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl sm:rounded-[20px] shadow-2xl transition-all duration-300 focus-within:border-yellow-500/40 focus-within:shadow-yellow-500/20">
       <div className="relative p-3 sm:p-4">
-        {/* Model Selector - Responsive */}
+        <LLMTokenIndicator isCouncilMode={isCouncilMode} className="mb-3" />
+
+        {/* Model Selector */}
         <div className="mb-2 sm:mb-3">
           <ModelSelector />
         </div>
 
-        {/* Main Input Area - Responsive flex */}
+        {/* Main Input Area */}
         <div className="flex items-end gap-2 sm:gap-3">
-          {/* Text Input - Responsive padding */}
+          {/* Text Input */}
           <div className="flex-1 min-w-0">
             <textarea
               ref={textareaRef}
@@ -66,7 +92,7 @@ const MessageInput: React.FC<MessageInputProps> = ({
             />
           </div>
 
-          {/* Send Button - Touch-friendly size */}
+          {/* Send Button */}
           <button
             onClick={handleSend}
             disabled={loading || !message.trim()}

@@ -1,4 +1,5 @@
 import { ChatRequest, Conversation, User } from "../types";
+import { apiOptimizer } from "./apiOptimizer";
 
 interface CouncilChatRequest {
   message: string;
@@ -56,55 +57,57 @@ export class ApiService {
     return response;
   }
 
-  // ============= AUTH =============
+  // ============= AUTH (Optimized) =============
   
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
-    try {
-      const response = await fetch('/api/auth/session', { credentials: 'include' });
-      
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        return { ok: false };
-      }
-
-      const session = await response.json();
-      
-      if (session?.user) {
-        return { 
-          ok: true, 
-          user: {
-            id: session.user.id,
-            email: session.user.email || '',
-            name: session.user.name || '',
-            avatarUrl: session.user.image,
-            provider: session.user.provider || 'unknown',
+    const cacheKey = 'auth:session';
+    
+    return apiOptimizer.optimizedFetch(
+      cacheKey,
+      async () => {
+        try {
+          const response = await fetch('/api/auth/session', { credentials: 'include' });
+          
+          const contentType = response.headers.get('content-type');
+          if (!contentType || !contentType.includes('application/json')) {
+            return { ok: false };
           }
-        };
-      }
-      
-      return { ok: false };
-    } catch (error) {
-      return { ok: false };
-    }
+
+          const session = await response.json();
+          
+          if (session?.user) {
+            return { 
+              ok: true, 
+              user: {
+                id: session.user.id,
+                email: session.user.email || '',
+                name: session.user.name || '',
+                avatarUrl: session.user.image,
+                provider: session.user.provider || 'unknown',
+              }
+            };
+          }
+          
+          return { ok: false };
+        } catch (error) {
+          return { ok: false };
+        }
+      },
+      10000 // Cache for 10 seconds
+    );
   }
 
   static async getCurrentUser(): Promise<User | null> {
-    try {
-      const result = await this.validateAuth();
-      if (!result.ok || !result.user) {
-        return null;
-      }
-      return result.user;
-    } catch (error) {
-      return null;
-    }
+    const result = await this.validateAuth();
+    return result.ok && result.user ? result.user : null;
   }
 
   static async logout(): Promise<void> {
+    apiOptimizer.invalidate('auth:session');
     window.location.href = '/api/auth/signout';
   }
 
-  // ============= CHAT WITH PROGRESS SUPPORT =============
+  // ============= CHAT (No caching - streaming) =============
 
   static async sendMessage(
     request: ChatRequest,
@@ -161,7 +164,6 @@ export class ApiService {
               onConversationId?.(parsed.conversationId);
             }
             
-            // Handle progress events for council mode
             if (parsed.status === 'progress' && parsed.stage && parsed.model !== undefined) {
               onProgress?.({
                 stage: parsed.stage,
@@ -205,64 +207,99 @@ export class ApiService {
     );
   }
 
-  // ============= CONVERSATIONS =============
+  // ============= CONVERSATIONS (Optimized) =============
 
   static async getConversations(): Promise<{ conversations: Conversation[] }> {
-    try {
-      const response = await this.fetchWithCredentials('/api/conversations');
-      return await response.json();
-    } catch (error) {
-      throw error;
-    }
+    const cacheKey = 'conversations:list';
+    
+    return apiOptimizer.optimizedFetch(
+      cacheKey,
+      async () => {
+        const response = await this.fetchWithCredentials('/api/conversations');
+        return await response.json();
+      },
+      30000 // Cache for 30 seconds
+    );
   }
 
   static async getConversation(id: string): Promise<{ conversation: Conversation } | null> {
-    try {
-      const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
-      const data = await response.json();
-      
-      if (!data || !data.conversation) {
-        return null;
-      }
-      
-      return data;
-    } catch (error) {
-      return null;
-    }
+    const cacheKey = `conversation:${id}`;
+    
+    return apiOptimizer.optimizedFetch(
+      cacheKey,
+      async () => {
+        try {
+          const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
+          const data = await response.json();
+          
+          if (!data || !data.conversation) {
+            return null;
+          }
+          
+          return data;
+        } catch (error) {
+          return null;
+        }
+      },
+      60000 // Cache for 1 minute
+    );
   }
 
   static async deleteConversation(id: string): Promise<void> {
     await this.fetchWithCredentials(`/api/conversations/${id}`, {
       method: 'DELETE',
     });
+    
+    // Invalidate related caches
+    apiOptimizer.invalidate(`conversation:${id}`);
+    apiOptimizer.invalidate('conversations:list');
   }
 
-  // ============= MODELS =============
+  // ============= MODELS (Optimized) =============
 
   static async getModels() {
-    try {
-      const response = await this.fetchWithCredentials('/api/models');
-      return response.json();
-    } catch (e) {
-      return { models: [] };
-    }
+    const cacheKey = 'models:list';
+    
+    return apiOptimizer.optimizedFetch(
+      cacheKey,
+      async () => {
+        try {
+          const response = await this.fetchWithCredentials('/api/models');
+          return response.json();
+        } catch (e) {
+          return { models: [] };
+        }
+      },
+      300000 // Cache for 5 minutes (models rarely change)
+    );
   }
 
-  // ============= RAG =============
+  // ============= RAG (No caching) =============
 
   static async refreshProfile(): Promise<void> {
     await this.fetchWithCredentials('/api/rag/profile/refresh', {
       method: 'POST',
     });
+    
+    // Invalidate profile cache
+    apiOptimizer.invalidate('profile:me');
   }
 
   static async getUserProfile(userId?: string): Promise<UserProfileResponse> {
-    const url = userId 
-      ? `/api/rag/profile/${userId}` 
-      : '/api/rag/profile/me';
+    const cacheKey = userId ? `profile:${userId}` : 'profile:me';
     
-    const response = await this.fetchWithCredentials(url);
-    return response.json();
+    return apiOptimizer.optimizedFetch(
+      cacheKey,
+      async () => {
+        const url = userId 
+          ? `/api/rag/profile/${userId}` 
+          : '/api/rag/profile/me';
+        
+        const response = await this.fetchWithCredentials(url);
+        return response.json();
+      },
+      60000 // Cache for 1 minute
+    );
   }
 }
 

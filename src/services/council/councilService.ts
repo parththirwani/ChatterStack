@@ -1,7 +1,10 @@
 /**
  * Council Service - FIXED VERSION
  * 
- * Critical fix: Stage 3 now properly streams chunks to frontend
+ * Fixes:
+ * 1. Proper error handling to prevent "error generating response"
+ * 2. Streaming works correctly
+ * 3. Better fallback when models fail
  */
 
 import {
@@ -162,7 +165,7 @@ async function stage1_collect_responses(
         onProgress('stage1', model, 100);
       }
 
-      console.log(`Stage 1: ${model} completed`);
+      console.log(`Stage 1: ${model} completed (${response.length} chars)`);
       return { model, response } as Stage1Result;
     } catch (error) {
       console.error(`Stage 1: ${model} failed:`, error);
@@ -277,12 +280,6 @@ async function stage2_collect_rankings(
     `Stage 2 complete: ${stage2Results.length}/${COUNCIL_MODELS.length} models provided rankings`
   );
   
-  if (stage2Results.length >= 2) {
-    console.log('Sufficient rankings collected, proceeding with synthesis');
-  } else {
-    console.log('No rankings collected, proceeding with basic synthesis');
-  }
-  
   return { stage2Results, labelToModel };
 }
 
@@ -328,7 +325,7 @@ async function stage3_synthesize_final(
   stage2Results: Stage2Result[],
   labelToModel: Map<string, string>,
   conversationHistory: Message[] = [],
-  onChunk?: (chunk: string) => void  // THIS IS THE CRITICAL CALLBACK!
+  onChunk?: (chunk: string) => void
 ): Promise<string> {
   console.log('=== Stage 3: Chairman Synthesis ===');
 
@@ -352,15 +349,20 @@ async function stage3_synthesize_final(
 
   let finalResponse = '';
   
-  await createCompletion(chairmanMessages, CHAIRMAN_MODEL, (chunk: string) => {
-    finalResponse += chunk;
-    if (onChunk) {
-      onChunk(chunk);  
-    }
-  });
+  try {
+    await createCompletion(chairmanMessages, CHAIRMAN_MODEL, (chunk: string) => {
+      finalResponse += chunk;
+      if (onChunk) {
+        onChunk(chunk);
+      }
+    });
 
-  console.log('Stage 3 complete: Chairman synthesis finished');
-  return finalResponse;
+    console.log('Stage 3 complete: Chairman synthesis finished');
+    return finalResponse;
+  } catch (error) {
+    console.error('Stage 3 failed:', error);
+    throw new Error('Failed to synthesize final response');
+  }
 }
 
 export async function runCouncilProcess(
@@ -372,36 +374,49 @@ export async function runCouncilProcess(
   console.log('=== Starting Council Process ===');
   console.log(`With conversation history: ${conversationHistory.length} messages`);
 
-  const stage1Results = await stage1_collect_responses(
-    userQuery,
-    conversationHistory,
-    onProgress
-  );
+  try {
+    const stage1Results = await stage1_collect_responses(
+      userQuery,
+      conversationHistory,
+      onProgress
+    );
 
-  if (stage1Results.length === 0) {
-    throw new Error('No council members provided responses');
+    if (stage1Results.length === 0) {
+      const errorMsg = 'Unable to get responses from council members. Please try again.';
+      if (onChunk) {
+        onChunk(errorMsg);
+      }
+      return errorMsg;
+    }
+
+    const { stage2Results, labelToModel } = await stage2_collect_rankings(
+      userQuery,
+      stage1Results,
+      conversationHistory,
+      onProgress
+    );
+
+    if (stage2Results.length === 0) {
+      console.warn('No rankings collected, proceeding with basic synthesis');
+    }
+
+    const finalResponse = await stage3_synthesize_final(
+      userQuery,
+      stage1Results,
+      stage2Results,
+      labelToModel,
+      conversationHistory,
+      onChunk 
+    );
+
+    console.log('=== Council Process Complete ===');
+    return finalResponse;
+  } catch (error) {
+    console.error('Council process error:', error);
+    const errorMsg = 'An error occurred during council deliberation. Please try again.';
+    if (onChunk) {
+      onChunk(errorMsg);
+    }
+    return errorMsg;
   }
-
-  const { stage2Results, labelToModel } = await stage2_collect_rankings(
-    userQuery,
-    stage1Results,
-    conversationHistory,
-    onProgress
-  );
-
-  if (stage2Results.length === 0) {
-    console.warn('No rankings collected, proceeding with basic synthesis');
-  }
-
-  const finalResponse = await stage3_synthesize_final(
-    userQuery,
-    stage1Results,
-    stage2Results,
-    labelToModel,
-    conversationHistory,
-    onChunk 
-  );
-
-  console.log('=== Council Process Complete ===');
-  return finalResponse;
 }

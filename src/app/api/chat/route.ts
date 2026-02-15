@@ -8,9 +8,8 @@ import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
 import { createSSEStream, sseData } from '@/src/lib/api/chat/sse-helper';
 import { ChatRequestSchema } from '@/src/types';
-import { Role } from '@/src/types/chat.types';
+import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
 
-// Simple message interface for internal use
 interface RedisMessage {
   role: 'user' | 'assistant';
   content: string;
@@ -47,6 +46,17 @@ export async function POST(request: NextRequest) {
 
     const conversationId = data.conversationId ?? crypto.randomUUID();
     const selectedModel = data.selectedModel;
+    const isCouncilMode = selectedModel === 'council';
+
+    const rateLimitCheck = await withLLMTokenLimit(
+      userId,
+      data.message,
+      isCouncilMode
+    );
+    if (rateLimitCheck) {
+      return rateLimitCheck; // Returns 429 with detailed token info
+    }
+    // End rate limiting check
 
     // Create SSE stream
     return createSSEStream(async (controller) => {
@@ -152,7 +162,28 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      // Add AI response to cache
+      if (fullContent) {
+        try {
+          // Count input tokens (user message + context)
+          const inputText = messagesForAI.map(m => m.content).join('\n');
+          const inputTokens = countTokens(inputText);
+          
+          // Count output tokens (AI response)
+          const outputTokens = countTokens(fullContent);
+          
+          // Total tokens used
+          const totalTokens = inputTokens + outputTokens;
+          
+          // Record for rate limiting
+          await recordLLMTokens(userId, totalTokens, isCouncilMode);
+          
+          console.log(`[RateLimit] User ${userId}: ${totalTokens} tokens (${inputTokens} in + ${outputTokens} out)`);
+        } catch (error) {
+          console.error('Failed to record tokens:', error);
+          // Don't fail the request if token recording fails
+        }
+      }
+
       if (fullContent) {
         await redisStore.add(conversationId, {
           role: 'assistant' as const,
@@ -163,8 +194,6 @@ export async function POST(request: NextRequest) {
               : selectedModel,
         });
       }
-
-      // Async RAG ingestion & profile update
       await ingestConversationData(
         userId,
         conversationId,

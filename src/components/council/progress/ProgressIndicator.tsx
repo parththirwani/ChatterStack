@@ -1,5 +1,6 @@
 import React from 'react';
-import { Brain, CheckCircle, Loader2, Users, Scale, Sparkles } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import { Brain, CheckCircle, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 
 interface CouncilProgress {
@@ -20,27 +21,11 @@ const modelInfo: Record<string, { name: string; logo: string; invert?: boolean }
   'x-ai/grok-4': { name: 'Grok 4', logo: '/grok.svg' },
 };
 
-const stageInfo: Record<string, { name: string; icon: React.ReactNode; color: string }> = {
-  initialization: {
-    name: 'Initializing Council',
-    icon: <Brain className="w-5 h-5" />,
-    color: 'text-blue-400'
-  },
-  stage1: {
-    name: 'Expert Analysis',
-    icon: <Users className="w-5 h-5" />,
-    color: 'text-purple-400'
-  },
-  stage2: {
-    name: 'Peer Review',
-    icon: <Scale className="w-5 h-5" />,
-    color: 'text-orange-400'
-  },
-  stage3: {
-    name: 'Final Synthesis',
-    icon: <Sparkles className="w-5 h-5" />,
-    color: 'text-green-400'
-  },
+const stageInfo: Record<string, { name: string; description: string }> = {
+  initialization: { name: 'Initializing', description: 'Preparing council' },
+  stage1: { name: 'Analysis', description: 'Expert models analyzing' },
+  stage2: { name: 'Review', description: 'Peer reviewing responses' },
+  stage3: { name: 'Synthesis', description: 'Generating final answer' },
 };
 
 const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
@@ -51,196 +36,157 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
     return null;
   }
 
-  // Group progress by stage
-  const progressByStage = progress.reduce((acc, p) => {
-    if (!acc[p.stage]) {
-      acc[p.stage] = [];
-    }
-    acc[p.stage].push(p);
-    return acc;
-  }, {} as Record<string, CouncilProgress[]>);
-
   const currentStage = progress[progress.length - 1]?.stage || 'initialization';
+  const currentStageInfo = stageInfo[currentStage] || stageInfo.initialization;
+  
+  // Get models working on current stage
+  const currentStageProgress = progress.filter(p => p.stage === currentStage);
+  const completedModels = currentStageProgress.filter(p => p.progress === 100).length;
+  const totalModels = currentStageProgress.length;
+  
+  // Calculate stage completion
   const stageOrder = ['initialization', 'stage1', 'stage2', 'stage3'];
-  
-  // Calculate overall progress (0-100)
-  const completedStages = stageOrder.filter(stage => {
-    const stageProgress = progressByStage[stage];
-    return stageProgress && stageProgress.every(p => p.progress === 100);
-  }).length;
-  
-  const totalStages = 3; // Only count the main 3 stages
-  const overallProgress = Math.round((completedStages / totalStages) * 100);
+  const currentStageIndex = stageOrder.indexOf(currentStage);
+  const isStageComplete = completedModels === totalModels && totalModels > 0;
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4 py-6">
-      <div className="bg-gradient-to-br from-gray-900/90 to-gray-800/90 border-2 border-yellow-500/40 rounded-2xl p-6 backdrop-blur-md shadow-2xl shadow-yellow-500/20">
-        {/* Header */}
-        <div className="flex items-center gap-4 mb-6">
-          <div className="relative">
-            <div className="p-3 bg-yellow-500/20 rounded-xl ring-2 ring-yellow-500/50 animate-pulse">
-              <Brain className="w-7 h-7 text-yellow-400" />
-            </div>
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full animate-ping" />
-          </div>
-          
-          <div className="flex-1">
-            <h3 className="text-white font-bold text-xl flex items-center gap-2">
-              AI Council Deliberating
-            </h3>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="text-yellow-400 text-sm font-semibold">
-                {stageInfo[currentStage]?.name || 'Processing'}
-              </span>
-              <span className="text-gray-400 text-sm">
-                • {overallProgress}% Complete
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Overall Progress Bar */}
-        <div className="mb-6">
-          <div className="h-3 bg-gray-800/80 rounded-full overflow-hidden border border-gray-700/50">
-            <div
-              className="h-full bg-gradient-to-r from-yellow-500 via-yellow-400 to-yellow-300 transition-all duration-500 ease-out relative"
-              style={{ width: `${overallProgress}%` }}
-            >
-              <div className="absolute inset-0 bg-white/20 animate-pulse" />
-            </div>
-          </div>
-        </div>
-
-        {/* Stage Progress */}
-        <div className="space-y-4">
-          {stageOrder.map((stageKey) => {
-            if (stageKey === 'initialization') return null; // Skip initialization in display
-            
-            const stage = stageInfo[stageKey];
-            const stageProgress = progressByStage[stageKey] || [];
-            const isCurrentStage = stageKey === currentStage;
-            const completedModels = stageProgress.filter(p => p.progress === 100).length;
-            const totalModels = stageProgress.length;
-            const isCompleted = completedModels === totalModels && totalModels > 0;
-            const hasStarted = totalModels > 0;
-
-            return (
-              <div 
-                key={stageKey}
-                className={`p-4 rounded-xl border-2 transition-all duration-300 ${
-                  isCurrentStage 
-                    ? 'bg-yellow-500/10 border-yellow-500/50 shadow-lg shadow-yellow-500/20' 
-                    : isCompleted
-                    ? 'bg-green-500/10 border-green-500/30'
-                    : hasStarted
-                    ? 'bg-gray-800/50 border-gray-700/50'
-                    : 'bg-gray-900/30 border-gray-800/30 opacity-50'
-                }`}
-              >
-                {/* Stage Header */}
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-3">
-                    <div className={`${
-                      isCompleted 
-                        ? 'text-green-400' 
-                        : isCurrentStage 
-                        ? stage.color 
-                        : 'text-gray-500'
-                    }`}>
-                      {isCompleted ? (
-                        <CheckCircle className="w-5 h-5" />
-                      ) : isCurrentStage ? (
-                        <Loader2 className="w-5 h-5 animate-spin" />
-                      ) : (
-                        stage.icon
-                      )}
-                    </div>
-                    
-                    <span className={`font-bold ${
-                      isCurrentStage 
-                        ? 'text-yellow-400' 
-                        : isCompleted
-                        ? 'text-green-400'
-                        : 'text-gray-400'
-                    }`}>
-                      {stage.name}
-                    </span>
-                  </div>
-                  
-                  {hasStarted && (
-                    <span className="text-xs font-medium text-gray-400 bg-gray-800/60 px-2 py-1 rounded">
-                      {completedModels}/{totalModels} models
-                    </span>
-                  )}
+    <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-4">
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -20 }}
+        className="relative"
+      >
+        {/* Main Card */}
+        <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-4 shadow-lg">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <div className="w-8 h-8 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center">
+                  <Brain className="w-4 h-4 text-yellow-400" />
                 </div>
+                <motion.div
+                  className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full"
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ duration: 1, repeat: Infinity }}
+                />
+              </div>
+              
+              <div>
+                <h3 className="text-sm font-semibold text-white">
+                  AI Council
+                </h3>
+                <p className="text-xs text-gray-400">
+                  {currentStageInfo.description}
+                </p>
+              </div>
+            </div>
 
-                {/* Model Progress Grid */}
-                {hasStarted && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {stageProgress.map((p) => {
-                      const model = modelInfo[p.model];
-                      const isComplete = p.progress === 100;
-                      const isProcessing = p.progress > 0 && p.progress < 100;
+            {/* Stage indicator */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-gray-500">
+                Step {currentStageIndex + 1}/4
+              </span>
+            </div>
+          </div>
 
-                      return (
-                        <div 
-                          key={`${p.stage}-${p.model}`} 
-                          className={`flex items-center gap-2 p-2 rounded-lg transition-all duration-200 ${
-                            isComplete 
-                              ? 'bg-green-500/20 border border-green-500/40'
-                              : isProcessing
-                              ? 'bg-yellow-500/20 border border-yellow-500/40'
-                              : 'bg-gray-800/50 border border-gray-700/30'
-                          }`}
-                        >
-                          {/* Model Icon */}
-                          <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-                            {model ? (
-                              <Image
-                                src={model.logo}
-                                alt={model.name}
-                                width={16}
-                                height={16}
-                                className={model.invert ? 'invert brightness-0' : ''}
-                              />
-                            ) : (
-                              <Brain className="w-4 h-4 text-gray-500" />
-                            )}
-                          </div>
+          {/* Progress Bar */}
+          <div className="mb-4">
+            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+              <motion.div
+                className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400"
+                initial={{ width: 0 }}
+                animate={{ 
+                  width: `${((currentStageIndex + (isStageComplete ? 1 : 0.5)) / 4) * 100}%` 
+                }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              />
+            </div>
+          </div>
 
-                          {/* Model Name */}
-                          <div className="flex-1 min-w-0">
-                            <div className="text-xs font-medium text-white truncate">
-                              {model?.name || 'Model'}
-                            </div>
-                          </div>
-
-                          {/* Status Icon */}
-                          <div className="w-4 h-4 flex-shrink-0">
-                            {isComplete ? (
-                              <CheckCircle className="w-4 h-4 text-green-400" />
-                            ) : isProcessing ? (
-                              <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
-                            ) : null}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+          {/* Current Stage Details */}
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={currentStage}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.3 }}
+              className="space-y-3"
+            >
+              {/* Stage Name */}
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-white">
+                  {currentStageInfo.name}
+                </span>
+                {totalModels > 0 && (
+                  <span className="text-xs text-gray-400">
+                    {completedModels}/{totalModels} models
+                  </span>
                 )}
               </div>
-            );
-          })}
-        </div>
 
-        {/* Footer Info */}
-        <div className="mt-6 pt-4 border-t border-gray-700/50">
-          <p className="text-xs text-center text-gray-400 leading-relaxed flex items-center justify-center gap-2">
-            <Brain className="w-3 h-3" />
-            <span>4 expert AI models analyzing, debating, and synthesizing the optimal response</span>
-          </p>
+              {/* Models Grid */}
+              {totalModels > 0 && (
+                <div className="grid grid-cols-2 gap-2">
+                  {currentStageProgress.map((p) => {
+                    const model = modelInfo[p.model];
+                    const isComplete = p.progress === 100;
+                    const isProcessing = p.progress > 0 && p.progress < 100;
+
+                    return (
+                      <motion.div
+                        key={p.model}
+                        initial={{ opacity: 0, scale: 0.9 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className={`
+                          flex items-center gap-2 p-2 rounded-lg transition-colors
+                          ${isComplete 
+                            ? 'bg-green-500/10 border border-green-500/30' 
+                            : isProcessing
+                            ? 'bg-yellow-500/10 border border-yellow-500/30'
+                            : 'bg-gray-800/50 border border-gray-700/30'
+                          }
+                        `}
+                      >
+                        {/* Model Icon */}
+                        <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
+                          {model ? (
+                            <Image
+                              src={model.logo}
+                              alt={model.name}
+                              width={14}
+                              height={14}
+                              className={model.invert ? 'invert brightness-0' : ''}
+                            />
+                          ) : (
+                            <Brain className="w-3 h-3 text-gray-500" />
+                          )}
+                        </div>
+
+                        {/* Model Name */}
+                        <span className="text-xs font-medium text-white flex-1 truncate">
+                          {model?.name || 'Model'}
+                        </span>
+
+                        {/* Status Icon */}
+                        <div className="w-4 h-4 flex-shrink-0">
+                          {isComplete ? (
+                            <CheckCircle className="w-4 h-4 text-green-400" />
+                          ) : isProcessing ? (
+                            <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+                          ) : null}
+                        </div>
+                      </motion.div>
+                    );
+                  })}
+                </div>
+              )}
+            </motion.div>
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };

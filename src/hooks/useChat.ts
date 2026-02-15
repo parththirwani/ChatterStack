@@ -37,7 +37,7 @@ export const useChatOptimized = () => {
   const loadConversation = useAppStore((state) => state.loadConversation);
   const loadConversations = useAppStore((state) => state.loadConversations);
   
-  // NEW: Optimistic chat methods
+  // Optimistic chat methods
   const createOptimisticChat = useAppStore((state) => state.createOptimisticChat);
   const linkOptimisticChatId = useAppStore((state) => state.linkOptimisticChatId);
   const finalizeOptimisticChat = useAppStore((state) => state.finalizeOptimisticChat);
@@ -70,8 +70,8 @@ export const useChatOptimized = () => {
         tempId = createOptimisticChat(user.id, message);
         workingConversationId = tempId;
         
-        // Immediately navigate to temp chat (smooth, no reload!)
-        router.push(`/${tempId}`);
+        // 🔧 FIX: Use replace for smooth navigation without reload
+        router.replace(`/${tempId}`, { scroll: false });
         setCurrentConversationId(tempId);
         
         console.log('[useChat] Created optimistic chat:', tempId);
@@ -130,7 +130,7 @@ export const useChatOptimized = () => {
           if (tempId) {
             linkOptimisticChatId(tempId, id);
             
-            // Smoothly replace URL with real ID (no reload!)
+            // 🔧 FIX: Use replace instead of push for smooth navigation
             router.replace(`/${id}`, { scroll: false });
           }
           
