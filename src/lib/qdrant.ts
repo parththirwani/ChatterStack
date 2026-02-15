@@ -1,52 +1,75 @@
-import { QdrantClient } from '@qdrant/js-client-rest'
+import { QdrantClient } from '@qdrant/js-client-rest';
 
-let qdrantClient: QdrantClient | null = null
+let qdrantClient: QdrantClient | null = null;
 
-export const getQdrantClient = (): QdrantClient => {
+export function getQdrantClient(): QdrantClient {
   if (!qdrantClient) {
-    qdrantClient = new QdrantClient({
-      url: process.env.QDRANT_URL || 'http://localhost:6333',
-      apiKey: process.env.QDRANT_API_KEY,
-    })
+    // PRIORITY: Check for Qdrant Cloud credentials first
+    const qdrantUrl = process.env.QDRANT_URL || process.env.QDRANT_ENDPOINT;
+    const qdrantApiKey = process.env.QDRANT_API_KEY;
+    
+    if (!qdrantUrl) {
+      console.warn(' No Qdrant configuration found - RAG features will be limited');
+      console.log('Set QDRANT_URL (or QDRANT_ENDPOINT) in your .env file');
+      // Return a dummy client that will fail gracefully
+      throw new Error('Qdrant not configured');
+    }
+
+    const isCloud = qdrantUrl.includes('qdrant.io') || qdrantUrl.includes('qdrant.tech') || !!qdrantApiKey;
+
+    if (isCloud) {
+      console.log('✓ Using Qdrant Cloud');
+      
+      if (!qdrantApiKey) {
+        console.warn(' Qdrant Cloud URL detected but no API key provided');
+        console.log('Add QDRANT_API_KEY to your .env file');
+      }
+
+      qdrantClient = new QdrantClient({
+        url: qdrantUrl,
+        apiKey: qdrantApiKey,
+      });
+      
+      console.log('✓ Qdrant Cloud client initialized');
+    } else {
+      console.log('✓ Using local Qdrant');
+      
+      qdrantClient = new QdrantClient({
+        url: qdrantUrl,
+      });
+      
+      console.log('✓ Local Qdrant client initialized');
+    }
   }
-  return qdrantClient
+  
+  return qdrantClient;
 }
 
-export const initializeQdrantCollection = async () => {
-  const client = getQdrantClient()
-  const collectionName = process.env.QDRANT_COLLECTION || 'chatterstack_memory'
-
+/**
+ * Test Qdrant connection
+ */
+export async function testQdrantConnection(): Promise<boolean> {
   try {
-    const collections = await client.getCollections()
-    const exists = collections.collections.some((c) => c.name === collectionName)
-
-    if (!exists) {
-      await client.createCollection(collectionName, {
-        vectors: {
-          size: 1536,
-          distance: 'Cosine',
-        },
-        sparse_vectors: {
-          text: {},
-        },
-      })
-
-      await client.createPayloadIndex(collectionName, {
-        field_name: 'userId',
-        field_schema: 'keyword',
-      })
-
-      await client.createPayloadIndex(collectionName, {
-        field_name: 'timestamp',
-        field_schema: 'datetime',
-      })
-
-      console.log(`✓ Qdrant collection '${collectionName}' created`)
-    } else {
-      console.log(`✓ Qdrant collection '${collectionName}' already exists`)
-    }
+    const client = getQdrantClient();
+    await client.getCollections();
+    console.log('✓ Qdrant connection verified');
+    return true;
   } catch (error) {
-    console.error('Failed to initialize Qdrant collection:', error)
-    throw error
+    console.error('⚠️  Qdrant connection failed:', error instanceof Error ? error.message : error);
+    return false;
   }
+}
+
+/**
+ * Get connection info
+ */
+export function getQdrantConnectionInfo(): { isCloud: boolean; url: string | undefined } {
+  const qdrantUrl = process.env.QDRANT_URL || process.env.QDRANT_ENDPOINT;
+  const qdrantApiKey = process.env.QDRANT_API_KEY;
+  const isCloud = !!qdrantUrl && (qdrantUrl.includes('qdrant.io') || qdrantUrl.includes('qdrant.tech') || !!qdrantApiKey);
+  
+  return {
+    isCloud,
+    url: qdrantUrl,
+  };
 }
