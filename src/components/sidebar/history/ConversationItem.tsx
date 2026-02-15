@@ -1,5 +1,6 @@
 import React, { useState, useCallback, memo } from 'react';
-import { Trash2, MessageSquare } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { Trash2 } from 'lucide-react';
 import { Conversation } from '@/src/types/conversation.types';
 import DeleteConversationModal from './DeleteModal';
 
@@ -90,17 +91,6 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
         `}
       >
         <div className="flex items-start gap-2.5">
-          {/* Message icon - minimal */}
-          <div className={`
-            flex-shrink-0 w-5 h-5 rounded-md flex items-center justify-center mt-0.5
-            ${isActive 
-              ? 'bg-yellow-500/20 text-yellow-400' 
-              : 'bg-gray-800/50 text-gray-500'
-            }
-          `}>
-            <MessageSquare className="w-3 h-3" />
-          </div>
-
           <div className="flex-1 min-w-0">
             {/* Title - clean typography */}
             <p className={`
@@ -147,7 +137,7 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
         </div>
       </div>
 
-      {showDeleteModal && (
+      {showDeleteModal && typeof document !== 'undefined' && createPortal(
         <DeleteConversationModal
           isOpen={showDeleteModal}
           onClose={handleCloseModal}
@@ -155,7 +145,8 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
           conversationTitle={displayTitle}
           isDeleting={isDeleting}
           error={deleteError}
-        />
+        />,
+        document.body
       )}
     </>
   );

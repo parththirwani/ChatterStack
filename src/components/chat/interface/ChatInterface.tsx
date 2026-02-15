@@ -254,7 +254,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 <QuickToolButton icon="📝" label="Essay writer" onClick={() => setMessage("Help me write an essay about ")} />
                 <QuickToolButton icon="💼" label="Business" onClick={() => setMessage("Help me with business advice on ")} />
                 <QuickToolButton icon="🌐" label="Translate" onClick={() => setMessage("Translate this text: ")} />
-                <QuickToolButton icon="🎥" label="YouTube summaries" onClick={() => setMessage("Summarize this YouTube video: ")} />
                 <QuickToolButton icon="✉️" label="AI Email writing" onClick={() => setMessage("Help me write an email about ")} />
                 <QuickToolButton icon="📄" label="AI PDF chat" onClick={() => setMessage("Help me analyze this PDF: ")} />
                 <QuickToolButton icon="🔍" label="Research assistant" onClick={() => setMessage("Research this topic: ")} />
