@@ -25,10 +25,20 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
     const { setUser, setUserLoading } = get();
     try {
       setUserLoading(true);
+      
+      // Use getCurrentUser which returns null instead of throwing
       const currentUser = await ApiService.getCurrentUser();
-      setUser(currentUser);
+      
+      if (currentUser) {
+        console.log('[UserSlice] User authenticated:', currentUser.email);
+        setUser(currentUser);
+      } else {
+        console.log('[UserSlice] No authenticated user');
+        setUser(null);
+      }
     } catch (error) {
-      console.error('Failed to initialize user:', error);
+      // This shouldn't happen anymore, but handle it gracefully
+      console.log('[UserSlice] Failed to initialize user, setting to null');
       setUser(null);
     } finally {
       setUserLoading(false);

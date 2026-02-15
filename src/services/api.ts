@@ -63,6 +63,14 @@ export class ApiService {
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
     try {
       const response = await fetch('/api/auth/session', { credentials: 'include' });
+      
+      // Handle non-JSON responses gracefully
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.warn('[API] Auth session returned non-JSON response');
+        return { ok: false };
+      }
+
       const session = await response.json();
       
       if (session?.user) {
@@ -80,17 +88,23 @@ export class ApiService {
       
       return { ok: false };
     } catch (error) {
-      console.error('[API] Auth validation failed:', error);
+      // Log error but don't throw - this is expected when not authenticated
+      console.log('[API] Auth validation: Not authenticated');
       return { ok: false };
     }
   }
 
-  static async getCurrentUser(): Promise<User> {
-    const result = await this.validateAuth();
-    if (!result.ok || !result.user) {
-      throw new Error('Not authenticated');
+  static async getCurrentUser(): Promise<User | null> {
+    try {
+      const result = await this.validateAuth();
+      if (!result.ok || !result.user) {
+        return null; // Return null instead of throwing
+      }
+      return result.user;
+    } catch (error) {
+      console.log('[API] getCurrentUser: User not authenticated');
+      return null;
     }
-    return result.user;
   }
 
   static async logout(): Promise<void> {

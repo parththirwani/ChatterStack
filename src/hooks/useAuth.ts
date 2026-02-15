@@ -11,15 +11,19 @@ export const useAuth = () => {
     try {
       setLoading(true);
       setError(null);
+      
       const result = await ApiService.validateAuth();
+      
       if (result.ok && result.user) {
+        console.log('[useAuth] User authenticated');
         setUser(result.user);
       } else {
+        console.log('[useAuth] No authenticated user');
         setUser(null);
       }
     } catch (err) {
-      console.error('Auth validation error:', err);
-      setError('Failed to validate authentication');
+      // Don't set error for expected "not authenticated" state
+      console.log('[useAuth] Validation failed, user not authenticated');
       setUser(null);
     } finally {
       setLoading(false);
