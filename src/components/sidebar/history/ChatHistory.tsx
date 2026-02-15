@@ -1,13 +1,13 @@
-import React, { memo, useMemo } from 'react';
+import React, { memo } from 'react';
 import { MessageSquare, Loader2, AlertCircle } from 'lucide-react';
 import { Conversation } from '@/src/types/conversation.types';
-
 import ConversationItem from './ConversationItem';
 import { useAppStore } from '@/src/store/rootStore';
 import { OptimisticChat } from '@/src/lib/api/chat/optimistic-chat-manager';
 
 interface ChatHistoryProps {
   loadingConversations: boolean;
+  filteredConversations?: Conversation[];
   currentConversationId?: string;
   onConversationClick: (conversationId: string) => void;
   onDeleteConversation: (conversationId: string) => Promise<void>;
@@ -16,43 +16,43 @@ interface ChatHistoryProps {
 
 const ChatHistory: React.FC<ChatHistoryProps> = ({
   loadingConversations,
+  filteredConversations,
   currentConversationId,
   onConversationClick,
   onDeleteConversation,
   formatDate,
 }) => {
-  // Get merged list of real + optimistic chats
   const getAllChatsForSidebar = useAppStore((state) => state.getAllChatsForSidebar);
-  const allChats = getAllChatsForSidebar();
+  const allChats = filteredConversations || getAllChatsForSidebar();
 
-  // Determine if a chat is optimistic
   const isOptimistic = (chat: Conversation | OptimisticChat): chat is OptimisticChat => {
     return 'isOptimistic' in chat && chat.isOptimistic === true;
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4">
-      <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">
-        Recent Chats
-      </h3>
+    <div className="py-3">
+      {/* Section label - subtle */}
+      <div className="px-2 mb-2">
+        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
+          Conversations
+        </h3>
+      </div>
+
       {loadingConversations ? (
-        <div className="flex items-center justify-center py-8">
-          <div className="w-6 h-6 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin"></div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-5 h-5 text-yellow-500 animate-spin" />
         </div>
       ) : allChats.length > 0 ? (
-        <div className="space-y-3">
+        <div className="space-y-1">
           {allChats.slice(0, 20).map((chat) => {
             const optimistic = isOptimistic(chat);
             const chatId = optimistic ? (chat.realId || chat.tempId) : chat.id;
-            
-            // Use tempId for key to ensure uniqueness during transition
             const uniqueKey = optimistic ? chat.tempId : chat.id;
-            
             const isActive = currentConversationId === chatId || 
                            (optimistic && currentConversationId === chat.tempId);
 
             return (
-              <div key={uniqueKey} className="relative">
+              <div key={uniqueKey} className="relative px-2">
                 <MemoizedConversationItem
                   conversation={chat as Conversation}
                   isActive={isActive}
@@ -61,18 +61,21 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
                   formatDate={formatDate}
                 />
                 
-                {/* Streaming/Status Indicator */}
+                {/* Streaming indicator - minimal badge */}
                 {optimistic && (
-                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                  <div className="absolute top-2 right-3 flex items-center gap-1">
                     {chat.status === 'generating' || chat.status === 'streaming' ? (
-                      <>
-                        <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />
-                      </>
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
+                        <Loader2 className="w-2.5 h-2.5 text-yellow-500 animate-spin" />
+                        <span className="text-xs text-yellow-400 font-medium">
+                          {chat.status === 'generating' ? 'Thinking' : 'Typing'}
+                        </span>
+                      </div>
                     ) : chat.status === 'error' ? (
-                      <>
-                        <AlertCircle className="w-3 h-3 text-red-500" />
-                        <span className="text-xs text-red-500">Error</span>
-                      </>
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20">
+                        <AlertCircle className="w-2.5 h-2.5 text-red-500" />
+                        <span className="text-xs text-red-400 font-medium">Error</span>
+                      </div>
                     ) : null}
                   </div>
                 )}
@@ -81,11 +84,13 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
           })}
         </div>
       ) : (
-        <div className="text-center py-8">
-          <MessageSquare className="w-12 h-12 text-gray-600 mx-auto mb-4" />
-          <p className="text-gray-400 text-sm">No conversations yet</p>
-          <p className="text-gray-500 text-xs">
-            Start a new chat to see it here
+        <div className="text-center py-12 px-4">
+          <div className="w-12 h-12 rounded-full bg-gray-800/50 flex items-center justify-center mx-auto mb-3">
+            <MessageSquare className="w-6 h-6 text-gray-500" />
+          </div>
+          <p className="text-sm text-gray-400 mb-1">No conversations yet</p>
+          <p className="text-xs text-gray-500">
+            Start chatting to see your history
           </p>
         </div>
       )}
@@ -93,7 +98,6 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
   );
 };
 
-// Memoize ConversationItem to prevent unnecessary re-renders
 const MemoizedConversationItem = memo(ConversationItem, (prev, next) => {
   return (
     prev.conversation.id === next.conversation.id &&
@@ -106,6 +110,14 @@ const MemoizedConversationItem = memo(ConversationItem, (prev, next) => {
 MemoizedConversationItem.displayName = 'MemoizedConversationItem';
 
 export default memo(ChatHistory, (prev, next) => {
+  if (prev.filteredConversations && next.filteredConversations) {
+    return (
+      prev.loadingConversations === next.loadingConversations &&
+      prev.currentConversationId === next.currentConversationId &&
+      prev.filteredConversations.length === next.filteredConversations.length
+    );
+  }
+  
   return (
     prev.loadingConversations === next.loadingConversations &&
     prev.currentConversationId === next.currentConversationId

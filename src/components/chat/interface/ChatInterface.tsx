@@ -171,6 +171,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-[#201d26] relative">
+      {/* Background Grid */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.015]"
         style={{
           backgroundImage: `
@@ -181,15 +182,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }}
       />
 
+      {/* Error Banner - Responsive padding */}
       {error && (
         <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 relative z-10">
-          <div className="max-w-3xl mx-auto px-4 py-3">
+          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
             <div className="flex items-center gap-2 text-red-400">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">{error}</span>
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span className="text-sm flex-1">{error}</span>
               <button
                 onClick={clearError}
-                className="ml-auto text-red-400 hover:text-red-300 text-sm underline transition-colors duration-200 cursor-pointer"
+                className="ml-auto text-red-400 hover:text-red-300 text-sm underline transition-colors duration-200 cursor-pointer flex-shrink-0"
               >
                 Dismiss
               </button>
@@ -199,13 +201,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       )}
 
       {isFirstMessage ? (
-        <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto relative z-10">
+        // Empty State - Fully responsive
+        <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-y-auto relative z-10">
           <div className="text-center max-w-4xl w-full">
-            <div className="mb-12 animate-in fade-in duration-700">
-              <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight leading-tight">
+            {/* Title - Responsive text size */}
+            <div className="mb-8 sm:mb-12 animate-in fade-in duration-700">
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight leading-tight px-4">
                 {isCouncilMode ? "AI Council Mode" : "What's on your mind today?"}
               </h1>
-              <p className="text-lg text-gray-400">
+              <p className="text-base sm:text-lg text-gray-400 px-4">
                 {isCouncilMode 
                   ? "Multiple expert AI models working together to provide the best answer"
                   : "Ask anything, explore ideas, or get help with your work"
@@ -213,24 +217,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </p>
             </div>
 
+            {/* Council Badge - Responsive */}
             {isCouncilMode && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-8 max-w-3xl mx-auto">
-                <p className="text-yellow-300 text-sm leading-relaxed">
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 sm:p-4 mb-6 sm:mb-8 max-w-3xl mx-auto">
+                <p className="text-yellow-300 text-xs sm:text-sm leading-relaxed">
                   ⚡ <strong>Council mode</strong> uses 4 advanced AI models to analyze, debate, and synthesize the best possible answer to your question.
                 </p>
-                <div className="mt-2 flex items-center justify-center gap-2 text-xs text-yellow-400/80">
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-1 sm:gap-2 text-xs text-yellow-400/80">
                   <span>GPT-5.1</span>
-                  <span>•</span>
+                  <span className="hidden sm:inline">•</span>
                   <span>Gemini 3 Pro</span>
-                  <span>•</span>
+                  <span className="hidden sm:inline">•</span>
                   <span>Claude 4.5</span>
-                  <span>•</span>
+                  <span className="hidden sm:inline">•</span>
                   <span>Grok 4</span>
                 </div>
               </div>
             )}
 
-            <div className="max-w-3xl mx-auto mb-8">
+            {/* Message Input - Responsive width */}
+            <div className="max-w-3xl mx-auto mb-6 sm:mb-8 px-4">
               <MessageInput
                 message={message}
                 onMessageChange={setMessage}
@@ -240,26 +246,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               />
             </div>
 
+            {/* Quick Tools - Responsive grid */}
             {!isCouncilMode && (
-              <div className="flex flex-wrap gap-3 justify-center max-w-4xl mx-auto mb-8">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2 sm:gap-3 justify-center max-w-4xl mx-auto mb-6 sm:mb-8 px-4">
                 <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
                 <QuickToolButton icon="💻" label="Coding Assistant" onClick={() => setMessage("Help me with coding: ")} />
                 <QuickToolButton icon="📝" label="Essay writer" onClick={() => setMessage("Help me write an essay about ")} />
                 <QuickToolButton icon="💼" label="Business" onClick={() => setMessage("Help me with business advice on ")} />
                 <QuickToolButton icon="🌐" label="Translate" onClick={() => setMessage("Translate this text: ")} />
+                <QuickToolButton icon="🎥" label="YouTube summaries" onClick={() => setMessage("Summarize this YouTube video: ")} />
                 <QuickToolButton icon="✉️" label="AI Email writing" onClick={() => setMessage("Help me write an email about ")} />
                 <QuickToolButton icon="📄" label="AI PDF chat" onClick={() => setMessage("Help me analyze this PDF: ")} />
                 <QuickToolButton icon="🔍" label="Research assistant" onClick={() => setMessage("Research this topic: ")} />
               </div>
             )}
 
-            <div className="text-xs text-gray-500">
+            {/* Footer - Responsive text */}
+            <div className="text-xs text-gray-500 px-4">
               Powered by advanced AI models • ChatterStack can make mistakes
             </div>
           </div>
         </div>
       ) : (
         <>
+          {/* Messages Container - Responsive padding */}
           <div 
             ref={messagesContainerRef}
             className="flex-1 overflow-y-auto relative z-10"
@@ -268,7 +278,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               scrollBehavior: 'auto'
             }}
           >
-            <div className="py-6 space-y-6">
+            <div className="py-4 sm:py-6 space-y-4 sm:space-y-6">
               {messages.map((msg, index) => {
                 const isLastMessage = index === messages.length - 1;
                 
@@ -298,8 +308,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
 
-          <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm relative z-10">
-            <div className="max-w-3xl mx-auto px-4 py-4">
+          {/* Input Bar - Responsive padding with safe area for mobile */}
+          <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm relative z-10 pb-safe">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
               <MessageInput
                 message={message}
                 onMessageChange={setMessage}
@@ -308,7 +319,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 placeholder={isCouncilMode ? "Ask the AI council..." : "Message AI chat..."}
               />
               <div className="flex items-center justify-center mt-2 text-xs text-gray-500">
-                <span>
+                <span className="text-center">
                   {isCouncilMode 
                     ? "Council mode synthesizes insights from 4 expert AI models"
                     : "ChatterStack can make mistakes. Check important info."

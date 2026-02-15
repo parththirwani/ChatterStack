@@ -42,47 +42,47 @@ const AIMessage: React.FC<AIMessageProps> = ({
 
   return (
     <div className="w-full">
-      <div className="max-w-3xl mx-auto px-4">
-        <div className="flex items-start gap-4">
-          {/* Model Avatar */}
-          <div className="w-8 h-8 rounded-lg bg-gray-800/80 flex items-center justify-center flex-shrink-0 mt-1 border border-gray-700/50">
+      <div className="max-w-3xl mx-auto px-4 sm:px-6">
+        <div className="flex items-start gap-2 sm:gap-4">
+          {/* Model Avatar - Responsive size */}
+          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gray-800/80 flex items-center justify-center flex-shrink-0 mt-1 border border-gray-700/50">
             {model ? (
               <Image
                 src={model.logo}
                 alt={model.name}
-                width={20}
-                height={20}
-                className={model.invert ? 'invert brightness-0' : ''}
+                width={18}
+                height={18}
+                className={`${model.invert ? 'invert brightness-0' : ''} w-4 h-4 sm:w-5 sm:h-5`}
               />
             ) : (
               <span className="text-xs font-bold text-yellow-500">AI</span>
             )}
           </div>
 
-          {/* Message Content */}
+          {/* Message Content - Responsive */}
           <div className="flex-1 min-w-0">
-            <div className="prose prose-invert prose-sm max-w-none">
+            <div className="prose prose-invert prose-sm sm:prose-base max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex, rehypeHighlight]}
                 components={{
                   h1: ({ children }) => (
-                    <h1 className="text-2xl font-bold text-white mt-6 mb-3 first:mt-0">
+                    <h1 className="text-xl sm:text-2xl font-bold text-white mt-4 sm:mt-6 mb-2 sm:mb-3 first:mt-0">
                       {children}
                     </h1>
                   ),
                   h2: ({ children }) => (
-                    <h2 className="text-xl font-semibold text-white mt-5 mb-3 first:mt-0">
+                    <h2 className="text-lg sm:text-xl font-semibold text-white mt-4 sm:mt-5 mb-2 sm:mb-3 first:mt-0">
                       {children}
                     </h2>
                   ),
                   h3: ({ children }) => (
-                    <h3 className="text-lg font-semibold text-white mt-4 mb-2 first:mt-0">
+                    <h3 className="text-base sm:text-lg font-semibold text-white mt-3 sm:mt-4 mb-2 first:mt-0">
                       {children}
                     </h3>
                   ),
                   p: ({ children }) => (
-                    <p className="mb-4 leading-relaxed last:mb-0 text-gray-100">
+                    <p className="mb-3 sm:mb-4 leading-relaxed last:mb-0 text-gray-100 text-sm sm:text-base break-words">
                       {children}
                     </p>
                   ),
@@ -97,15 +97,15 @@ const AIMessage: React.FC<AIMessageProps> = ({
 
                     if (isInline) {
                       return (
-                        <code className="bg-gray-800 text-yellow-300 px-1.5 py-0.5 rounded text-sm font-mono" {...props}>
+                        <code className="bg-gray-800 text-yellow-300 px-1 sm:px-1.5 py-0.5 rounded text-xs sm:text-sm font-mono break-all" {...props}>
                           {children}
                         </code>
                       );
                     }
 
                     return (
-                      <div className="relative group my-4">
-                        <pre className="bg-gray-900 rounded-lg overflow-x-auto text-sm border border-gray-800 p-4">
+                      <div className="relative group my-3 sm:my-4 -mx-4 sm:mx-0">
+                        <pre className="bg-gray-900 rounded-lg overflow-x-auto text-xs sm:text-sm border border-gray-800 p-3 sm:p-4">
                           <code className={className} {...props}>
                             {children}
                           </code>
@@ -114,24 +114,24 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     );
                   },
                   ul: ({ children }) => (
-                    <ul className="mb-4 space-y-2 text-gray-100">
+                    <ul className="mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-gray-100 list-disc list-inside">
                       {children}
                     </ul>
                   ),
                   ol: ({ children }) => (
-                    <ol className="mb-4 space-y-2 text-gray-100 list-decimal ml-4">
+                    <ol className="mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-gray-100 list-decimal list-inside">
                       {children}
                     </ol>
                   ),
                   li: ({ children }) => (
-                    <li className="leading-relaxed">
+                    <li className="leading-relaxed text-sm sm:text-base">
                       {children}
                     </li>
                   ),
                   a: ({ href, children }) => (
                     <a
                       href={href}
-                      className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer"
+                      className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer break-all"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -139,22 +139,39 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     </a>
                   ),
                   blockquote: ({ children }) => (
-                    <blockquote className="border-l-4 border-gray-700 pl-4 italic text-gray-400 my-4">
+                    <blockquote className="border-l-2 sm:border-l-4 border-gray-700 pl-3 sm:pl-4 italic text-gray-400 my-3 sm:my-4">
                       {children}
                     </blockquote>
+                  ),
+                  table: ({ children }) => (
+                    <div className="overflow-x-auto -mx-4 sm:mx-0 my-3 sm:my-4">
+                      <table className="min-w-full divide-y divide-gray-700">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  th: ({ children }) => (
+                    <th className="px-3 sm:px-4 py-2 text-left text-xs sm:text-sm font-semibold text-white bg-gray-800">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-300 border-t border-gray-700">
+                      {children}
+                    </td>
                   ),
                 }}
               >
                 {content}
               </ReactMarkdown>
               {loading && isLastMessage && (
-                <span className="inline-block w-2 h-4 bg-yellow-500 ml-1 animate-pulse"></span>
+                <span className="inline-block w-1.5 sm:w-2 h-3 sm:h-4 bg-yellow-500 ml-1 animate-pulse"></span>
               )}
             </div>
 
-            {/* Actions */}
+            {/* Actions - Responsive positioning */}
             {!loading && content && (
-              <div className="mt-3">
+              <div className="mt-2 sm:mt-3">
                 <MessageActions
                   content={content}
                   filename={filename}

@@ -1,4 +1,3 @@
-// frontend/app/components/Sidebar/SidebarHeader.tsx
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import Image from 'next/image';
@@ -14,43 +13,58 @@ const SidebarHeader: React.FC<SidebarHeaderProps> = ({
   onToggleCollapse,
 }) => {
   return (
-    <div className="p-4 border-b border-gray-700">
-      <div className="flex items-center justify-between">
-        {collapsed ? (
-          <div className="relative group">
-            <Link href="/" className="block">
+    <div className="flex items-center justify-between">
+      {collapsed ? (
+        <div className="w-full flex flex-col items-center gap-2">
+          <Link href="/" className="block">
+            <div className="w-7 h-7 rounded-lg overflow-hidden">
               <Image
                 src="/logo.png"
-                alt="Logo"
+                alt="ChatterStack"
+                width={28}
+                height={28}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </Link>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1 rounded-md hover:bg-gray-800/50 transition-colors duration-200 text-gray-500 hover:text-gray-300"
+            aria-label="Expand sidebar"
+          >
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      ) : (
+        <>
+          <Link href="/" className="flex items-center space-x-2.5 hover:opacity-80 transition-opacity group">
+            <div className="w-8 h-8 rounded-lg overflow-hidden shadow-sm group-hover:shadow-md transition-shadow">
+              <Image
+                src="/logo.png"
+                alt="ChatterStack"
                 width={32}
                 height={32}
-                className="transition-opacity duration-200 cursor-pointer hover:opacity-80"
+                className="w-full h-full object-cover"
               />
-            </Link>
-            <button
-              onClick={onToggleCollapse}
-              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
-            >
-              <ChevronRight className="w-6 h-6 text-white" />
-            </button>
-          </div>
-        ) : (
-          <>
-            <Link href="/" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
-              <Image src="/logo.png" alt="Logo" width={32} height={32} />
-              <h2 className="text-xl font-bold text-white">
-                Chatter<span className="text-yellow-500">Stack</span>
-              </h2>
-            </Link>
-            <button
-              onClick={onToggleCollapse}
-              className="p-2 rounded-lg hover:bg-white/10 transition-colors duration-200 text-white hover:text-yellow-500"
-            >
-              <ChevronLeft className="w-5 h-5" />
-            </button>
-          </>
-        )}
-      </div>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-semibold text-white tracking-tight">
+                ChatterStack
+              </span>
+              <span className="text-xs text-gray-400">
+                AI Assistant
+              </span>
+            </div>
+          </Link>
+          <button
+            onClick={onToggleCollapse}
+            className="p-1.5 rounded-lg hover:bg-gray-800/50 transition-colors duration-200 text-gray-400 hover:text-gray-200"
+            aria-label="Collapse sidebar"
+          >
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+        </>
+      )}
     </div>
   );
 };

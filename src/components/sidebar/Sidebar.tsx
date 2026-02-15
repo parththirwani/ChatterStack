@@ -6,7 +6,6 @@ import SidebarActionButtons from '@/src/components/sidebar/actions/SidebarAction
 import SidebarHeader from '@/src/components/sidebar/header/SidebarHeader';
 import UserSection from '@/src/components/sidebar/user/UserSection';
 import { useAppStore } from '@/src/store/rootStore';
-import { Crown } from 'lucide-react';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -106,41 +105,72 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   return (
     <>
       <div
-        className={`${
-          collapsed ? 'w-20' : 'w-80'
-        } h-screen shrink-0 transition-all duration-300 ease-in-out flex flex-col border-r border-gray-700/50 gradient-dark`}
+        className={`
+          ${collapsed ? 'w-16' : 'w-72'} 
+          h-screen 
+          shrink-0 
+          transition-all duration-300 ease-in-out 
+          flex flex-col 
+          bg-[#1a1721]
+          border-r border-gray-800/50
+          overflow-hidden
+        `}
       >
-        <SidebarHeader
-          collapsed={collapsed}
-          onToggleCollapse={onToggleCollapse}
-        />
-
-        <SidebarActionButtons
-          collapsed={collapsed}
-          isAuthenticated={!!isAuthenticated}
-          searchQuery={searchQuery}
-          onNewChat={handleNewChat}
-          onSearchChange={setSearchQuery}
-        />
-
-        {!collapsed && isAuthenticated && (
-          <MemoizedChatHistory
-            loadingConversations={conversationsLoading}
-            filteredConversations={filteredConversations}
-            currentConversationId={currentConversationId}
-            onConversationClick={handleConversationClick}
-            onDeleteConversation={handleDeleteConversation}
-            formatDate={formatDate}
+        {/* Header - Clean minimal design with original colors */}
+        <div className={`${collapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
+          <SidebarHeader
+            collapsed={collapsed}
+            onToggleCollapse={onToggleCollapse}
           />
+        </div>
+
+        {/* Action Buttons - No border, cleaner spacing */}
+        <div className={`${collapsed ? 'px-2' : 'px-4'} pb-4`}>
+          <SidebarActionButtons
+            collapsed={collapsed}
+            isAuthenticated={!!isAuthenticated}
+            searchQuery={searchQuery}
+            onNewChat={handleNewChat}
+            onSearchChange={setSearchQuery}
+          />
+        </div>
+
+        {/* Subtle gradient divider */}
+        {!collapsed && isAuthenticated && (
+          <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
         )}
 
-        <UserSection
-          user={user}
-          collapsed={collapsed}
-          isAuthenticated={!!isAuthenticated}
-          onLoginClick={handleLoginClick}
-          onLogout={handleLogout}
-        />
+        {/* Chat History - Clean scrollable area OR Spacer for collapsed mode */}
+        {!collapsed && isAuthenticated ? (
+          <div className="flex-1 overflow-y-auto min-h-0 px-2">
+            <MemoizedChatHistory
+              loadingConversations={conversationsLoading}
+              filteredConversations={filteredConversations}
+              currentConversationId={currentConversationId}
+              onConversationClick={handleConversationClick}
+              onDeleteConversation={handleDeleteConversation}
+              formatDate={formatDate}
+            />
+          </div>
+        ) : (
+          <div className="flex-1" />
+        )}
+
+        {/* Subtle gradient divider before user section */}
+        {!collapsed && (
+          <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
+        )}
+
+        {/* User Section - Clean, no heavy border */}
+        <div className={`${collapsed ? 'p-2' : 'p-4'} shrink-0`}>
+          <UserSection
+            user={user}
+            collapsed={collapsed}
+            isAuthenticated={!!isAuthenticated}
+            onLoginClick={handleLoginClick}
+            onLogout={handleLogout}
+          />
+        </div>
       </div>
 
       <LoginModal
@@ -153,11 +183,18 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
 };
 
 const MemoizedChatHistory = memo(ChatHistory, (prev, next) => {
+  if (prev.filteredConversations && next.filteredConversations) {
+    return (
+      prev.loadingConversations === next.loadingConversations &&
+      prev.currentConversationId === next.currentConversationId &&
+      prev.filteredConversations.length === next.filteredConversations.length &&
+      JSON.stringify(prev.filteredConversations) === JSON.stringify(next.filteredConversations)
+    );
+  }
+  
   return (
     prev.loadingConversations === next.loadingConversations &&
-    prev.currentConversationId === next.currentConversationId &&
-    prev.filteredConversations.length === next.filteredConversations.length &&
-    JSON.stringify(prev.filteredConversations) === JSON.stringify(next.filteredConversations)
+    prev.currentConversationId === next.currentConversationId
   );
 });
 
