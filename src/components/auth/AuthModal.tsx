@@ -2,37 +2,55 @@ import React, { useEffect } from 'react';
 import { X } from 'lucide-react';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
-
-type User = {
-  id: string;
-  name: string | null;
-  email: string | null;
-  avatarUrl: string | null;
-  provider: string;
-};
+import { useAppStore } from '@/src/store/rootStore';
+import type { User } from '@/src/types/user.types';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLoginSuccess?: (user: User | null) => void;
+  message?: string;
 }
 
-const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose}) => {
+const LoginModal: React.FC<LoginModalProps> = ({ 
+  isOpen, 
+  onClose,
+  onLoginSuccess,
+  message 
+}) => {
   const [loading, setLoading] = React.useState(false);
+  const initializeUser = useAppStore((state) => state.initializeUser);
+  const user = useAppStore((state) => state.user);
 
-  // Only check for OAuth redirect params when modal opens
+  // Detect successful OAuth login
   useEffect(() => {
     if (!isOpen) return;
 
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('auth')) {
+    if (urlParams.has('auth') && urlParams.get('auth') === 'success') {
+      console.log('[AuthModal] OAuth callback detected, initializing user...');
+      
       // Clear the auth param from URL
       window.history.replaceState({}, document.title, window.location.pathname);
       
-      // Close modal and let parent component handle auth validation
-      onClose();
+      // Initialize user from store
+      initializeUser().then(() => {
+        console.log('[AuthModal] User initialized after OAuth');
+      });
     }
-  }, [isOpen, onClose]);
+  }, [isOpen, initializeUser]);
+
+  // When user changes (after successful login), notify parent
+  useEffect(() => {
+    if (isOpen && user && user.id && user.id !== 'guest') {
+      console.log('[AuthModal] User authenticated, calling onLoginSuccess');
+      if (onLoginSuccess) {
+        onLoginSuccess(user);
+      } else {
+        onClose();
+      }
+    }
+  }, [user, isOpen, onLoginSuccess, onClose]);
 
   // OAuth login using NextAuth
   const handleLogin = async (provider: "google" | "github") => {
@@ -40,7 +58,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose}) => {
     try {
       // Use NextAuth's signIn function
       await signIn(provider, {
-        callbackUrl: '/',
+        callbackUrl: '/?auth=success',
         redirect: true,
       });
     } catch (error) {
@@ -52,7 +70,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose}) => {
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black bg-opacity-70 backdrop-blur-sm"
@@ -68,6 +86,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose}) => {
         <button
           onClick={onClose}
           className="absolute top-4 right-4 p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+          disabled={loading}
         >
           <X className="w-5 h-5" />
         </button>
@@ -85,10 +104,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose}) => {
           </div>
 
           <h2 className="text-2xl font-bold text-white mb-2">
-            Welcome to <span className="text-yellow-500">ChatterStack</span>
+            Sign in to <span className="text-yellow-500">ChatterStack</span>
           </h2>
           <p className="text-gray-400 text-sm">
-            Sign in to continue your conversations
+            {message || "Sign in to continue your conversation"}
           </p>
         </div>
 

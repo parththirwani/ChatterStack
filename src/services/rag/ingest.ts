@@ -46,7 +46,7 @@ export async function ingestMessage(params: {
     }
 
     // 1. Chunk the message
-    const chunks = chunkMessage(content, messageId);
+    const chunks = chunkMessage(content);
     console.log(`Chunking message ${messageId}: ${chunks.length} chunks`);
 
     if (chunks.length === 0) {

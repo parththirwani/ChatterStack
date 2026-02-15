@@ -7,8 +7,9 @@ import { createNewConversation, generateAndUpdateTitle, addMessagesToConversatio
 import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
 import { createSSEStream, sseData } from '@/src/lib/api/chat/sse-helper';
-import { ChatRequestSchema } from '@/src/types';
+
 import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
+import { ChatRequestSchema } from '@/src/types/chat.types';
 
 interface RedisMessage {
   role: 'user' | 'assistant';

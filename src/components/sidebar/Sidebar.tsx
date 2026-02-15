@@ -1,5 +1,4 @@
 import React, { useState, useCallback, memo } from 'react';
-import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import ChatHistory from '@/src/components/sidebar/history/ChatHistory';
 import SidebarActionButtons from '@/src/components/sidebar/actions/SidebarActionButton';
@@ -28,7 +27,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   currentConversationId,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [showLoginModal, setShowLoginModal] = useState(false);
   
   const conversations = useAppStore((state) => state.conversations);
   const conversationsLoading = useAppStore((state) => state.conversationsLoading);
@@ -57,13 +55,8 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   }, [onConversationSelect]);
 
   const handleLoginClick = useCallback(() => {
-    setShowLoginModal(true);
+    // UserSection now handles the modal
   }, []);
-
-  const handleLoginSuccess = useCallback((authenticatedUser: User | null) => {
-    if (onUserChange) onUserChange(authenticatedUser);
-    setShowLoginModal(false);
-  }, [onUserChange]);
 
   const handleLogout = useCallback(async () => {
     try {
@@ -102,82 +95,74 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   const isAuthenticated = user && user.id && user.id !== 'guest';
 
   return (
-    <>
-      <div
-        className={`
-          ${collapsed ? 'w-16' : 'w-72'} 
-          h-screen 
-          shrink-0 
-          transition-all duration-300 ease-in-out 
-          flex flex-col 
-          bg-[#1a1721]
-          border-r border-gray-800/50
-          overflow-hidden
-        `}
-      >
-        {/* Header - Clean minimal design with original colors */}
-        <div className={`${collapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
-          <SidebarHeader
-            collapsed={collapsed}
-            onToggleCollapse={onToggleCollapse}
-          />
-        </div>
-
-        {/* Action Buttons - No border, cleaner spacing */}
-        <div className={`${collapsed ? 'px-2' : 'px-4'} pb-4`}>
-          <SidebarActionButtons
-            collapsed={collapsed}
-            isAuthenticated={!!isAuthenticated}
-            searchQuery={searchQuery}
-            onNewChat={handleNewChat}
-            onSearchChange={setSearchQuery}
-          />
-        </div>
-
-        {/* Subtle gradient divider */}
-        {!collapsed && isAuthenticated && (
-          <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
-        )}
-
-        {/* Chat History - Clean scrollable area OR Spacer for collapsed mode */}
-        {!collapsed && isAuthenticated ? (
-          <div className="flex-1 overflow-y-auto min-h-0 px-2">
-            <MemoizedChatHistory
-              loadingConversations={conversationsLoading}
-              filteredConversations={filteredConversations}
-              currentConversationId={currentConversationId}
-              onConversationClick={handleConversationClick}
-              onDeleteConversation={handleDeleteConversation}
-              formatDate={formatDate}
-            />
-          </div>
-        ) : (
-          <div className="flex-1" />
-        )}
-
-        {/* Subtle gradient divider before user section */}
-        {!collapsed && (
-          <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
-        )}
-
-        {/* User Section - Clean, no heavy border */}
-        <div className={`${collapsed ? 'p-2' : 'p-4'} shrink-0`}>
-          <UserSection
-            user={user}
-            collapsed={collapsed}
-            isAuthenticated={!!isAuthenticated}
-            onLoginClick={handleLoginClick}
-            onLogout={handleLogout}
-          />
-        </div>
+    <div
+      className={`
+        ${collapsed ? 'w-16' : 'w-72'} 
+        h-screen 
+        shrink-0 
+        transition-all duration-300 ease-in-out 
+        flex flex-col 
+        bg-[#1a1721]
+        border-r border-gray-800/50
+        overflow-hidden
+      `}
+    >
+      {/* Header - Clean minimal design with original colors */}
+      <div className={`${collapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
+        <SidebarHeader
+          collapsed={collapsed}
+          onToggleCollapse={onToggleCollapse}
+        />
       </div>
 
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={() => setShowLoginModal(false)}
-        onLoginSuccess={handleLoginSuccess}
-      />
-    </>
+      {/* Action Buttons - No border, cleaner spacing */}
+      <div className={`${collapsed ? 'px-2' : 'px-4'} pb-4`}>
+        <SidebarActionButtons
+          collapsed={collapsed}
+          isAuthenticated={!!isAuthenticated}
+          searchQuery={searchQuery}
+          onNewChat={handleNewChat}
+          onSearchChange={setSearchQuery}
+        />
+      </div>
+
+      {/* Subtle gradient divider */}
+      {!collapsed && isAuthenticated && (
+        <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
+      )}
+
+      {/* Chat History - Clean scrollable area OR Spacer for collapsed mode */}
+      {!collapsed && isAuthenticated ? (
+        <div className="flex-1 overflow-y-auto min-h-0 px-2">
+          <MemoizedChatHistory
+            loadingConversations={conversationsLoading}
+            filteredConversations={filteredConversations}
+            currentConversationId={currentConversationId}
+            onConversationClick={handleConversationClick}
+            onDeleteConversation={handleDeleteConversation}
+            formatDate={formatDate}
+          />
+        </div>
+      ) : (
+        <div className="flex-1" />
+      )}
+
+      {/* Subtle gradient divider before user section */}
+      {!collapsed && (
+        <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
+      )}
+
+      {/* User Section - Clean, no heavy border */}
+      <div className={`${collapsed ? 'p-2' : 'p-4'} shrink-0`}>
+        <UserSection
+          user={user}
+          collapsed={collapsed}
+          isAuthenticated={!!isAuthenticated}
+          onLoginClick={handleLoginClick}
+          onLogout={handleLogout}
+        />
+      </div>
+    </div>
   );
 };
 

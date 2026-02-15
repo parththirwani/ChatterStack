@@ -1,13 +1,15 @@
-import React, { useState, useEffect, useRef, memo } from 'react';
+import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import UserMessage from '../../chat/messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../progress/ProgressIndicator';
 import { useCouncilChat } from '@/src/hooks/useCoucilChat';
-import { ChatInterfaceProps } from '@/src/types';
 import MessageInput from '../../chat/input/MessageInput';
 import AIMessage from '../../chat/messages/AIMessage/AIMessage';
+import { ChatInterfaceProps } from '@/src/types/chat.types';
+import LoginModal from '@/src/components/auth/AuthModal';
+import { useAppStore } from '@/src/store/rootStore';
 
 
 const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -15,6 +17,11 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
   onConversationCreated,
 }) => {
   const [message, setMessage] = useState('');
+  const [pendingMessage, setPendingMessage] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  
+  const user = useAppStore((state) => state.user);
+  const isAuthenticated = user && user.id !== 'guest';
   
   const {
     messages,
@@ -65,19 +72,53 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [messages.length]);
 
   const handleSendMessage = async () => {
-    if (message.trim() && !loading) {
-      const messageToSend = message;
-      setMessage('');
-      
-      await sendMessage(messageToSend, (newConversationId: string) => {
+    if (!message.trim() || loading) return;
+
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      setPendingMessage(message.trim());
+      setShowLoginModal(true);
+      return;
+    }
+
+    const messageToSend = message;
+    setMessage('');
+    
+    await sendMessage(messageToSend, (newConversationId: string) => {
+      if (onConversationCreated) {
+        console.log('New council conversation created:', newConversationId);
+        lastLoadedConversationRef.current = newConversationId;
+        onConversationCreated(newConversationId);
+      }
+    });
+  };
+
+  const handleLoginSuccess = useCallback(async (authenticatedUser: any) => {
+    setShowLoginModal(false);
+    
+    // Process pending message after successful login
+    if (pendingMessage && authenticatedUser) {
+      await sendMessage(pendingMessage, (newConversationId: string) => {
         if (onConversationCreated) {
-          console.log('New council conversation created:', newConversationId);
+          console.log('New council conversation created after login:', newConversationId);
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }
       });
+      
+      setPendingMessage('');
+      setMessage('');
     }
-  };
+  }, [pendingMessage, sendMessage, onConversationCreated]);
+
+  const handleLoginModalClose = useCallback(() => {
+    setShowLoginModal(false);
+    // Keep the message in the input if user closes modal without logging in
+    if (pendingMessage) {
+      setMessage(pendingMessage);
+      setPendingMessage('');
+    }
+  }, [pendingMessage]);
 
   // Clear error when user starts typing
   useEffect(() => {
@@ -107,31 +148,104 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
 
       {isFirstMessage ? (
         <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-          <div className="text-center max-w-2xl w-full">
+          <div className="text-center max-w-3xl w-full">
+            {/* Logo and Title */}
             <div className="mb-8">
               <Link href="/" className="inline-block cursor-pointer">
                 <Image
                   src="/logo.png"
                   alt="ChatterStack Logo"
-                  width={120}
-                  height={120}
+                  width={80}
+                  height={80}
                   priority
                   className="mx-auto object-contain pointer-events-none opacity-90"
                 />
               </Link>
-              <h1 className="text-2xl font-bold text-white mt-6 mb-2">
+              <h1 className="text-3xl md:text-4xl font-bold text-white mt-6 mb-3">
                 AI Council Mode
               </h1>
-              <p className="text-gray-400 text-base mb-4">
-                Powered by multiple expert AI models working together
+              <p className="text-gray-400 text-base md:text-lg max-w-2xl mx-auto">
+                Harness the collective intelligence of four leading AI models working in concert
               </p>
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-6">
-                <p className="text-yellow-300 text-sm">
-                  ⚡ Council mode uses 4 advanced AI models to analyze, debate, and synthesize the best possible answer to your question.
-                </p>
+            </div>
+
+            {/* Professional Council Info Card */}
+            <div className="bg-gradient-to-br from-yellow-500/10 via-yellow-500/5 to-transparent border border-yellow-500/20 rounded-2xl p-6 md:p-8 mb-8 backdrop-blur-sm">
+              <div className="flex items-center justify-center gap-2 mb-4">
+                <div className="w-1.5 h-1.5 rounded-full bg-yellow-500 animate-pulse" />
+                <span className="text-yellow-400 text-xs font-medium uppercase tracking-wider">
+                  Multi-Model Synthesis
+                </span>
+              </div>
+              
+              <p className="text-gray-300 text-sm md:text-base mb-6 leading-relaxed">
+                Council mode orchestrates four expert AI models to analyze your question from multiple perspectives, 
+                cross-validate insights, and synthesize a comprehensive answer.
+              </p>
+
+              {/* Model Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
+                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <div className="w-6 h-6 rounded bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">G5</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 text-center font-medium">GPT-5.1</p>
+                  <p className="text-xs text-gray-500 text-center mt-0.5">OpenAI</p>
+                </div>
+
+                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">G3</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 text-center font-medium">Gemini 3 Pro</p>
+                  <p className="text-xs text-gray-500 text-center mt-0.5">Google</p>
+                </div>
+
+                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <div className="w-6 h-6 rounded bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">C4</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 text-center font-medium">Claude 4.5</p>
+                  <p className="text-xs text-gray-500 text-center mt-0.5">Anthropic</p>
+                </div>
+
+                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <div className="w-6 h-6 rounded bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center">
+                      <span className="text-white text-xs font-bold">X4</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 text-center font-medium">Grok 4</p>
+                  <p className="text-xs text-gray-500 text-center mt-0.5">xAI</p>
+                </div>
+              </div>
+
+              {/* Process Steps */}
+              <div className="flex items-center justify-center gap-2 md:gap-4 text-xs text-gray-500">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500/50" />
+                  <span>Analysis</span>
+                </div>
+                <div className="w-1 h-1 rounded-full bg-gray-600" />
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500/50" />
+                  <span>Review</span>
+                </div>
+                <div className="w-1 h-1 rounded-full bg-gray-600" />
+                <div className="flex items-center gap-1.5">
+                  <div className="w-1.5 h-1.5 rounded-full bg-yellow-500/50" />
+                  <span>Synthesis</span>
+                </div>
               </div>
             </div>
 
+            {/* Input */}
             <div className="max-w-2xl mx-auto">
               <MessageInput
                 message={message}
@@ -141,6 +255,11 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
                 placeholder="Ask the AI council a question..."
               />
             </div>
+
+            {/* Subtle footer note */}
+            <p className="text-xs text-gray-600 mt-6">
+              Best for complex questions requiring multi-perspective analysis
+            </p>
           </div>
         </div>
       ) : (
@@ -200,6 +319,14 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </>
       )}
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={handleLoginModalClose}
+        onLoginSuccess={handleLoginSuccess}
+        message="Sign in to use Council Mode"
+      />
     </div>
   );
 };

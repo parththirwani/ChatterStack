@@ -1,4 +1,5 @@
-import { Conversation, ChatRequest } from "../types";
+import { Conversation } from "../types";
+import { ChatRequest } from "../types/chat.types";
 export class ApiService {
   private static baseUrl = "/api";
 

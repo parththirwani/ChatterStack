@@ -1,4 +1,5 @@
-import { ChatRequest, Conversation, User } from "../types";
+import { Conversation, User } from "../types";
+import { ChatRequest } from "../types/chat.types";
 import { apiOptimizer } from "./apiOptimizer";
 
 interface CouncilChatRequest {

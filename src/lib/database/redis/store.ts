@@ -1,6 +1,10 @@
-// Extract: Conversation storage methods
 import { RedisClient } from './client';
 
+interface Message {
+  role: 'user' | 'assistant';
+  content: string;
+  modelId?: string;
+}
 export class ConversationStore {
   constructor(private client: RedisClient) {}
   

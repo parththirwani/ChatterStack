@@ -8,6 +8,8 @@ import { ChatInterfaceProps } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
 import QuickToolButton from './QuickToolButton';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
+import { useAppStore } from '@/src/store/rootStore';
+import LoginModal from '@/src/components/auth/AuthModal';
 
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -15,7 +17,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onConversationCreated,
 }) => {
   const [message, setMessage] = useState('');
+  const [pendingMessage, setPendingMessage] = useState('');
+  const [showLoginModal, setShowLoginModal] = useState(false);
   const { selectedModel } = useModelSelection();
+  const user = useAppStore((state) => state.user);
+  const isAuthenticated = user && user.id !== 'guest';
   
   const {
     messages,
@@ -147,21 +153,57 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [loading, messages.length]);
 
   const handleSendMessage = useCallback(async () => {
-    if (message.trim() && !loading) {
-      const messageToSend = message;
-      setMessage('');
-      
+    if (!message.trim() || loading) return;
+
+    // Check if user is authenticated
+    if (!isAuthenticated) {
+      setPendingMessage(message.trim());
+      setShowLoginModal(true);
+      return;
+    }
+
+    const messageToSend = message;
+    setMessage('');
+    
+    autoScrollEnabledRef.current = true;
+    userHasScrolledRef.current = false;
+
+    await sendMessage(messageToSend, (newConversationId: string) => {
+      if (onConversationCreated && !currentConversationId) {
+        lastLoadedConversationRef.current = newConversationId;
+        onConversationCreated(newConversationId);
+      }
+    });
+  }, [message, loading, isAuthenticated, sendMessage, onConversationCreated, currentConversationId]);
+
+  const handleLoginSuccess = useCallback(async (authenticatedUser: any) => {
+    setShowLoginModal(false);
+    
+    // Process pending message after successful login
+    if (pendingMessage && authenticatedUser) {
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
-
-      await sendMessage(messageToSend, (newConversationId: string) => {
+      
+      await sendMessage(pendingMessage, (newConversationId: string) => {
         if (onConversationCreated && !currentConversationId) {
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }
       });
+      
+      setPendingMessage('');
+      setMessage('');
     }
-  }, [message, loading, sendMessage, onConversationCreated, currentConversationId]);
+  }, [pendingMessage, sendMessage, onConversationCreated, currentConversationId]);
+
+  const handleLoginModalClose = useCallback(() => {
+    setShowLoginModal(false);
+    // Keep the message in the input if user closes modal without logging in
+    if (pendingMessage) {
+      setMessage(pendingMessage);
+      setPendingMessage('');
+    }
+  }, [pendingMessage]);
 
   useEffect(() => {
     if (error && message) {
@@ -329,6 +371,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
           </div>
         </>
       )}
+
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={handleLoginModalClose}
+        onLoginSuccess={handleLoginSuccess}
+      />
     </div>
   );
 };

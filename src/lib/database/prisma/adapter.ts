@@ -1,6 +1,5 @@
-// Extract: PrismaPg adapter
 import { PrismaPg } from '@prisma/adapter-pg';
-import { getPostgresPool } from '../postgres/pool';
+import { getPostgresPool } from './pool';
 
 export function createPrismaAdapter() {
   const pool = getPostgresPool();
