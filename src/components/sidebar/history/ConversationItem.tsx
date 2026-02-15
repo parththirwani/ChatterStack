@@ -1,7 +1,8 @@
 import React, { useState, useCallback, memo } from 'react';
 import { Trash2 } from 'lucide-react';
+
+import { Conversation } from '@/src/types/conversation.types';
 import DeleteConversationModal from './DeleteModal';
-import { Conversation } from '../../types';
 
 interface ConversationItemProps {
   conversation: Conversation;

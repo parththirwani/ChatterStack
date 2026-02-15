@@ -1,8 +1,3 @@
-// ────────────────────────────────────────────────
-// Central type exports – recommended import style:
-// import { User, Message, Conversation, AIModel } from '@/types';
-// ────────────────────────────────────────────────
-
 export * from './common.types';
 export * from './user.types';
 export * from './auth.types';

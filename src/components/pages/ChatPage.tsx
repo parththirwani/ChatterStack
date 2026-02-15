@@ -5,8 +5,8 @@ import { usePathname, useRouter } from 'next/navigation';
 
 import { useAppStore } from '@/src/store/rootStore';
 import { User } from '@/src/types/user.types';
-import ChatInterface from '@/src/app/components/ChatInterface/ChatInterface';
-import Sidebar from '@/src/app/components/Sidebar';
+import ChatInterface from '@/src/components/chat/interface/ChatInterface';
+import Sidebar from '@/src/components/sidebar/Sidebar';
 
 const ChatPage: React.FC = () => {
   const pathname = usePathname();

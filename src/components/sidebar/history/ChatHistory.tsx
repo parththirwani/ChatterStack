@@ -1,7 +1,7 @@
 import React, { memo } from 'react';
 import { MessageSquare } from 'lucide-react';
-import { Conversation } from '@/app/types';
-import ConversationItem from './ConversatioItem';
+import { Conversation } from '@/src/types/conversation.types';
+import ConversationItem from './ConversationItem';
 
 interface ChatHistoryProps {
   loadingConversations: boolean;
