@@ -1,9 +1,7 @@
 "use client";
 import React, { useRef } from 'react';
 import { Send, Loader2 } from 'lucide-react';
-import Image from 'next/image';
 import { ModelSelector } from './ModelSelector/ModelSelector';
-import { useModelSelection } from '@/src/context/ModelSelectionContext';
 
 interface MessageInputProps {
   message: string;
@@ -21,8 +19,6 @@ const MessageInput: React.FC<MessageInputProps> = ({
   placeholder = "Message AI chat...",
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { selectedModel, getModelInfo } = useModelSelection();
-  const currentModel = getModelInfo(selectedModel);
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -47,30 +43,14 @@ const MessageInput: React.FC<MessageInputProps> = ({
   return (
     <div className="relative bg-gray-800/40 backdrop-blur-xl border border-gray-700/50 rounded-[20px] shadow-2xl transition-all duration-300 focus-within:border-yellow-500/40 focus-within:shadow-yellow-500/20">
       <div className="relative p-4">
-        {/* Model Selector and Info Row */}
-        <div className="mb-3 flex items-center justify-between">
+        {/* Model Selector - Clean Single Element */}
+        <div className="mb-3">
           <ModelSelector />
-          
-          {/* Model Icon and Name - Always Visible */}
-          {currentModel && (
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-800/60 rounded-lg border border-gray-700/30">
-              <div className="w-5 h-5 rounded flex items-center justify-center">
-                <Image
-                  src={currentModel.logo}
-                  alt={currentModel.name}
-                  width={16}
-                  height={16}
-                  className={currentModel.company === 'OpenAI' ? 'invert brightness-0' : ''}
-                />
-              </div>
-              <span className="text-xs text-gray-300 font-medium">{currentModel.name}</span>
-            </div>
-          )}
         </div>
 
         {/* Main Input Area */}
         <div className="flex items-end gap-3">
-          {/* Text Input - Takes Full Width */}
+          {/* Text Input */}
           <div className="flex-1">
             <textarea
               ref={textareaRef}

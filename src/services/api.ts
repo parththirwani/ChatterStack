@@ -38,7 +38,6 @@ export class ApiService {
 
   private static async fetchWithCredentials(url: string, options: RequestInit = {}) {
     const fullUrl = url.startsWith('/') ? url : `${this.baseUrl}/${url}`;
-    console.log(`[API] ${options.method || 'GET'} ${fullUrl}`);
     
     const response = await fetch(fullUrl, {
       ...options,
@@ -51,7 +50,6 @@ export class ApiService {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[API] Error ${response.status}:`, errorText);
       throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
     }
 
@@ -64,10 +62,8 @@ export class ApiService {
     try {
       const response = await fetch('/api/auth/session', { credentials: 'include' });
       
-      // Handle non-JSON responses gracefully
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        console.warn('[API] Auth session returned non-JSON response');
         return { ok: false };
       }
 
@@ -88,8 +84,6 @@ export class ApiService {
       
       return { ok: false };
     } catch (error) {
-      // Log error but don't throw - this is expected when not authenticated
-      console.log('[API] Auth validation: Not authenticated');
       return { ok: false };
     }
   }
@@ -98,11 +92,10 @@ export class ApiService {
     try {
       const result = await this.validateAuth();
       if (!result.ok || !result.user) {
-        return null; // Return null instead of throwing
+        return null;
       }
       return result.user;
     } catch (error) {
-      console.log('[API] getCurrentUser: User not authenticated');
       return null;
     }
   }
@@ -111,16 +104,15 @@ export class ApiService {
     window.location.href = '/api/auth/signout';
   }
 
-  // ============= CHAT =============
+  // ============= CHAT WITH PROGRESS SUPPORT =============
 
   static async sendMessage(
     request: ChatRequest,
     onChunk?: (chunk: string) => void,
     onDone?: () => void,
-    onConversationId?: (id: string) => void
+    onConversationId?: (id: string) => void,
+    onProgress?: (progress: CouncilProgress) => void
   ): Promise<void> {
-    console.log('[API] Sending message:', { conversationId: request.conversationId, model: request.selectedModel });
-    
     const response = await fetch('/api/chat', {
       method: 'POST',
       credentials: 'include',
@@ -152,6 +144,7 @@ export class ApiService {
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const data = line.slice(6);
+          
           if (data === '[DONE]') {
             onDone?.();
             return;
@@ -159,10 +152,31 @@ export class ApiService {
 
           try {
             const parsed = JSON.parse(data);
-            if (parsed.error) throw new Error(parsed.error);
-            if (parsed.conversationId) onConversationId?.(parsed.conversationId);
-            if (parsed.chunk) onChunk?.(parsed.chunk);
-            if (parsed.done) onDone?.();
+
+            if (parsed.error) {
+              throw new Error(parsed.error);
+            }
+            
+            if (parsed.conversationId) {
+              onConversationId?.(parsed.conversationId);
+            }
+            
+            // Handle progress events for council mode
+            if (parsed.status === 'progress' && parsed.stage && parsed.model !== undefined) {
+              onProgress?.({
+                stage: parsed.stage,
+                model: parsed.model,
+                progress: parsed.progress
+              });
+            }
+            
+            if (parsed.chunk) {
+              onChunk?.(parsed.chunk);
+            }
+            
+            if (parsed.done) {
+              onDone?.();
+            }
           } catch (e) {
             // Ignore invalid JSON
           }
@@ -178,7 +192,6 @@ export class ApiService {
     onDone: () => void,
     onConversationId: (id: string) => void
   ): Promise<void> {
-    // Council mode uses the same /api/chat endpoint with model='council'
     await this.sendMessage(
       {
         message: request.message,
@@ -187,47 +200,38 @@ export class ApiService {
       },
       onChunk,
       onDone,
-      onConversationId
+      onConversationId,
+      onProgress
     );
   }
 
   // ============= CONVERSATIONS =============
 
   static async getConversations(): Promise<{ conversations: Conversation[] }> {
-    console.log('[API] Fetching conversations list');
     try {
       const response = await this.fetchWithCredentials('/api/conversations');
-      const data = await response.json();
-      console.log('[API] Conversations received:', data);
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('[API] Failed to fetch conversations:', error);
       throw error;
     }
   }
 
   static async getConversation(id: string): Promise<{ conversation: Conversation } | null> {
-    console.log(`[API] Fetching conversation: ${id}`);
     try {
       const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
       const data = await response.json();
-      console.log('[API] Conversation received:', data);
       
-      // Validate the response
       if (!data || !data.conversation) {
-        console.error('[API] Invalid response structure:', data);
         return null;
       }
       
       return data;
     } catch (error) {
-      console.error(`[API] Failed to fetch conversation ${id}:`, error);
       return null;
     }
   }
 
   static async deleteConversation(id: string): Promise<void> {
-    console.log(`[API] Deleting conversation: ${id}`);
     await this.fetchWithCredentials(`/api/conversations/${id}`, {
       method: 'DELETE',
     });
@@ -240,7 +244,6 @@ export class ApiService {
       const response = await this.fetchWithCredentials('/api/models');
       return response.json();
     } catch (e) {
-      console.error('[API] Failed to fetch models:', e);
       return { models: [] };
     }
   }

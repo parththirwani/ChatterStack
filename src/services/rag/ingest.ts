@@ -9,6 +9,7 @@ const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
 
 /**
  * Ingest a message into the RAG system
+ * Now with better error handling for embedding failures
  */
 export async function ingestMessage(params: {
   userId: string;
@@ -38,10 +39,20 @@ export async function ingestMessage(params: {
 
     // 2. Generate dense embeddings (batch)
     const chunkTexts = chunks.map((c) => c.content);
-    const denseVectors = await generateEmbeddings(chunkTexts);
+    
+    let denseVectors: number[][] = [];
+    try {
+      denseVectors = await generateEmbeddings(chunkTexts);
+    } catch (embeddingError) {
+      console.error('Embedding generation failed:', embeddingError);
+      // If embeddings fail, skip RAG ingestion but don't fail the entire message
+      console.warn(`Skipping RAG ingestion for message ${messageId} due to embedding failure`);
+      return;
+    }
 
     if (!denseVectors || denseVectors.length === 0) {
-      throw new Error('Failed to generate embeddings');
+      console.warn(`No embeddings generated for message ${messageId}, skipping RAG ingestion`);
+      return;
     }
 
     // 3. Generate sparse vectors (BM25)
@@ -73,8 +84,8 @@ export async function ingestMessage(params: {
       points: points.map((p) => ({
         id: p.id,
         vector: {
-          '': p.vector, // Default vector name
-          text: p.sparseVector, // Sparse vector
+          '': p.vector,
+          text: p.sparseVector,
         },
         payload: p.payload,
       })),
@@ -83,12 +94,14 @@ export async function ingestMessage(params: {
     console.log(`✓ Ingested ${points.length} chunks for message ${messageId}`);
   } catch (error) {
     console.error('Ingestion error:', error);
-    throw error;
+    // Don't throw - log and continue
+    // RAG is a nice-to-have feature, shouldn't break the main flow
+    console.warn(`Failed to ingest message ${messageId}, continuing without RAG`);
   }
 }
 
 /**
- * Batch ingest multiple messages (e.g., on conversation load)
+ * Batch ingest multiple messages
  */
 export async function batchIngestMessages(
   messages: Array<{
@@ -101,13 +114,12 @@ export async function batchIngestMessages(
     timestamp?: Date;
   }>
 ): Promise<void> {
-  // Ingest in parallel with concurrency limit
   const CONCURRENCY = 3;
   for (let i = 0; i < messages.length; i += CONCURRENCY) {
     const batch = messages.slice(i, i + CONCURRENCY);
-    await Promise.all(batch.map((msg) => ingestMessage(msg)));
+    await Promise.allSettled(batch.map((msg) => ingestMessage(msg)));
   }
-  console.log(`✓ Batch ingested ${messages.length} messages`);
+  console.log(`✓ Batch ingestion attempted for ${messages.length} messages`);
 }
 
 /**
@@ -117,18 +129,23 @@ export async function deleteConversation(
   userId: string,
   conversationId: string
 ): Promise<void> {
-  const client = getQdrantClient();
+  try {
+    const client = getQdrantClient();
 
-  await client.delete(COLLECTION_NAME, {
-    filter: {
-      must: [
-        { key: 'userId', match: { value: userId } },
-        { key: 'conversationId', match: { value: conversationId } },
-      ],
-    },
-  });
+    await client.delete(COLLECTION_NAME, {
+      filter: {
+        must: [
+          { key: 'userId', match: { value: userId } },
+          { key: 'conversationId', match: { value: conversationId } },
+        ],
+      },
+    });
 
-  console.log(`✓ Deleted chunks for conversation ${conversationId}`);
+    console.log(`✓ Deleted chunks for conversation ${conversationId}`);
+  } catch (error) {
+    console.error('Failed to delete conversation from RAG:', error);
+    // Don't throw - log and continue
+  }
 }
 
 /**
@@ -138,19 +155,24 @@ export async function purgeOldData(
   userId: string,
   daysOld: number = 30
 ): Promise<void> {
-  const cutoffDate = new Date();
-  cutoffDate.setDate(cutoffDate.getDate() - daysOld);
+  try {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-  const client = getQdrantClient();
+    const client = getQdrantClient();
 
-  await client.delete(COLLECTION_NAME, {
-    filter: {
-      must: [
-        { key: 'userId', match: { value: userId } },
-        { key: 'timestamp', range: { lt: cutoffDate.toISOString() } },
-      ],
-    },
-  });
+    await client.delete(COLLECTION_NAME, {
+      filter: {
+        must: [
+          { key: 'userId', match: { value: userId } },
+          { key: 'timestamp', range: { lt: cutoffDate.toISOString() } },
+        ],
+      },
+    });
 
-  console.log(`✓ Purged data older than ${daysOld} days for user ${userId}`);
+    console.log(`✓ Purged data older than ${daysOld} days for user ${userId}`);
+  } catch (error) {
+    console.error('Failed to purge old data from RAG:', error);
+    // Don't throw - log and continue
+  }
 }

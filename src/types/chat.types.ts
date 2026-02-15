@@ -36,3 +36,33 @@ export interface ChatInterfaceProps {
   onConversationCreated?: (conversationId: string) => void;
   onNewChatStarted?: () => void;
 }
+
+import { z } from 'zod';
+
+export const ChatRequestSchema = z.object({
+  conversationId: z.string().uuid().optional(),
+  message: z.string().trim().min(1).max(1000),
+  selectedModel: z.string(),
+});
+
+export enum Role {
+  Assistant = 'assistant',
+  User = 'user',
+}
+
+export interface MessageType {
+  role: Role;
+  content: string;
+  modelId?: string;
+}
+
+export interface SSEData {
+  status?: string;
+  chunk?: string;
+  error?: string;
+  conversationId?: string;
+  done?: boolean;
+  progress?: number;
+  stage?: string;
+  model?: string;
+}

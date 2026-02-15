@@ -43,7 +43,6 @@ export const useChatOptimized = () => {
       onConversationCreated?: (conversationId: string) => void
     ) => {
       if (!message.trim() || isSendingRef.current) {
-        console.warn('[useChat] Message send blocked - empty message or already sending');
         return;
       }
 
@@ -91,7 +90,6 @@ export const useChatOptimized = () => {
         const handleNewConversation = (id: string) => {
           const currentState = useAppStore.getState();
           if (!currentState.currentConversationId && id) {
-            console.log('[useChat] New conversation created:', id);
             currentState.setCurrentConversationId(id);
             currentState.loadConversations(true);
             
@@ -132,6 +130,26 @@ export const useChatOptimized = () => {
           freshState.setChatState(conversationKey, { messages: updatedMessages });
         };
 
+        // Progress handler for council mode
+        const handleProgress = (progress: CouncilProgress) => {
+          const freshState = useAppStore.getState();
+          const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
+          
+          const existing = freshChatState.councilProgress?.find(
+            p => p.stage === progress.stage && p.model === progress.model
+          );
+          
+          const updatedProgress = existing
+            ? freshChatState.councilProgress?.map(p =>
+                p.stage === progress.stage && p.model === progress.model ? progress : p
+              )
+            : [...(freshChatState.councilProgress || []), progress];
+          
+          freshState.setChatState(conversationKey, {
+            councilProgress: updatedProgress,
+          });
+        };
+
         if (isCouncilMode) {
           await ApiService.sendCouncilMessage(
             {
@@ -142,24 +160,7 @@ export const useChatOptimized = () => {
               fullResponse += chunk;
               updateMessageContent(fullResponse);
             },
-            (progress: CouncilProgress) => {
-              const freshState = useAppStore.getState();
-              const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
-              
-              const existing = freshChatState.councilProgress?.find(
-                p => p.stage === progress.stage && p.model === progress.model
-              );
-              
-              const updatedProgress = existing
-                ? freshChatState.councilProgress?.map(p =>
-                    p.stage === progress.stage && p.model === progress.model ? progress : p
-                  )
-                : [...(freshChatState.councilProgress || []), progress];
-              
-              freshState.setChatState(conversationKey, {
-                councilProgress: updatedProgress,
-              });
-            },
+            handleProgress,
             finalizeMessage,
             handleNewConversation
           );
@@ -175,12 +176,12 @@ export const useChatOptimized = () => {
               updateMessageContent(fullResponse);
             },
             finalizeMessage,
-            handleNewConversation
+            handleNewConversation,
+            undefined
           );
         }
 
       } catch (error) {
-        console.error('[useChat] Error sending message:', error);
         const finalState = useAppStore.getState();
         const finalChatState = finalState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
         
@@ -201,7 +202,6 @@ export const useChatOptimized = () => {
   );
 
   const startNewConversation = useCallback(() => {
-    console.log('[useChat] Starting new conversation');
     const store = useAppStore.getState();
     store.setCurrentConversationId(undefined);
     store.setChatState('new', {

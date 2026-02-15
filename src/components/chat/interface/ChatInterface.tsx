@@ -42,22 +42,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const isFirstMessage = messages.length === 0;
   const isCouncilMode = selectedModel === 'council';
-  
-  // Check if we're currently generating with council mode
-  const isGeneratingWithCouncil = loading && isCouncilMode && councilProgress && councilProgress.length > 0;
-  
-  // Check if last message is from council
-  const lastMessageIsCouncil = messages.length > 0 && 
-    messages[messages.length - 1]?.modelId?.includes('council');
-
-  console.log('[ChatInterface] Council Debug:', {
-    selectedModel,
-    isCouncilMode,
-    loading,
-    councilProgressCount: councilProgress?.length || 0,
-    isGeneratingWithCouncil,
-    lastMessageIsCouncil
-  });
+  const showCouncilProgress = loading && isCouncilMode && councilProgress.length > 0;
 
   useEffect(() => {
     if (isLoadingConversationRef.current) {
@@ -65,8 +50,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     }
 
     if (selectedConversationId && selectedConversationId !== lastLoadedConversationRef.current) {
-      console.log('Loading conversation:', selectedConversationId);
-      
       isLoadingConversationRef.current = true;
       lastLoadedConversationRef.current = selectedConversationId;
       
@@ -77,7 +60,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         isLoadingConversationRef.current = false;
       });
     } else if (!selectedConversationId && lastLoadedConversationRef.current) {
-      console.log('Starting new conversation');
       lastLoadedConversationRef.current = undefined;
       startNewConversation();
       autoScrollEnabledRef.current = true;
@@ -174,7 +156,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
       await sendMessage(messageToSend, (newConversationId: string) => {
         if (onConversationCreated && !currentConversationId) {
-          console.log('New conversation created:', newConversationId);
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }
@@ -190,7 +171,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-[#201d26] relative">
-      {/* Subtle grid background */}
       <div className="absolute inset-0 pointer-events-none opacity-[0.015]"
         style={{
           backgroundImage: `
@@ -221,7 +201,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       {isFirstMessage ? (
         <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto relative z-10">
           <div className="text-center max-w-4xl w-full">
-            {/* Welcome Section */}
             <div className="mb-12 animate-in fade-in duration-700">
               <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight leading-tight">
                 {isCouncilMode ? "AI Council Mode" : "What's on your mind today?"}
@@ -234,7 +213,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </p>
             </div>
 
-            {/* Council Mode Info Banner */}
             {isCouncilMode && (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-8 max-w-3xl mx-auto">
                 <p className="text-yellow-300 text-sm leading-relaxed">
@@ -252,7 +230,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             )}
 
-            {/* Input Section */}
             <div className="max-w-3xl mx-auto mb-8">
               <MessageInput
                 message={message}
@@ -263,7 +240,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               />
             </div>
 
-            {/* Quick Tools - Hide in Council Mode */}
             {!isCouncilMode && (
               <div className="flex flex-wrap gap-3 justify-center max-w-4xl mx-auto mb-8">
                 <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
@@ -285,7 +261,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       ) : (
         <>
-          {/* Messages Container - Scrollable */}
           <div 
             ref={messagesContainerRef}
             className="flex-1 overflow-y-auto relative z-10"
@@ -313,23 +288,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }
               })}
 
-              {/* Show council progress indicator - CRITICAL FIX */}
-              {loading && isGeneratingWithCouncil && (
-                <div className="w-full px-4">
-                  <CouncilProgressIndicator
-                    progress={councilProgress}
-                    isActive={loading}
-                    hideWhenGenerating={false}
-                    hasStartedGenerating={false}
-                  />
-                </div>
+              {showCouncilProgress && (
+                <CouncilProgressIndicator
+                  progress={councilProgress}
+                  isActive={true}
+                />
               )}
               
               <div ref={messagesEndRef} />
             </div>
           </div>
 
-          {/* Input Bar - Fixed at Bottom */}
           <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm relative z-10">
             <div className="max-w-3xl mx-auto px-4 py-4">
               <MessageInput

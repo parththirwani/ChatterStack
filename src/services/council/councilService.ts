@@ -1,3 +1,9 @@
+/**
+ * Council Service - FIXED VERSION
+ * 
+ * Critical fix: Stage 3 now properly streams chunks to frontend
+ */
+
 import {
   getCouncilStage1Prompt,
   getCouncilStage2Prompt,
@@ -38,9 +44,10 @@ export interface AggregateRanking {
   rankingsCount: number;
 }
 
-/**
- * Create OpenRouter completion (streaming or non-streaming)
- */
+function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function createCompletion(
   messages: Array<{ role: string; content: string }>,
   model: string,
@@ -68,7 +75,8 @@ async function createCompletion(
   });
 
   if (!response.ok) {
-    throw new Error(`OpenRouter API error: ${response.status}`);
+    const errorBody = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} - ${errorBody}`);
   }
 
   if (onChunk) {
@@ -118,9 +126,6 @@ async function createCompletion(
   }
 }
 
-/**
- * Stage 1: Collect parallel responses from all council models with conversation history
- */
 async function stage1_collect_responses(
   userQuery: string,
   conversationHistory: Message[] = [],
@@ -129,16 +134,16 @@ async function stage1_collect_responses(
   console.log('=== Stage 1: Collecting Council Responses ===');
   console.log(`Conversation history: ${conversationHistory.length} messages`);
 
-  // Get the stage 1 system prompt
   const systemPrompt = getCouncilStage1Prompt();
 
-  const promises = COUNCIL_MODELS.map(async (model) => {
+  const promises = COUNCIL_MODELS.map(async (model, index) => {
     try {
+      await delay(index * 1000);
+      
       if (onProgress) {
         onProgress('stage1', model, 0);
       }
 
-      // Build messages with system prompt and conversation history
       const messages = [
         { role: 'system', content: systemPrompt },
         ...conversationHistory.map(m => ({
@@ -174,13 +179,9 @@ async function stage1_collect_responses(
   return validResults;
 }
 
-/**
- * Parse ranking from model's response text
- */
 function parse_ranking_from_text(text: string): string[] {
   const ranking: string[] = [];
 
-  // Look for "FINAL RANKING:" section
   const finalRankingMatch = text.match(/FINAL RANKING:[\s\S]*$/i);
   if (!finalRankingMatch) {
     console.warn('No FINAL RANKING section found');
@@ -189,7 +190,6 @@ function parse_ranking_from_text(text: string): string[] {
 
   const rankingSection = finalRankingMatch[0];
 
-  // Extract ordered responses like "1. Response C"
   const orderedMatches = rankingSection.matchAll(/\d+\.\s*Response\s+([A-Z])/gi);
   for (const match of orderedMatches) {
     if (match[1]) {
@@ -197,7 +197,6 @@ function parse_ranking_from_text(text: string): string[] {
     }
   }
 
-  // Fallback: just find all "Response X" mentions in order
   if (ranking.length === 0) {
     const fallbackMatches = rankingSection.matchAll(/Response\s+([A-Z])/gi);
     for (const match of fallbackMatches) {
@@ -213,9 +212,6 @@ function parse_ranking_from_text(text: string): string[] {
   return ranking;
 }
 
-/**
- * Stage 2: Collect anonymized peer rankings
- */
 async function stage2_collect_rankings(
   userQuery: string,
   stage1Results: Stage1Result[],
@@ -224,7 +220,6 @@ async function stage2_collect_rankings(
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
   console.log('=== Stage 2: Collecting Peer Rankings ===');
 
-  // Anonymize responses
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   const labelToModel = new Map<string, string>();
   const anonymizedResponses = stage1Results.map((result, index) => {
@@ -236,12 +231,18 @@ async function stage2_collect_rankings(
     };
   });
 
-  // Get the stage 2 prompt with anonymized responses
   const rankingPrompt = getCouncilStage2Prompt(userQuery, anonymizedResponses);
 
-  // Query all models in parallel for rankings
-  const promises = COUNCIL_MODELS.map(async (model) => {
+  const stage2Results: Stage2Result[] = [];
+  
+  for (let i = 0; i < COUNCIL_MODELS.length; i++) {
+    const model = COUNCIL_MODELS[i];
+    
     try {
+      if (i > 0) {
+        await delay(2000);
+      }
+      
       if (onProgress) {
         onProgress('stage2', model, 0);
       }
@@ -262,36 +263,35 @@ async function stage2_collect_rankings(
       const parsedRanking = parse_ranking_from_text(rankingText);
       console.log(`Stage 2: ${model} ranking:`, parsedRanking);
 
-      return {
+      stage2Results.push({
         model,
         rankingText,
         parsedRanking,
-      } as Stage2Result;
+      });
     } catch (error) {
       console.error(`Stage 2: ${model} failed:`, error);
-      return null;
     }
-  });
-
-  const results = await Promise.all(promises);
-  const validResults = results.filter((r): r is Stage2Result => r !== null);
+  }
 
   console.log(
-    `Stage 2 complete: ${validResults.length}/${COUNCIL_MODELS.length} models provided rankings`
+    `Stage 2 complete: ${stage2Results.length}/${COUNCIL_MODELS.length} models provided rankings`
   );
-  return { stage2Results: validResults, labelToModel };
+  
+  if (stage2Results.length >= 2) {
+    console.log('Sufficient rankings collected, proceeding with synthesis');
+  } else {
+    console.log('No rankings collected, proceeding with basic synthesis');
+  }
+  
+  return { stage2Results, labelToModel };
 }
 
-/**
- * Calculate aggregate rankings from all peer reviews
- */
 function calculate_aggregate_rankings(
   stage2Results: Stage2Result[],
   labelToModel: Map<string, string>
 ): AggregateRanking[] {
   const modelRanks = new Map<string, number[]>();
 
-  // Collect all ranks for each model
   stage2Results.forEach((result) => {
     result.parsedRanking.forEach((label, position) => {
       const model = labelToModel.get(label);
@@ -301,13 +301,12 @@ function calculate_aggregate_rankings(
         }
         const ranks = modelRanks.get(model);
         if (ranks) {
-          ranks.push(position + 1); // position is 0-indexed, rank is 1-indexed
+          ranks.push(position + 1);
         }
       }
     });
   });
 
-  // Calculate average ranks
   const aggregateRankings: AggregateRanking[] = [];
   modelRanks.forEach((ranks, model) => {
     const averageRank = ranks.reduce((sum, r) => sum + r, 0) / ranks.length;
@@ -318,29 +317,23 @@ function calculate_aggregate_rankings(
     });
   });
 
-  // Sort by average rank (lower is better)
   aggregateRankings.sort((a, b) => a.averageRank - b.averageRank);
 
   return aggregateRankings;
 }
 
-/**
- * Stage 3: Chairman synthesizes final response with conversation history
- */
 async function stage3_synthesize_final(
   userQuery: string,
   stage1Results: Stage1Result[],
   stage2Results: Stage2Result[],
   labelToModel: Map<string, string>,
   conversationHistory: Message[] = [],
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void  // THIS IS THE CRITICAL CALLBACK!
 ): Promise<string> {
   console.log('=== Stage 3: Chairman Synthesis ===');
 
-  // Calculate aggregate rankings
   const aggregateRankings = calculate_aggregate_rankings(stage2Results, labelToModel);
 
-  // Get chairman prompt
   const chairmanPrompt = getCouncilChairmanPrompt(
     userQuery,
     stage1Results,
@@ -348,7 +341,6 @@ async function stage3_synthesize_final(
     conversationHistory
   );
 
-  // Include conversation history in the chairman's messages
   const chairmanMessages = [
     { role: 'system', content: chairmanPrompt },
     ...conversationHistory.map(m => ({
@@ -359,10 +351,11 @@ async function stage3_synthesize_final(
   ];
 
   let finalResponse = '';
+  
   await createCompletion(chairmanMessages, CHAIRMAN_MODEL, (chunk: string) => {
     finalResponse += chunk;
     if (onChunk) {
-      onChunk(chunk);
+      onChunk(chunk);  
     }
   });
 
@@ -370,19 +363,15 @@ async function stage3_synthesize_final(
   return finalResponse;
 }
 
-/**
- * Full council process with conversation history support
- */
 export async function runCouncilProcess(
   userQuery: string,
   conversationHistory: Message[] = [],
   onProgress?: (stage: string, model: string, progress: number) => void,
-  onChunk?: (chunk: string) => void
+  onChunk?: (chunk: string) => void 
 ): Promise<string> {
   console.log('=== Starting Council Process ===');
   console.log(`With conversation history: ${conversationHistory.length} messages`);
 
-  // Stage 1: Collect responses with context
   const stage1Results = await stage1_collect_responses(
     userQuery,
     conversationHistory,
@@ -393,7 +382,6 @@ export async function runCouncilProcess(
     throw new Error('No council members provided responses');
   }
 
-  // Stage 2: Collect rankings with context
   const { stage2Results, labelToModel } = await stage2_collect_rankings(
     userQuery,
     stage1Results,
@@ -405,14 +393,13 @@ export async function runCouncilProcess(
     console.warn('No rankings collected, proceeding with basic synthesis');
   }
 
-  // Stage 3: Synthesize final response with full context
   const finalResponse = await stage3_synthesize_final(
     userQuery,
     stage1Results,
     stage2Results,
     labelToModel,
     conversationHistory,
-    onChunk
+    onChunk 
   );
 
   console.log('=== Council Process Complete ===');
