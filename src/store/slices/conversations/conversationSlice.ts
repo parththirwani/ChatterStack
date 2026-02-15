@@ -1,7 +1,8 @@
 import { StateCreator } from 'zustand';
 import { ApiService } from '../../../services/api';
-import type { Conversation } from '../../../app/types';
-import type { Message, ChatState, initialChatState } from '../chat/chatSlice';
+import type { Conversation } from '../../../types/conversation.types';
+import type { Message } from '../../../types/chat.types';
+import type { ChatState } from '../chat/chatSlice';
 
 const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
   return [...messages].sort((a, b) => {
@@ -31,7 +32,7 @@ export interface ConversationsSlice {
 
 // Helper type for accessing other slices
 interface StoreWithChat {
-  user: any;
+  user: { id?: string };
   conversations: Conversation[];
   conversationsLoading: boolean;
   chatState: Record<string, ChatState>;
@@ -112,7 +113,7 @@ export const createConversationsSlice: StateCreator<
         const messagesArray = Array.isArray(conversation.messages) ? conversation.messages : [];
 
         const messages = sortMessagesByCreatedAt(
-          messagesArray.map((msg: any) => ({
+          messagesArray.map((msg) => ({
             id: msg.id,
             role: msg.role as 'user' | 'assistant',
             content: msg.content || '',

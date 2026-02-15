@@ -11,6 +11,22 @@ interface CouncilProgress {
   progress: number;
 }
 
+interface UserProfileResponse {
+  profile: {
+    userId: string;
+    technicalLevel: string;
+    explanationStyle: string;
+    topicFrequency: Record<string, number>;
+    preferences: {
+      likes?: string[];
+      dislikes?: string[];
+    };
+    messageCount: number;
+    lastUpdated: Date;
+    version: number;
+  };
+}
+
 export class ApiService {
   private static baseUrl = '/api';
 
@@ -223,7 +239,7 @@ export class ApiService {
     });
   }
 
-  static async getUserProfile(userId?: string): Promise<any> {
+  static async getUserProfile(userId?: string): Promise<UserProfileResponse> {
     const url = userId 
       ? `/api/rag/profile/${userId}` 
       : '/api/rag/profile/me';

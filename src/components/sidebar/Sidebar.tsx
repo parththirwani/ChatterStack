@@ -15,6 +15,7 @@ interface SidebarProps {
   onConversationSelect?: (conversationId: string) => void;
   onNewChat?: () => void;
   currentConversationId?: string;
+  refreshTrigger?: number; // Added this prop
 }
 
 const SidebarOptimized: React.FC<SidebarProps> = ({
@@ -25,6 +26,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   onConversationSelect,
   onNewChat,
   currentConversationId,
+  refreshTrigger, // Added to destructuring
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -169,6 +171,7 @@ export default memo(SidebarOptimized, (prev, next) => {
   return (
     prev.collapsed === next.collapsed &&
     prev.user?.id === next.user?.id &&
-    prev.currentConversationId === next.currentConversationId
+    prev.currentConversationId === next.currentConversationId &&
+    prev.refreshTrigger === next.refreshTrigger // Added this comparison
   );
 });

@@ -2,13 +2,12 @@ import React, { useState, useEffect, useRef, memo } from 'react';
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
-import MessageInput from '../../../app/components/ChatInterface/MessageInput';
-import { ChatInterfaceProps } from '@/app/types';
-
-import AIMessage from '../../../app/components/ChatInterface/AIMessage';
 import UserMessage from '../../chat/messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../progress/ProgressIndicator';
-import { useCouncilChat } from '@/app/hooks/useCoucilChat';
+import { useCouncilChat } from '@/src/hooks/useCoucilChat';
+import { ChatInterfaceProps } from '@/src/types';
+import MessageInput from '../../chat/input/MessageInput';
+import AIMessage from '../../chat/messages/AIMessage/AIMessage';
 
 
 const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({

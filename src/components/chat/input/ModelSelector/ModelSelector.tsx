@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
-import { ModelDropdown } from './ModelDropdown';
+import { ModelDropdown } from './ModelDropDown';
 
 export const ModelSelector = () => {
   const [isOpen, setIsOpen] = useState(false);

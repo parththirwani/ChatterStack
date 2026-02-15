@@ -3,11 +3,13 @@ import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
 import Image from 'next/image';
 import MessageInput from '../input/MessageInput';
-import AIMessage from '../messages/AIMessage';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../../council/progress/ProgressIndicator';
 import { useChatOptimized } from '@/src/hooks/useChat';
 import { ChatInterfaceProps } from '@/src/types/chat.types';
+import AIMessage from '../messages/AIMessage/AIMessage';
+
+
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedConversationId,

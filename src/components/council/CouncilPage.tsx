@@ -1,10 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback, memo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import CoucilChatInterface from './interface/CouncilChatInterface';
 import type { User } from '../../app/types';
-import Sidebar from '../../app/components/Sidebar';
 import { ApiService } from '../../services/api';
 import CouncilChatInterface from './interface/CouncilChatInterface';
+import Sidebar from '../sidebar/Sidebar';
 
 const CouncilPage: React.FC = () => {
   const pathname = usePathname();

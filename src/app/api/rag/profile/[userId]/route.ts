@@ -3,9 +3,10 @@ import { auth } from '@/src/lib/auth';
 import { enforceUserScope } from '@/src/middleware/authMiddleware';
 import { getUserProfile, saveUserProfile } from '@/src/services/profile/storage';
 
+
 export async function GET(
   request: NextRequest,
-  { params }: { params: Promise<{ userId: string }> } // Changed
+  { params }: { params: Promise<{ userId: string }> } 
 ) {
   try {
     const session = await auth();

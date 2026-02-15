@@ -1,7 +1,17 @@
 import { useRef, useCallback } from 'react';
+import { Message } from '@/src/types/chat.types';
 
-export const useChatScroll = (containerRef: React.RefObject<HTMLDivElement>, messages: any[], loading: boolean) => {
-  const autoScrollEnabledRef = useRef(true);
+interface UseChatScrollReturn {
+  smoothScrollToBottom: () => void;
+  autoScrollEnabledRef: React.MutableRefObject<boolean>;
+}
+
+export const useChatScroll = (
+  containerRef: React.RefObject<HTMLDivElement | null>, 
+  messages: Message[], 
+  loading: boolean
+): UseChatScrollReturn => {
+  const autoScrollEnabledRef = useRef<boolean>(true);
 
   const smoothScrollToBottom = useCallback(() => {
     if (!containerRef.current || !autoScrollEnabledRef.current) return;

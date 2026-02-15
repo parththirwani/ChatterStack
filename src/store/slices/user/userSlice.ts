@@ -1,7 +1,10 @@
+// src/store/slices/user/userSlice.ts
+
 import { StateCreator } from 'zustand';
 import { ApiService } from '../../../services/api';
-import type { User } from '../../../types';
+import type { User } from '@/src/types/user.types';
 
+// We extend the return type so TypeScript knows reset exists when we call get()
 export interface UserSlice {
   user: User | null;
   userLoading: boolean;
@@ -35,7 +38,10 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
   logout: async () => {
     try {
       await ApiService.logout();
-      get().reset?.(); // will be available from root
+      const fullStore = get() as typeof get extends () => infer T ? T : never;
+      if ('reset' in fullStore && typeof fullStore.reset === 'function') {
+        fullStore.reset();
+      }
     } catch (error) {
       console.error('Logout error:', error);
       throw error;

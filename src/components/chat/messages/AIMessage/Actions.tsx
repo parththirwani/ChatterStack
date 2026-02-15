@@ -1,6 +1,14 @@
-import { MessageActions } from '../../actions/MessageActions';
+import MessageActions from "../../actions/MessageActions";
 
-export const AIMessageActions = ({ content, filename }) => {
+interface AIMessageActionsProps {
+  content: string;
+  filename?: string;
+}
+
+export const AIMessageActions: React.FC<AIMessageActionsProps> = ({ 
+  content, 
+  filename 
+}) => {
   return (
     <div className="mt-3">
       <MessageActions content={content} filename={filename} />

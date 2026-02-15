@@ -4,12 +4,12 @@ import { prisma } from '@/src/lib/prisma';
 import { redisStore } from '@/src/lib/redis';
 import crypto from 'crypto';
 import { z } from 'zod';
-
+import { formatMessagesWithSystemContext } from '@/src/services/prompt/promptService';
+import { runCouncilProcess } from '@/src/services/council/councilService';
+import { ingestMessage } from '@/src/services/rag/ingest';
+import { retrieveContextWithFallback, formatContextForLLM } from '@/src/services/rag/retrievalService';
 import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
-import { runCouncilProcess } from '@/src/services/councilService';
-import { ingestMessage } from '../../../services/rag/ingest';
-import { formatContextForLLM, retrieveContextWithFallback } from '@/src/services/retrievalService';
-import { formatMessagesWithSystemContext } from '@/src/services/promptService';
+
 
 const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),

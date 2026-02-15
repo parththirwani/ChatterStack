@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Plus, Search } from 'lucide-react';
-import TooltipButton from './Tooltip';
+import TooltipButton from '../../ui/tooltip/Tooltip';
 
 interface SidebarActionButtonsProps {
   collapsed: boolean;

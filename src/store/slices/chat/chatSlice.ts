@@ -1,18 +1,10 @@
 import { StateCreator } from 'zustand';
+import { Message } from '@/src/types/chat.types';
 
 export interface CouncilProgress {
   stage: string;
   model: string;
   progress: number;
-}
-
-export interface Message {
-  id?: string;
-  role: 'user' | 'assistant';
-  content: string;
-  createdAt?: string;
-  updatedAt?: string;
-  modelId?: string;
 }
 
 export interface ChatState {
@@ -55,3 +47,6 @@ export const createChatSlice: StateCreator<ChatSlice> = (set) => ({
       return { chatState: rest };
     }),
 });
+
+// Re-export Message and CouncilProgress for convenience
+export type { Message } from '@/src/types/chat.types';

@@ -1,4 +1,5 @@
 import type { User } from './user.types';
+
 export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface Message {

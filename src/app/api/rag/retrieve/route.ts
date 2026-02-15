@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
-import {
-  retrieveContextWithFallback,
-  formatContextForLLM,
-} from '@/src/services/retrievalService';
+import { retrieveContextWithFallback, formatContextForLLM } from '@/src/services/rag/retrievalService';
 
 export async function POST(request: NextRequest) {
   try {

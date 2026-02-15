@@ -2,15 +2,14 @@ export { useAppStore } from './rootStore';
 
 // User
 export * from './slices/user/userSlice';
-export * from './slices/user/userSelectors';
+export * from './slices/user/userSelector';
 
 // Chat
 export * from './slices/chat/chatSlice';
-export * from './slices/chat/chatSelectors';
+export * from './slices/chat/chatSelector';
 
 // Conversations
-export * from './slices/conversations/conversationsSlice';
-// export * from './slices/conversations/conversationsSelectors';  ← add when you create it
+export * from './slices/conversations/conversationSlice';
 
 // UI
 export * from './slices/ui/uiSlice';
