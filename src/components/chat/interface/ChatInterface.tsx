@@ -7,6 +7,7 @@ import { useChatOptimized } from '@/src/hooks/useChat';
 import { ChatInterfaceProps } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
 import QuickToolButton from './QuickToolButton';
+import { useModelSelection } from '@/src/context/ModelSelectionContext';
 
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -14,6 +15,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   onConversationCreated,
 }) => {
   const [message, setMessage] = useState('');
+  const { selectedModel } = useModelSelection();
   
   const {
     messages,
@@ -39,6 +41,23 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const previousMessagesLengthRef = useRef(0);
 
   const isFirstMessage = messages.length === 0;
+  const isCouncilMode = selectedModel === 'council';
+  
+  // Check if we're currently generating with council mode
+  const isGeneratingWithCouncil = loading && isCouncilMode && councilProgress && councilProgress.length > 0;
+  
+  // Check if last message is from council
+  const lastMessageIsCouncil = messages.length > 0 && 
+    messages[messages.length - 1]?.modelId?.includes('council');
+
+  console.log('[ChatInterface] Council Debug:', {
+    selectedModel,
+    isCouncilMode,
+    loading,
+    councilProgressCount: councilProgress?.length || 0,
+    isGeneratingWithCouncil,
+    lastMessageIsCouncil
+  });
 
   useEffect(() => {
     if (isLoadingConversationRef.current) {
@@ -205,12 +224,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             {/* Welcome Section */}
             <div className="mb-12 animate-in fade-in duration-700">
               <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 tracking-tight leading-tight">
-                What's on your mind today?
+                {isCouncilMode ? "AI Council Mode" : "What's on your mind today?"}
               </h1>
               <p className="text-lg text-gray-400">
-                Ask anything, explore ideas, or get help with your work
+                {isCouncilMode 
+                  ? "Multiple expert AI models working together to provide the best answer"
+                  : "Ask anything, explore ideas, or get help with your work"
+                }
               </p>
             </div>
+
+            {/* Council Mode Info Banner */}
+            {isCouncilMode && (
+              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-4 mb-8 max-w-3xl mx-auto">
+                <p className="text-yellow-300 text-sm leading-relaxed">
+                  ⚡ <strong>Council mode</strong> uses 4 advanced AI models to analyze, debate, and synthesize the best possible answer to your question.
+                </p>
+                <div className="mt-2 flex items-center justify-center gap-2 text-xs text-yellow-400/80">
+                  <span>GPT-5.1</span>
+                  <span>•</span>
+                  <span>Gemini 3 Pro</span>
+                  <span>•</span>
+                  <span>Claude 4.5</span>
+                  <span>•</span>
+                  <span>Grok 4</span>
+                </div>
+              </div>
+            )}
 
             {/* Input Section */}
             <div className="max-w-3xl mx-auto mb-8">
@@ -219,22 +259,24 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
                 loading={loading}
-                placeholder="Message AI chat..."
+                placeholder={isCouncilMode ? "Ask the AI council a question..." : "Message AI chat..."}
               />
             </div>
 
-            {/* Quick Tools */}
-            <div className="flex flex-wrap gap-3 justify-center max-w-4xl mx-auto mb-8">
-              <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
-              <QuickToolButton icon="💻" label="Coding Assistant" onClick={() => setMessage("Help me with coding: ")} />
-              <QuickToolButton icon="📝" label="Essay writer" onClick={() => setMessage("Help me write an essay about ")} />
-              <QuickToolButton icon="💼" label="Business" onClick={() => setMessage("Help me with business advice on ")} />
-              <QuickToolButton icon="🌐" label="Translate" onClick={() => setMessage("Translate this text: ")} />
-              <QuickToolButton icon="🎥" label="YouTube summaries" onClick={() => setMessage("Summarize this YouTube video: ")} />
-              <QuickToolButton icon="✉️" label="AI Email writing" onClick={() => setMessage("Help me write an email about ")} />
-              <QuickToolButton icon="📄" label="AI PDF chat" onClick={() => setMessage("Help me analyze this PDF: ")} />
-              <QuickToolButton icon="🔍" label="Research assistant" onClick={() => setMessage("Research this topic: ")} />
-            </div>
+            {/* Quick Tools - Hide in Council Mode */}
+            {!isCouncilMode && (
+              <div className="flex flex-wrap gap-3 justify-center max-w-4xl mx-auto mb-8">
+                <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
+                <QuickToolButton icon="💻" label="Coding Assistant" onClick={() => setMessage("Help me with coding: ")} />
+                <QuickToolButton icon="📝" label="Essay writer" onClick={() => setMessage("Help me write an essay about ")} />
+                <QuickToolButton icon="💼" label="Business" onClick={() => setMessage("Help me with business advice on ")} />
+                <QuickToolButton icon="🌐" label="Translate" onClick={() => setMessage("Translate this text: ")} />
+                <QuickToolButton icon="🎥" label="YouTube summaries" onClick={() => setMessage("Summarize this YouTube video: ")} />
+                <QuickToolButton icon="✉️" label="AI Email writing" onClick={() => setMessage("Help me write an email about ")} />
+                <QuickToolButton icon="📄" label="AI PDF chat" onClick={() => setMessage("Help me analyze this PDF: ")} />
+                <QuickToolButton icon="🔍" label="Research assistant" onClick={() => setMessage("Research this topic: ")} />
+              </div>
+            )}
 
             <div className="text-xs text-gray-500">
               Powered by advanced AI models • ChatterStack can make mistakes
@@ -271,13 +313,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 }
               })}
 
-              {loading && councilProgress.length > 0 && (
-                <CouncilProgressIndicator
-                  progress={councilProgress}
-                  isActive={loading}
-                  hideWhenGenerating={true}
-                  hasStartedGenerating={messages.length > 0 && messages[messages.length - 1].content.length > 0}
-                />
+              {/* Show council progress indicator - CRITICAL FIX */}
+              {loading && isGeneratingWithCouncil && (
+                <div className="w-full px-4">
+                  <CouncilProgressIndicator
+                    progress={councilProgress}
+                    isActive={loading}
+                    hideWhenGenerating={false}
+                    hasStartedGenerating={false}
+                  />
+                </div>
               )}
               
               <div ref={messagesEndRef} />
@@ -292,10 +337,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
                 loading={loading}
-                placeholder="Message AI chat..."
+                placeholder={isCouncilMode ? "Ask the AI council..." : "Message AI chat..."}
               />
               <div className="flex items-center justify-center mt-2 text-xs text-gray-500">
-                <span>ChatterStack can make mistakes. Check important info.</span>
+                <span>
+                  {isCouncilMode 
+                    ? "Council mode synthesizes insights from 4 expert AI models"
+                    : "ChatterStack can make mistakes. Check important info."
+                  }
+                </span>
               </div>
             </div>
           </div>

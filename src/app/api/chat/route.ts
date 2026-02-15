@@ -387,6 +387,15 @@ export async function POST(request: NextRequest) {
         });
 
         sseData(controller, { conversationId: conversation.id });
+
+        // Generate title asynchronously (don't block response)
+        import('@/src/services/title/titleService')
+          .then(({ generateConversationTitle, updateConversationTitle }) => {
+            generateConversationTitle({ userMessage: data.message, modelId: selectedModel })
+              .then((title) => updateConversationTitle(conversationId, title))
+              .catch((err) => console.error('Title generation failed:', err));
+          })
+          .catch((err) => console.error('Failed to import title service:', err));
       } else {
         const userMessageTime = new Date();
         const aiMessageTime = new Date(userMessageTime.getTime() + 1);
