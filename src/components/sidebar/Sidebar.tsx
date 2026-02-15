@@ -134,26 +134,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
           />
         )}
 
-        {/* Premium Upgrade Banner */}
-        {!collapsed && isAuthenticated && (
-          <div className="px-4 pb-4">
-            <div className="bg-gradient-to-br from-yellow-500/15 to-yellow-600/10 border border-yellow-500/20 rounded-xl p-4 backdrop-blur-sm">
-              <div className="flex items-center gap-2 mb-2">
-                <div className="bg-yellow-500 text-black px-2.5 py-1 rounded-md text-xs font-bold flex items-center gap-1">
-                  <Crown className="w-3 h-3" />
-                  20 days left
-                </div>
-              </div>
-              <p className="text-xs text-gray-300 mb-3 leading-relaxed">
-                Upgrade to premium and enjoy the benefits for a long time
-              </p>
-              <button className="w-full bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-400 hover:to-yellow-500 text-black font-semibold text-sm py-2.5 rounded-lg transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-yellow-500/30">
-                View Plan
-              </button>
-            </div>
-          </div>
-        )}
-
         <UserSection
           user={user}
           collapsed={collapsed}
