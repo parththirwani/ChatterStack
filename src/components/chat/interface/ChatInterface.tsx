@@ -10,6 +10,7 @@ import QuickToolButton from './QuickToolButton';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
+import { User } from '@/src/types/user.types';
 
 
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -21,7 +22,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showLoginModal, setShowLoginModal] = useState(false);
   const { selectedModel } = useModelSelection();
   const user = useAppStore((state) => state.user);
-  const isAuthenticated = user && user.id !== 'guest';
+  
+  // Allow guests to use the app, but show modal on send
+  const isAuthenticated = user && user.id && user.id !== 'guest';
   
   const {
     messages,
@@ -51,9 +54,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const showCouncilProgress = loading && isCouncilMode && councilProgress.length > 0;
 
   useEffect(() => {
-    if (isLoadingConversationRef.current) {
-      return;
-    }
+    if (isLoadingConversationRef.current) return;
 
     if (selectedConversationId && selectedConversationId !== lastLoadedConversationRef.current) {
       isLoadingConversationRef.current = true;
@@ -155,7 +156,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSendMessage = useCallback(async () => {
     if (!message.trim() || loading) return;
 
-    // Check if user is authenticated
+    // Check if user is authenticated - if not, show modal
     if (!isAuthenticated) {
       setPendingMessage(message.trim());
       setShowLoginModal(true);
@@ -176,10 +177,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   }, [message, loading, isAuthenticated, sendMessage, onConversationCreated, currentConversationId]);
 
-  const handleLoginSuccess = useCallback(async (authenticatedUser: any) => {
+  const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
+    console.log('[ChatInterface] Login successful, processing pending message');
     setShowLoginModal(false);
     
-    // Process pending message after successful login
+    // Wait a bit for auth state to propagate
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
     if (pendingMessage && authenticatedUser) {
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
@@ -198,7 +202,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleLoginModalClose = useCallback(() => {
     setShowLoginModal(false);
-    // Keep the message in the input if user closes modal without logging in
     if (pendingMessage) {
       setMessage(pendingMessage);
       setPendingMessage('');
@@ -224,7 +227,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         }}
       />
 
-      {/* Error Banner - Responsive padding */}
+      {/* Error Banner */}
       {error && (
         <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 relative z-10">
           <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
@@ -243,10 +246,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       )}
 
       {isFirstMessage ? (
-        // Empty State - Fully responsive
+        // Empty State
         <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-y-auto relative z-10">
           <div className="text-center max-w-4xl w-full">
-            {/* Title - Responsive text size */}
             <div className="mb-8 sm:mb-12 animate-in fade-in duration-700">
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight leading-tight px-4">
                 {isCouncilMode ? "AI Council Mode" : "What's on your mind today?"}
@@ -259,7 +261,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </p>
             </div>
 
-            {/* Council Badge - Responsive */}
             {isCouncilMode && (
               <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 sm:p-4 mb-6 sm:mb-8 max-w-3xl mx-auto">
                 <p className="text-yellow-300 text-xs sm:text-sm leading-relaxed">
@@ -277,7 +278,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             )}
 
-            {/* Message Input - Responsive width */}
             <div className="max-w-3xl mx-auto mb-6 sm:mb-8 px-4">
               <MessageInput
                 message={message}
@@ -288,7 +288,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               />
             </div>
 
-            {/* Quick Tools - Responsive grid */}
             {!isCouncilMode && (
               <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2 sm:gap-3 justify-center max-w-4xl mx-auto mb-6 sm:mb-8 px-4">
                 <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
@@ -302,7 +301,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               </div>
             )}
 
-            {/* Footer - Responsive text */}
             <div className="text-xs text-gray-500 px-4">
               Powered by advanced AI models • ChatterStack can make mistakes
             </div>
@@ -310,7 +308,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       ) : (
         <>
-          {/* Messages Container - Responsive padding */}
+          {/* Messages Container */}
           <div 
             ref={messagesContainerRef}
             className="flex-1 overflow-y-auto relative z-10"
@@ -349,7 +347,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </div>
           </div>
 
-          {/* Input Bar - Responsive padding with safe area for mobile */}
+          {/* Input Bar */}
           <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm relative z-10 pb-safe">
             <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
               <MessageInput
@@ -372,11 +370,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </>
       )}
 
-      {/* Login Modal */}
+      {/* Login Modal - Rendered at root level */}
       <LoginModal
         isOpen={showLoginModal}
         onClose={handleLoginModalClose}
         onLoginSuccess={handleLoginSuccess}
+        message="Sign in to start chatting"
       />
     </div>
   );

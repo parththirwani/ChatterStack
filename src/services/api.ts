@@ -29,6 +29,17 @@ interface UserProfileResponse {
   };
 }
 
+// NextAuth session response
+interface NextAuthSession {
+  user?: {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  };
+  expires?: string;
+}
+
 export class ApiService {
   private static baseUrl = '/api';
 
@@ -58,22 +69,48 @@ export class ApiService {
     return response;
   }
 
-  // ============= AUTH (Optimized) =============
+  // ============= AUTH (Fixed) =============
   
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
     try {
-      return await apiOptimizer.fetch<{ ok: boolean; user?: User }>(
-        '/api/auth/session',
-        { credentials: 'include' }
-      );
-    } catch {
+      const response = await fetch('/api/auth/session', {
+        credentials: 'include',
+        headers: this.getAuthHeaders(),
+      });
+
+      if (!response.ok) {
+        console.log('[ApiService] Session fetch failed:', response.status);
+        return { ok: false };
+      }
+
+      const session: NextAuthSession = await response.json();
+      
+      console.log('[ApiService] Session response:', session);
+
+      // NextAuth returns { user: {...}, expires: "..." } or {}
+      if (session?.user?.id) {
+        const user: User = {
+          id: session.user.id,
+          name: session.user.name,
+          email: session.user.email,
+          avatarUrl: session.user.image,
+        };
+        
+        console.log('[ApiService] User authenticated:', user.email || user.id);
+        return { ok: true, user };
+      }
+
+      console.log('[ApiService] No user in session');
+      return { ok: false };
+    } catch (error) {
+      console.error('[ApiService] Session check failed:', error);
       return { ok: false };
     }
   }
 
   static async getCurrentUser(): Promise<User | null> {
     const result = await this.validateAuth();
-    return result.ok && result.user ? result.user : null;
+    return result.user || null;
   }
 
   static async logout(): Promise<void> {

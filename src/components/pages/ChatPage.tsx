@@ -8,6 +8,8 @@ import { useAppStore } from '@/src/store/rootStore';
 import { User } from '@/src/types/user.types';
 import ChatInterface from '@/src/components/chat/interface/ChatInterface';
 import Sidebar from '@/src/components/sidebar/Sidebar';
+import LoginModal from '@/src/components/auth/AuthModal';
+import LogoutModal from '@/src/components/auth/LogoutModal';
 
 const ChatPage: React.FC = () => {
   const pathname = usePathname();
@@ -24,16 +26,21 @@ const ChatPage: React.FC = () => {
   const loadConversations = useAppStore((state) => state.loadConversations);
   const setCurrentConversationId = useAppStore((state) => state.setCurrentConversationId);
   const setSidebarCollapsed = useAppStore((state) => state.setSidebarCollapsed);
+  const logout = useAppStore((state) => state.logout);
   const reset = useAppStore((state) => state.reset);
 
   // Mobile sidebar state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  
+  // Modal states - AT ROOT LEVEL
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Detect mobile screen size
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768); // md breakpoint
+      setIsMobile(window.innerWidth < 768);
     };
     
     checkMobile();
@@ -48,21 +55,21 @@ const ChatPage: React.FC = () => {
     }
   }, [currentConversationId, isMobile]);
 
-  // Initialize user on mount - ONLY ONCE
+  // Initialize user on mount
   useEffect(() => {
-    console.log('[ChatPage] Initializing user');
+    console.log('[ChatPage] Component mounted, initializing user');
     initializeUser();
   }, [initializeUser]);
 
   // Load conversations when user is authenticated
   useEffect(() => {
     if (user && user.id && user.id !== 'guest') {
-      console.log('[ChatPage] Loading conversations for authenticated user');
+      console.log('[ChatPage] Loading conversations for authenticated user:', user.id);
       loadConversations();
     }
   }, [user, loadConversations]);
 
-  // Sync URL to state (browser navigation)
+  // Sync URL to state
   useEffect(() => {
     const pathSegments = pathname.split('/').filter(Boolean);
     const conversationId = pathSegments[0];
@@ -71,7 +78,6 @@ const ChatPage: React.FC = () => {
       ? conversationId 
       : undefined;
 
-    // Only update if different to prevent loops
     if (urlConversationId !== currentConversationId) {
       console.log('[ChatPage] URL changed, updating conversation ID:', urlConversationId);
       setCurrentConversationId(urlConversationId);
@@ -87,7 +93,7 @@ const ChatPage: React.FC = () => {
   }, [isMobile, mobileMenuOpen, sidebarCollapsed, setSidebarCollapsed]);
 
   const handleUserChange = useCallback((newUser: User | null) => {
-    if (!newUser) {
+    if (!newUser || newUser.id === 'guest') {
       console.log('[ChatPage] User logged out, resetting state');
       reset();
       if (pathname !== '/') {
@@ -106,7 +112,6 @@ const ChatPage: React.FC = () => {
       router.push(newUrl);
     }
     
-    // Close mobile menu after selection
     if (isMobile) {
       setMobileMenuOpen(false);
     }
@@ -121,7 +126,6 @@ const ChatPage: React.FC = () => {
       router.push('/');
     }
     
-    // Close mobile menu
     if (isMobile) {
       setMobileMenuOpen(false);
     }
@@ -139,17 +143,43 @@ const ChatPage: React.FC = () => {
     }
   }, [pathname, router, setCurrentConversationId, loadConversations]);
 
-  // Handle browser back/forward buttons
-  useEffect(() => {
-    const handlePopState = () => {
-      console.log('[ChatPage] Browser navigation detected');
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+  const handleLoginClick = useCallback(() => {
+    console.log('[ChatPage] Login requested from sidebar');
+    setShowLoginModal(true);
   }, []);
 
-  // Show loading state while initializing
+  const handleLogoutClick = useCallback(() => {
+    console.log('[ChatPage] Logout requested');
+    setShowLogoutModal(true);
+  }, []);
+
+  // NEW: Handle login success
+  const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
+    console.log('[ChatPage] Login successful:', authenticatedUser);
+    setShowLoginModal(false);
+    
+    // Reinitialize user
+    await initializeUser();
+    
+    // Reload conversations
+    if (authenticatedUser && authenticatedUser.id !== 'guest') {
+      loadConversations(true);
+    }
+  }, [initializeUser, loadConversations]);
+
+  const handleLogoutConfirm = useCallback(async () => {
+    console.log('[ChatPage] Logout confirmed');
+    await logout();
+    handleUserChange(null);
+    setShowLogoutModal(false);
+  }, [logout, handleUserChange]);
+
+  // NEW: Handle modal close
+  const handleLoginModalClose = useCallback(() => {
+    setShowLoginModal(false);
+  }, []);
+
+  // Show loading state
   if (userLoading) {
     return (
       <div className="flex h-screen items-center justify-center bg-[#201d26]">
@@ -162,65 +192,77 @@ const ChatPage: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden relative">
-      {/* Mobile Menu Button - Fixed top-left */}
-      {isMobile && (
-        <button
-          onClick={handleToggleSidebar}
-          className="fixed top-4 left-4 z-50 p-3 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-xl text-white transition-colors shadow-lg backdrop-blur-sm md:hidden"
-          aria-label="Toggle menu"
-        >
-          {mobileMenuOpen ? (
-            <X className="w-5 h-5" />
-          ) : (
-            <Menu className="w-5 h-5" />
-          )}
-        </button>
-      )}
+    <>
+      <div className="flex h-screen overflow-hidden relative">
+        {/* Mobile Menu Button */}
+        {isMobile && (
+          <button
+            onClick={handleToggleSidebar}
+            className="fixed top-4 left-4 z-50 p-3 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-xl text-white transition-colors shadow-lg backdrop-blur-sm md:hidden"
+            aria-label="Toggle menu"
+          >
+            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        )}
 
-      {/* Backdrop overlay for mobile */}
-      {isMobile && mobileMenuOpen && (
+        {/* Backdrop */}
+        {isMobile && mobileMenuOpen && (
+          <div
+            className="fixed inset-0 bg-black/60 z-30 md:hidden"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+        )}
+
+        {/* Sidebar */}
         <div
-          className="fixed inset-0 bg-black/60 z-30 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      )}
+          className={`
+            ${isMobile ? 'fixed inset-y-0 left-0 z-40' : 'relative'}
+            ${isMobile && !mobileMenuOpen ? '-translate-x-full' : 'translate-x-0'}
+            transition-transform duration-300 ease-in-out
+            ${isMobile ? 'w-80' : ''}
+          `}
+        >
+          <MemoizedSidebar
+            collapsed={!isMobile && sidebarCollapsed}
+            onToggleCollapse={handleToggleSidebar}
+            user={user}
+            onUserChange={handleUserChange}
+            onConversationSelect={handleConversationSelect}
+            onNewChat={handleNewChat}
+            currentConversationId={currentConversationId}
+            onLoginClick={handleLoginClick}
+            onLogoutClick={handleLogoutClick}
+          />
+        </div>
+        
+        {/* Main Chat Area */}
+        <div className={`flex-1 flex flex-col overflow-hidden ${isMobile ? 'w-full' : ''}`}>
+          <MemoizedChatInterface
+            selectedConversationId={currentConversationId}
+            onConversationCreated={handleConversationCreated}
+          />
+        </div>
+      </div>
 
-      {/* Sidebar - Desktop: Normal, Mobile: Slide-out drawer */}
-      <div
-        className={`
-          ${isMobile ? 'fixed inset-y-0 left-0 z-40' : 'relative'}
-          ${isMobile && !mobileMenuOpen ? '-translate-x-full' : 'translate-x-0'}
-          transition-transform duration-300 ease-in-out
-          ${isMobile ? 'w-80' : ''}
-        `}
-      >
-        <MemoizedSidebar
-          collapsed={!isMobile && sidebarCollapsed}
-          onToggleCollapse={handleToggleSidebar}
-          user={user}
-          onUserChange={handleUserChange}
-          onConversationSelect={handleConversationSelect}
-          onNewChat={handleNewChat}
-          currentConversationId={currentConversationId}
-        />
-      </div>
-      
-      {/* Main Chat Area - Responsive padding */}
-      <div className={`
-        flex-1 flex flex-col overflow-hidden
-        ${isMobile ? 'w-full' : ''}
-      `}>
-        <MemoizedChatInterface
-          selectedConversationId={currentConversationId}
-          onConversationCreated={handleConversationCreated}
-        />
-      </div>
-    </div>
+      {/* Login Modal - AT ROOT LEVEL, OUTSIDE MAIN LAYOUT */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={handleLoginModalClose}
+        onLoginSuccess={handleLoginSuccess}
+        message="Sign in to save your conversations"
+      />
+
+      {/* Logout Modal - AT ROOT LEVEL */}
+      <LogoutModal
+        isOpen={showLogoutModal}
+        onClose={() => setShowLogoutModal(false)}
+        onConfirm={handleLogoutConfirm}
+        userName={user?.name || undefined}
+      />
+    </>
   );
 };
 
-// Memoized components
 const MemoizedChatInterface = memo(ChatInterface, (prev, next) => {
   return prev.selectedConversationId === next.selectedConversationId;
 });

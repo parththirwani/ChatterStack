@@ -10,6 +10,7 @@ import AIMessage from '../../chat/messages/AIMessage/AIMessage';
 import { ChatInterfaceProps } from '@/src/types/chat.types';
 import LoginModal from '@/src/components/auth/AuthModal';
 import { useAppStore } from '@/src/store/rootStore';
+import { User } from '@/src/types/user.types';
 
 
 const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -21,7 +22,7 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
   const [showLoginModal, setShowLoginModal] = useState(false);
   
   const user = useAppStore((state) => state.user);
-  const isAuthenticated = user && user.id !== 'guest';
+  const isAuthenticated = user && user.id && user.id !== 'guest';
   
   const {
     messages,
@@ -93,7 +94,7 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
     });
   };
 
-  const handleLoginSuccess = useCallback(async (authenticatedUser: any) => {
+  const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
     setShowLoginModal(false);
     
     // Process pending message after successful login

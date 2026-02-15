@@ -15,6 +15,8 @@ interface SidebarProps {
   onNewChat?: () => void;
   currentConversationId?: string;
   refreshTrigger?: number;
+  onLoginClick?: () => void;
+  onLogoutClick?: () => void;
 }
 
 const SidebarOptimized: React.FC<SidebarProps> = ({
@@ -25,13 +27,14 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   onConversationSelect,
   onNewChat,
   currentConversationId,
+  onLoginClick,
+  onLogoutClick,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   
   const conversations = useAppStore((state) => state.conversations);
   const conversationsLoading = useAppStore((state) => state.conversationsLoading);
   const deleteConversation = useAppStore((state) => state.deleteConversation);
-  const logout = useAppStore((state) => state.logout);
 
   const handleDeleteConversation = useCallback(async (conversationId: string) => {
     try {
@@ -54,18 +57,20 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
     if (onConversationSelect) onConversationSelect(conversationId);
   }, [onConversationSelect]);
 
+  // NEW: Just pass through to parent
   const handleLoginClick = useCallback(() => {
-    // UserSection now handles the modal
-  }, []);
-
-  const handleLogout = useCallback(async () => {
-    try {
-      await logout();
-      if (onUserChange) onUserChange(null);
-    } catch (err) {
-      console.error('Error logging out', err);
+    console.log('[Sidebar] Login button clicked, delegating to parent');
+    if (onLoginClick) {
+      onLoginClick();
     }
-  }, [logout, onUserChange]);
+  }, [onLoginClick]);
+
+  const handleLogoutClick = useCallback(() => {
+    console.log('[Sidebar] Logout button clicked, delegating to parent');
+    if (onLogoutClick) {
+      onLogoutClick();
+    }
+  }, [onLogoutClick]);
 
   const formatDate = useCallback((dateString: string) => {
     const date = new Date(dateString);
@@ -107,7 +112,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         overflow-hidden
       `}
     >
-      {/* Header - Clean minimal design with original colors */}
+      {/* Header */}
       <div className={`${collapsed ? 'px-2 py-4' : 'px-4 py-4'}`}>
         <SidebarHeader
           collapsed={collapsed}
@@ -115,7 +120,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         />
       </div>
 
-      {/* Action Buttons - No border, cleaner spacing */}
+      {/* Action Buttons */}
       <div className={`${collapsed ? 'px-2' : 'px-4'} pb-4`}>
         <SidebarActionButtons
           collapsed={collapsed}
@@ -126,12 +131,12 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         />
       </div>
 
-      {/* Subtle gradient divider */}
+      {/* Divider */}
       {!collapsed && isAuthenticated && (
         <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
       )}
 
-      {/* Chat History - Clean scrollable area OR Spacer for collapsed mode */}
+      {/* Chat History OR Spacer */}
       {!collapsed && isAuthenticated ? (
         <div className="flex-1 overflow-y-auto min-h-0 px-2">
           <MemoizedChatHistory
@@ -147,19 +152,19 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         <div className="flex-1" />
       )}
 
-      {/* Subtle gradient divider before user section */}
+      {/* Divider */}
       {!collapsed && (
         <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
       )}
 
-      {/* User Section - Clean, no heavy border */}
+      {/* User Section - NO MODAL HERE */}
       <div className={`${collapsed ? 'p-2' : 'p-4'} shrink-0`}>
         <UserSection
           user={user}
           collapsed={collapsed}
           isAuthenticated={!!isAuthenticated}
           onLoginClick={handleLoginClick}
-          onLogout={handleLogout}
+          onLogoutClick={handleLogoutClick}
         />
       </div>
     </div>
