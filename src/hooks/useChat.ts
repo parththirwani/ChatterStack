@@ -73,7 +73,6 @@ export const useChatOptimized = () => {
         router.replace(`/${tempId}`, { scroll: false });
         setCurrentConversationId(tempId);
         
-        console.log('[useChat] Created optimistic chat:', tempId);
       }
 
       const conversationKey = workingConversationId || 'new';
@@ -121,7 +120,6 @@ export const useChatOptimized = () => {
       try {
         const handleNewConversation = (id: string) => {
           realConversationId = id;
-          console.log('[useChat] Real conversation ID received:', id);
           
           const currentState = useAppStore.getState();
           

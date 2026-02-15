@@ -57,14 +57,12 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   }, [onConversationSelect]);
 
   const handleLoginClick = useCallback(() => {
-    console.log('[Sidebar] Login button clicked, delegating to parent');
     if (onLoginClick) {
       onLoginClick();
     }
   }, [onLoginClick]);
 
   const handleLogoutClick = useCallback(() => {
-    console.log('[Sidebar] Logout button clicked, delegating to parent');
     if (onLogoutClick) {
       onLogoutClick();
     }

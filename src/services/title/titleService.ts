@@ -128,7 +128,6 @@ export async function updateConversationTitle(
       data: { title },
     });
 
-    console.log(`✓ Updated title for conversation ${conversationId}: "${title}"`);
   } catch (error) {
     console.error('Failed to update conversation title:', error);
     throw error;

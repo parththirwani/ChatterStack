@@ -96,7 +96,6 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
       },
     });
 
-    console.log(`✓ Updated profile for user ${profile.userId}`);
   } catch (error) {
     console.error('Failed to save user profile:', error);
     throw error;

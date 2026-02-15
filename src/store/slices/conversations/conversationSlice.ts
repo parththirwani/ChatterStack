@@ -200,11 +200,9 @@ export const createConversationsSlice: StateCreator<
     const state = get() as unknown as StoreWithChat;
     const { setChatState } = state;
 
-    console.log(`[Store] Loading conversation: ${conversationId}`);
 
     // Check if this is a temp ID
     if (conversationId.startsWith('temp_')) {
-      console.log('[Store] Skipping load for optimistic temp ID:', conversationId);
       // Don't try to load from API - optimistic chat is already in state
       return;
     }
@@ -213,7 +211,6 @@ export const createConversationsSlice: StateCreator<
       setChatState(conversationId, { loading: true, error: undefined });
 
       const result = await ApiService.getConversation(conversationId);
-      console.log('[Store] API Result:', result);
 
       if (result && result.conversation) {
         const conversation = result.conversation;
@@ -230,7 +227,6 @@ export const createConversationsSlice: StateCreator<
           }))
         );
 
-        console.log(`[Store] Loaded ${messages.length} messages in chronological order`);
 
         setChatState(conversationId, {
           messages,

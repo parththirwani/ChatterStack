@@ -79,13 +79,11 @@ export class ApiService {
       });
 
       if (!response.ok) {
-        console.log('[ApiService] Session fetch failed:', response.status);
         return { ok: false };
       }
 
       const session: NextAuthSession = await response.json();
       
-      console.log('[ApiService] Session response:', session);
 
       // NextAuth returns { user: {...}, expires: "..." } or {}
       if (session?.user?.id) {
@@ -96,11 +94,9 @@ export class ApiService {
           avatarUrl: session.user.image,
         };
         
-        console.log('[ApiService] User authenticated:', user.email || user.id);
         return { ok: true, user };
       }
 
-      console.log('[ApiService] No user in session');
       return { ok: false };
     } catch (error) {
       console.error('[ApiService] Session check failed:', error);

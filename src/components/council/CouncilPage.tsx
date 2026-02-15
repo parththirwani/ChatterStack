@@ -52,7 +52,6 @@ const CouncilPage: React.FC = () => {
       : undefined;
 
     if (newConversationId !== lastConversationIdRef.current) {
-      console.log('Council URL conversation ID changed:', newConversationId);
       lastConversationIdRef.current = newConversationId;
       setSelectedConversationId(newConversationId);
     }
@@ -79,7 +78,6 @@ const CouncilPage: React.FC = () => {
   const handleConversationSelect = useCallback((conversationId: string) => {
     const targetPath = `/council/${conversationId}`;
     
-    console.log('Council conversation selected:', conversationId);
     
     lastConversationIdRef.current = conversationId;
     setSelectedConversationId(conversationId);
@@ -94,7 +92,6 @@ const CouncilPage: React.FC = () => {
   }, [pathname, router]);
 
   const handleNewChat = useCallback(() => {
-    console.log('New council chat requested');
     
     lastConversationIdRef.current = undefined;
     setSelectedConversationId(undefined);
@@ -111,7 +108,6 @@ const CouncilPage: React.FC = () => {
   const handleConversationCreated = useCallback((conversationId: string) => {
     const targetPath = `/council/${conversationId}`;
     
-    console.log('New council conversation created:', conversationId);
     
     lastConversationIdRef.current = conversationId;
     setSelectedConversationId(conversationId);

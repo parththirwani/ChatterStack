@@ -177,8 +177,6 @@ export async function POST(request: NextRequest) {
           
           // Record for rate limiting
           await recordLLMTokens(userId, totalTokens, isCouncilMode);
-          
-          console.log(`[RateLimit] User ${userId}: ${totalTokens} tokens (${inputTokens} in + ${outputTokens} out)`);
         } catch (error) {
           console.error('Failed to record tokens:', error);
           // Don't fail the request if token recording fails

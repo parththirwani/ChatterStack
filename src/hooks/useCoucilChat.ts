@@ -28,14 +28,11 @@ export const useCouncilChat = () => {
       onConversationCreated?: (conversationId: string) => void
     ) => {
       if (!message.trim() || isSendingRef.current) {
-        console.log('Message send blocked');
         return;
       }
 
       isSendingRef.current = true;
 
-      console.log('=== Sending Council Message ===');
-      console.log('Message:', message);
 
       const conversationId = state.currentConversationId;
 
@@ -119,7 +116,6 @@ export const useCouncilChat = () => {
           },
           (newConversationId: string) => {
             if (!conversationId && newConversationId) {
-              console.log('New conversation ID received:', newConversationId);
               setState((prev) => ({
                 ...prev,
                 currentConversationId: newConversationId,
@@ -151,14 +147,11 @@ export const useCouncilChat = () => {
   );
 
   const loadConversation = useCallback(async (conversationId: string) => {
-    console.log('=== Loading Council Conversation ===');
-    console.log('Conversation ID:', conversationId);
 
     setState((prev) => ({ ...prev, loading: true, error: undefined }));
 
     try {
       const result = await ApiService.getConversation(conversationId);
-      console.log('Conversation loaded:', result);
 
       if (result?.conversation) {
         const messages = result.conversation.messages.map((msg) => ({
@@ -187,7 +180,6 @@ export const useCouncilChat = () => {
   }, []);
 
   const startNewConversation = useCallback(() => {
-    console.log('=== Starting New Council Conversation ===');
     setState({
       messages: [],
       currentConversationId: undefined,

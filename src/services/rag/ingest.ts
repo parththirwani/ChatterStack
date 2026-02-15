@@ -34,23 +34,19 @@ export async function ingestMessage(params: {
 
   // RAG is optional - don't break chat if it fails
   if (!process.env.RAG_ENABLED || process.env.RAG_ENABLED !== 'true') {
-    console.log('RAG disabled, skipping ingestion');
     return;
   }
 
   try {
     // Validate content
     if (!content || content.trim().length === 0) {
-      console.log(`Skipping empty message ${messageId}`);
       return;
     }
 
     // 1. Chunk the message
     const chunks = chunkMessage(content);
-    console.log(`Chunking message ${messageId}: ${chunks.length} chunks`);
 
     if (chunks.length === 0) {
-      console.log(`No chunks for message ${messageId}, skipping`);
       return;
     }
 
@@ -59,7 +55,6 @@ export async function ingestMessage(params: {
     
     let denseVectors: number[][] = [];
     try {
-      console.log(`Generating embeddings for ${chunkTexts.length} chunks`);
       denseVectors = await generateEmbeddings(chunkTexts);
       
       if (!denseVectors || denseVectors.length === 0) {
@@ -67,7 +62,6 @@ export async function ingestMessage(params: {
         return;
       }
       
-      console.log(`Generated ${denseVectors.length} embeddings`);
     } catch (embeddingError) {
       console.error('Embedding generation failed:', embeddingError);
       // If embeddings fail, skip RAG ingestion but don't fail the entire message
@@ -117,7 +111,6 @@ export async function ingestMessage(params: {
       })),
     });
 
-    console.log(`✓ Ingested ${points.length} chunks for message ${messageId}`);
   } catch (error) {
     console.error('Ingestion error:', error);
     // RAG is nice-to-have - don't break the main chat flow
@@ -144,7 +137,6 @@ export async function batchIngestMessages(
     const batch = messages.slice(i, i + CONCURRENCY);
     await Promise.allSettled(batch.map((msg) => ingestMessage(msg)));
   }
-  console.log(`✓ Batch ingestion attempted for ${messages.length} messages`);
 }
 
 /**
@@ -170,7 +162,6 @@ export async function deleteConversation(
       },
     });
 
-    console.log(`✓ Deleted chunks for conversation ${conversationId}`);
   } catch (error) {
     console.error('Failed to delete conversation from RAG:', error);
   }
@@ -202,7 +193,6 @@ export async function purgeOldData(
       },
     });
 
-    console.log(`✓ Purged data older than ${daysOld} days for user ${userId}`);
   } catch (error) {
     console.error('Failed to purge old data from RAG:', error);
   }

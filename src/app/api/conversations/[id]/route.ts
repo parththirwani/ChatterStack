@@ -9,13 +9,11 @@ export async function GET(
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      console.log('[API] Unauthorized - no session');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     // Await params
     const { id } = await params;
-    console.log(`[API] Fetching conversation ${id} for user ${session.user.id}`);
 
     const conversation = await prisma.conversation.findUnique({
       where: {
@@ -30,11 +28,8 @@ export async function GET(
     });
 
     if (!conversation) {
-      console.log(`[API] Conversation ${id} not found`);
       return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
     }
-
-    console.log(`[API] Found conversation ${id} with ${conversation.messages.length} messages`);
 
     const response = {
       conversation: {
@@ -53,8 +48,6 @@ export async function GET(
         })),
       }
     };
-
-    console.log('[API] Returning conversation data');
     return NextResponse.json(response);
   } catch (error) {
     console.error('[API] Error fetching conversation:', error);
@@ -79,7 +72,6 @@ export async function DELETE(
 
     // Await params
     const { id } = await params;
-    console.log(`[API] Deleting conversation ${id} for user ${session.user.id}`);
 
     const conversation = await prisma.conversation.findUnique({
       where: {
@@ -102,7 +94,6 @@ export async function DELETE(
     const { redisStore } = await import('@/src/lib/redis');
     await redisStore.delete(id);
 
-    console.log(`[API] Deleted conversation ${id}`);
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[API] Error deleting conversation:', error);

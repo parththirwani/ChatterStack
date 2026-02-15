@@ -30,10 +30,8 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
       const currentUser = await ApiService.getCurrentUser();
       
       if (currentUser) {
-        console.log('[UserSlice] User authenticated:', currentUser.email);
         setUser(currentUser);
       } else {
-        console.log('[UserSlice] No authenticated user');
         setUser(null);
       }
     } catch (error) {

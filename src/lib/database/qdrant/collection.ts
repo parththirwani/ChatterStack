@@ -9,7 +9,6 @@ export async function initializeCollection(collectionName: string) {
     const exists = collections.collections.some(c => c.name === collectionName);
     
     if (!exists) {
-      console.log(`Creating Qdrant collection: ${collectionName}`);
       
       // Create collection with vectors
       await client.createCollection(collectionName, {
@@ -22,12 +21,10 @@ export async function initializeCollection(collectionName: string) {
         },
       });
       
-      console.log(`✓ Collection '${collectionName}' created`);
       
       // Create indexes for better performance
       await createIndexes(collectionName);
     } else {
-      console.log(`✓ Collection '${collectionName}' already exists`);
     }
   } catch (error) {
     console.error('Failed to initialize Qdrant collection:', error);
@@ -50,7 +47,6 @@ async function createIndexes(collectionName: string) {
       field_schema: 'datetime',
     });
     
-    console.log(`✓ Indexes created for '${collectionName}'`);
   } catch (error) {
     console.error('Failed to create indexes:', error);
     // Don't throw - indexes are optional for functionality

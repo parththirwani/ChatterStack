@@ -28,14 +28,12 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.has('auth') && urlParams.get('auth') === 'success') {
-      console.log('[AuthModal] OAuth callback detected, initializing user...');
       
       // Clear the auth param from URL
       window.history.replaceState({}, document.title, window.location.pathname);
       
       // Initialize user from store
       initializeUser().then(() => {
-        console.log('[AuthModal] User initialized after OAuth');
       });
     }
   }, [isOpen, initializeUser]);
@@ -43,7 +41,6 @@ const LoginModal: React.FC<LoginModalProps> = ({
   // When user changes (after successful login), notify parent
   useEffect(() => {
     if (isOpen && user && user.id && user.id !== 'guest') {
-      console.log('[AuthModal] User authenticated, calling onLoginSuccess');
       if (onLoginSuccess) {
         onLoginSuccess(user);
       } else {

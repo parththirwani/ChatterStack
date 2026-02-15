@@ -57,14 +57,12 @@ const ChatPage: React.FC = () => {
 
   // Initialize user on mount
   useEffect(() => {
-    console.log('[ChatPage] Component mounted, initializing user');
     initializeUser();
   }, [initializeUser]);
 
   // Load conversations when user is authenticated
   useEffect(() => {
     if (user && user.id && user.id !== 'guest') {
-      console.log('[ChatPage] Loading conversations for authenticated user:', user.id);
       loadConversations();
     }
   }, [user, loadConversations]);
@@ -79,7 +77,6 @@ const ChatPage: React.FC = () => {
       : undefined;
 
     if (urlConversationId !== currentConversationId) {
-      console.log('[ChatPage] URL changed, updating conversation ID:', urlConversationId);
       setCurrentConversationId(urlConversationId);
     }
   }, [pathname, currentConversationId, setCurrentConversationId]);
@@ -94,7 +91,6 @@ const ChatPage: React.FC = () => {
 
   const handleUserChange = useCallback((newUser: User | null) => {
     if (!newUser || newUser.id === 'guest') {
-      console.log('[ChatPage] User logged out, resetting state');
       reset();
       if (pathname !== '/') {
         router.push('/');
@@ -103,7 +99,6 @@ const ChatPage: React.FC = () => {
   }, [pathname, router, reset]);
 
   const handleConversationSelect = useCallback((conversationId: string) => {
-    console.log('[ChatPage] Conversation selected:', conversationId);
     
     setCurrentConversationId(conversationId);
     
@@ -118,7 +113,6 @@ const ChatPage: React.FC = () => {
   }, [pathname, router, setCurrentConversationId, isMobile]);
 
   const handleNewChat = useCallback(() => {
-    console.log('[ChatPage] New chat requested');
     
     setCurrentConversationId(undefined);
     
@@ -132,7 +126,6 @@ const ChatPage: React.FC = () => {
   }, [pathname, router, setCurrentConversationId, isMobile]);
 
   const handleConversationCreated = useCallback((conversationId: string) => {
-    console.log('[ChatPage] New conversation created:', conversationId);
     
     setCurrentConversationId(conversationId);
     loadConversations(true);
@@ -144,18 +137,15 @@ const ChatPage: React.FC = () => {
   }, [pathname, router, setCurrentConversationId, loadConversations]);
 
   const handleLoginClick = useCallback(() => {
-    console.log('[ChatPage] Login requested from sidebar');
     setShowLoginModal(true);
   }, []);
 
   const handleLogoutClick = useCallback(() => {
-    console.log('[ChatPage] Logout requested');
     setShowLogoutModal(true);
   }, []);
 
   // NEW: Handle login success
   const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
-    console.log('[ChatPage] Login successful:', authenticatedUser);
     setShowLoginModal(false);
     
     // Reinitialize user
@@ -168,7 +158,6 @@ const ChatPage: React.FC = () => {
   }, [initializeUser, loadConversations]);
 
   const handleLogoutConfirm = useCallback(async () => {
-    console.log('[ChatPage] Logout confirmed');
     await logout();
     handleUserChange(null);
     setShowLogoutModal(false);

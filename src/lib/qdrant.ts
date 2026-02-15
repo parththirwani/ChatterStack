@@ -10,7 +10,6 @@ export function getQdrantClient(): QdrantClient {
     
     if (!qdrantUrl) {
       console.warn(' No Qdrant configuration found - RAG features will be limited');
-      console.log('Set QDRANT_URL (or QDRANT_ENDPOINT) in your .env file');
       // Return a dummy client that will fail gracefully
       throw new Error('Qdrant not configured');
     }
@@ -18,11 +17,9 @@ export function getQdrantClient(): QdrantClient {
     const isCloud = qdrantUrl.includes('qdrant.io') || qdrantUrl.includes('qdrant.tech') || !!qdrantApiKey;
 
     if (isCloud) {
-      console.log('✓ Using Qdrant Cloud');
       
       if (!qdrantApiKey) {
         console.warn(' Qdrant Cloud URL detected but no API key provided');
-        console.log('Add QDRANT_API_KEY to your .env file');
       }
 
       qdrantClient = new QdrantClient({
@@ -30,15 +27,12 @@ export function getQdrantClient(): QdrantClient {
         apiKey: qdrantApiKey,
       });
       
-      console.log('✓ Qdrant Cloud client initialized');
     } else {
-      console.log('✓ Using local Qdrant');
       
       qdrantClient = new QdrantClient({
         url: qdrantUrl,
       });
       
-      console.log('✓ Local Qdrant client initialized');
     }
   }
   
@@ -52,7 +46,6 @@ export async function testQdrantConnection(): Promise<boolean> {
   try {
     const client = getQdrantClient();
     await client.getCollections();
-    console.log('✓ Qdrant connection verified');
     return true;
   } catch (error) {
     console.error('⚠️  Qdrant connection failed:', error instanceof Error ? error.message : error);

@@ -50,7 +50,6 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
     }
 
     if (selectedConversationId && selectedConversationId !== lastLoadedConversationRef.current) {
-      console.log('Loading council conversation:', selectedConversationId);
       
       isLoadingConversationRef.current = true;
       lastLoadedConversationRef.current = selectedConversationId;
@@ -59,7 +58,6 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
         isLoadingConversationRef.current = false;
       });
     } else if (!selectedConversationId && lastLoadedConversationRef.current) {
-      console.log('Starting new council conversation');
       lastLoadedConversationRef.current = undefined;
       startNewConversation();
     }
@@ -87,7 +85,6 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
     
     await sendMessage(messageToSend, (newConversationId: string) => {
       if (onConversationCreated) {
-        console.log('New council conversation created:', newConversationId);
         lastLoadedConversationRef.current = newConversationId;
         onConversationCreated(newConversationId);
       }
@@ -101,7 +98,6 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
     if (pendingMessage && authenticatedUser) {
       await sendMessage(pendingMessage, (newConversationId: string) => {
         if (onConversationCreated) {
-          console.log('New council conversation created after login:', newConversationId);
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }

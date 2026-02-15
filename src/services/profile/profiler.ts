@@ -38,7 +38,6 @@ export async function inferUserProfile(userId: string): Promise<UserProfile> {
   };
 
   await saveUserProfile(updatedProfile);
-  console.log(`✓ Updated profile for user ${userId}`);
 
   return updatedProfile;
 }

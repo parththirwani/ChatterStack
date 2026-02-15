@@ -33,15 +33,12 @@ class RedisStore {
         redisUrl = upstashUrl;
         redisToken = upstashToken;
         this.isUpstash = true;
-        console.log('✓ Using Upstash Redis');
       } else if (localRedisUrl) {
         // Fall back to local Redis
         redisUrl = localRedisUrl;
         this.isUpstash = false;
-        console.log('✓ Using local Redis');
       } else {
         console.warn('⚠️  No Redis configuration found - Redis features disabled');
-        console.log('Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN or REDIS_URL');
         return; // Don't throw, just disable Redis features
       }
 
@@ -52,7 +49,6 @@ class RedisStore {
         const urlObj = new URL(redisUrl);
         redisUrl = `rediss://default:${redisToken}@${urlObj.hostname}:6379`;
         
-        console.log('Connecting to Upstash Redis...');
         
         this.client = createClient({
           url: redisUrl,
@@ -69,7 +65,6 @@ class RedisStore {
           },
         });
       } else {
-        console.log('Connecting to local Redis...');
         
         this.client = createClient({
           url: redisUrl,
@@ -90,27 +85,22 @@ class RedisStore {
       });
 
       this.client.on('connect', () => {
-        console.log(`✓ Redis connected (${this.isUpstash ? 'Upstash' : 'Local'})`);
       });
 
       this.client.on('ready', () => {
-        console.log('✓ Redis ready');
         this.isConnected = true;
       });
 
       this.client.on('reconnecting', () => {
-        console.log('Redis reconnecting...');
       });
 
       await this.client.connect();
 
       // Test connection
       await this.client.ping();
-      console.log('✓ Redis connection verified');
 
     } catch (error) {
       console.error('⚠️  Redis connection failed:', error instanceof Error ? error.message : error);
-      console.log('App will continue without Redis caching');
       this.isConnected = false;
       this.client = null;
       // Don't throw - let the app work without Redis
@@ -122,7 +112,6 @@ class RedisStore {
       try {
         await this.client.quit();
         this.isConnected = false;
-        console.log('Redis disconnected');
       } catch (error) {
         console.error('Error disconnecting Redis:', error);
       }

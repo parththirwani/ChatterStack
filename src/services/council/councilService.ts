@@ -135,8 +135,6 @@ async function stage1_collect_responses(
   conversationHistory: Message[] = [],
   onProgress?: (stage: string, model: string, progress: number) => void
 ): Promise<Stage1Result[]> {
-  console.log('=== Stage 1: Collecting Council Responses ===');
-  console.log(`Conversation history: ${conversationHistory.length} messages`);
 
   const systemPrompt = getCouncilStage1Prompt();
 
@@ -166,7 +164,6 @@ async function stage1_collect_responses(
         onProgress('stage1', model, 100);
       }
 
-      console.log(`Stage 1: ${model} completed (${response.length} chars)`);
       return { model, response } as Stage1Result;
     } catch (error) {
       console.error(`Stage 1: ${model} failed:`, error);
@@ -179,7 +176,6 @@ async function stage1_collect_responses(
     (r): r is Stage1Result => r !== null && r.response.trim().length > 0
   );
 
-  console.log(`Stage 1 complete: ${validResults.length}/${COUNCIL_MODELS.length} models succeeded`);
   return validResults;
 }
 
@@ -221,7 +217,6 @@ async function stage2_collect_rankings(
   stage1Results: Stage1Result[],
   onProgress?: (stage: string, model: string, progress: number) => void
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
-  console.log('=== Stage 2: Collecting Peer Rankings ===');
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
   const labelToModel = new Map<string, string>();
@@ -264,7 +259,6 @@ async function stage2_collect_rankings(
       }
 
       const parsedRanking = parse_ranking_from_text(rankingText);
-      console.log(`Stage 2: ${model} ranking:`, parsedRanking);
 
       stage2Results.push({
         model,
@@ -276,7 +270,6 @@ async function stage2_collect_rankings(
     }
   }
 
-  console.log(
     `Stage 2 complete: ${stage2Results.length}/${COUNCIL_MODELS.length} models provided rankings`
   );
   
@@ -327,7 +320,6 @@ async function stage3_synthesize_final(
   conversationHistory: Message[] = [],
   onChunk?: (chunk: string) => void
 ): Promise<string> {
-  console.log('=== Stage 3: Chairman Synthesis ===');
 
   const aggregateRankings = calculate_aggregate_rankings(stage2Results, labelToModel);
 
@@ -357,7 +349,6 @@ async function stage3_synthesize_final(
       }
     });
 
-    console.log('Stage 3 complete: Chairman synthesis finished');
     return finalResponse;
   } catch (error) {
     console.error('Stage 3 failed:', error);
@@ -371,8 +362,6 @@ export async function runCouncilProcess(
   onProgress?: (stage: string, model: string, progress: number) => void,
   onChunk?: (chunk: string) => void 
 ): Promise<string> {
-  console.log('=== Starting Council Process ===');
-  console.log(`With conversation history: ${conversationHistory.length} messages`);
 
   try {
     const stage1Results = await stage1_collect_responses(
@@ -409,7 +398,6 @@ export async function runCouncilProcess(
       onChunk 
     );
 
-    console.log('=== Council Process Complete ===');
     return finalResponse;
   } catch (error) {
     console.error('Council process error:', error);

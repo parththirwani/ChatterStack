@@ -178,7 +178,6 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [message, loading, isAuthenticated, sendMessage, onConversationCreated, currentConversationId]);
 
   const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
-    console.log('[ChatInterface] Login successful, processing pending message');
     setShowLoginModal(false);
     
     // Wait a bit for auth state to propagate
