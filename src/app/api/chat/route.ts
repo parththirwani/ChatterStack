@@ -74,7 +74,8 @@ export async function POST(request: NextRequest) {
         });
 
         if (conversation) {
-          conversationHistory = conversation.messages.map((m) => ({
+          // FIX: Add explicit type annotation for 'm' parameter
+          conversationHistory = conversation.messages.map((m: { role: string; content: string; modelId: string | null }) => ({
             role: m.role === 'user' ? 'user' : 'assistant',
             content: m.content,
             modelId: m.modelId ?? undefined,
@@ -166,7 +167,7 @@ export async function POST(request: NextRequest) {
       if (fullContent) {
         try {
           // Count input tokens (user message + context)
-          const inputText = messagesForAI.map(m => m.content).join('\n');
+          const inputText = messagesForAI.map((m) => m.content).join('\n');
           const inputTokens = countTokens(inputText);
           
           // Count output tokens (AI response)
@@ -177,6 +178,8 @@ export async function POST(request: NextRequest) {
           
           // Record for rate limiting
           await recordLLMTokens(userId, totalTokens, isCouncilMode);
+          
+          console.log(`[RateLimit] User ${userId}: ${totalTokens} tokens (${inputTokens} in + ${outputTokens} out)`);
         } catch (error) {
           console.error('Failed to record tokens:', error);
           // Don't fail the request if token recording fails
