@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 
 interface Model {
@@ -95,7 +95,7 @@ const AVAILABLE_MODELS: Model[] = [
   },
 ];
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   try {
     const session = await auth();
     if (!session?.user?.id) {

@@ -1,11 +1,6 @@
 import { prisma } from '@/src/lib/prisma';
 import type { UserProfile } from './storage';
-import { getUserProfile, saveUserProfile, getOrCreateProfile } from './storage';
-
-const PROFILE_UPDATE_THRESHOLD = parseInt(
-  process.env.PROFILE_UPDATE_THRESHOLD || '5',
-  10
-);
+import { saveUserProfile, getOrCreateProfile } from './storage';
 
 /**
  * Infer user profile from conversation history

@@ -60,41 +60,14 @@ export class ApiService {
   // ============= AUTH (Optimized) =============
   
   static async validateAuth(): Promise<{ ok: boolean; user?: User }> {
-    const cacheKey = 'auth:session';
-    
-    return apiOptimizer.optimizedFetch(
-      cacheKey,
-      async () => {
-        try {
-          const response = await fetch('/api/auth/session', { credentials: 'include' });
-          
-          const contentType = response.headers.get('content-type');
-          if (!contentType || !contentType.includes('application/json')) {
-            return { ok: false };
-          }
-
-          const session = await response.json();
-          
-          if (session?.user) {
-            return { 
-              ok: true, 
-              user: {
-                id: session.user.id,
-                email: session.user.email || '',
-                name: session.user.name || '',
-                avatarUrl: session.user.image,
-                provider: session.user.provider || 'unknown',
-              }
-            };
-          }
-          
-          return { ok: false };
-        } catch (error) {
-          return { ok: false };
-        }
-      },
-      10000 // Cache for 10 seconds
-    );
+    try {
+      return await apiOptimizer.fetch<{ ok: boolean; user?: User }>(
+        '/api/auth/session',
+        { credentials: 'include' }
+      );
+    } catch {
+      return { ok: false };
+    }
   }
 
   static async getCurrentUser(): Promise<User | null> {
@@ -103,7 +76,7 @@ export class ApiService {
   }
 
   static async logout(): Promise<void> {
-    apiOptimizer.invalidate('auth:session');
+    apiOptimizer.invalidateCache('auth:session');
     window.location.href = '/api/auth/signout';
   }
 
@@ -179,7 +152,7 @@ export class ApiService {
             if (parsed.done) {
               onDone?.();
             }
-          } catch (e) {
+          } catch {
             // Ignore invalid JSON
           }
         }
@@ -210,39 +183,21 @@ export class ApiService {
   // ============= CONVERSATIONS (Optimized) =============
 
   static async getConversations(): Promise<{ conversations: Conversation[] }> {
-    const cacheKey = 'conversations:list';
-    
-    return apiOptimizer.optimizedFetch(
-      cacheKey,
-      async () => {
-        const response = await this.fetchWithCredentials('/api/conversations');
-        return await response.json();
-      },
-      30000 // Cache for 30 seconds
+    return await apiOptimizer.fetch<{ conversations: Conversation[] }>(
+      '/api/conversations',
+      { credentials: 'include' }
     );
   }
 
   static async getConversation(id: string): Promise<{ conversation: Conversation } | null> {
-    const cacheKey = `conversation:${id}`;
-    
-    return apiOptimizer.optimizedFetch(
-      cacheKey,
-      async () => {
-        try {
-          const response = await this.fetchWithCredentials(`/api/conversations/${id}`);
-          const data = await response.json();
-          
-          if (!data || !data.conversation) {
-            return null;
-          }
-          
-          return data;
-        } catch (error) {
-          return null;
-        }
-      },
-      60000 // Cache for 1 minute
-    );
+    try {
+      return await apiOptimizer.fetch<{ conversation: Conversation }>(
+        `/api/conversations/${id}`,
+        { credentials: 'include' }
+      );
+    } catch {
+      return null;
+    }
   }
 
   static async deleteConversation(id: string): Promise<void> {
@@ -251,27 +206,21 @@ export class ApiService {
     });
     
     // Invalidate related caches
-    apiOptimizer.invalidate(`conversation:${id}`);
-    apiOptimizer.invalidate('conversations:list');
+    apiOptimizer.invalidateCache(`conversation:${id}`);
+    apiOptimizer.invalidateCache('conversations');
   }
 
   // ============= MODELS (Optimized) =============
 
   static async getModels() {
-    const cacheKey = 'models:list';
-    
-    return apiOptimizer.optimizedFetch(
-      cacheKey,
-      async () => {
-        try {
-          const response = await this.fetchWithCredentials('/api/models');
-          return response.json();
-        } catch (e) {
-          return { models: [] };
-        }
-      },
-      300000 // Cache for 5 minutes (models rarely change)
-    );
+    try {
+      return await apiOptimizer.fetch<{ models: unknown[] }>(
+        '/api/models',
+        { credentials: 'include' }
+      );
+    } catch {
+      return { models: [] };
+    }
   }
 
   // ============= RAG (No caching) =============
@@ -282,23 +231,17 @@ export class ApiService {
     });
     
     // Invalidate profile cache
-    apiOptimizer.invalidate('profile:me');
+    apiOptimizer.invalidateCache('profile');
   }
 
   static async getUserProfile(userId?: string): Promise<UserProfileResponse> {
-    const cacheKey = userId ? `profile:${userId}` : 'profile:me';
+    const url = userId 
+      ? `/api/rag/profile/${userId}` 
+      : '/api/rag/profile/me';
     
-    return apiOptimizer.optimizedFetch(
-      cacheKey,
-      async () => {
-        const url = userId 
-          ? `/api/rag/profile/${userId}` 
-          : '/api/rag/profile/me';
-        
-        const response = await this.fetchWithCredentials(url);
-        return response.json();
-      },
-      60000 // Cache for 1 minute
+    return await apiOptimizer.fetch<UserProfileResponse>(
+      url,
+      { credentials: 'include' }
     );
   }
 }

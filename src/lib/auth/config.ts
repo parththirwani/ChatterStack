@@ -1,8 +1,7 @@
-import NextAuth from 'next-auth';
 import { PrismaAdapter } from '@auth/prisma-adapter';
-import { prisma } from '../database/prisma';
 import { getProviders } from './providers';
 import { getCallbacks } from './callbacks';
+import { prisma } from '../database/prisma/client';
 
 export const authConfig = {
   adapter: PrismaAdapter(prisma),

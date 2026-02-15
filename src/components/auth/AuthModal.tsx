@@ -17,7 +17,7 @@ interface LoginModalProps {
   onLoginSuccess?: (user: User | null) => void;
 }
 
-const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose, onLoginSuccess }) => {
+const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose}) => {
   const [loading, setLoading] = React.useState(false);
 
   // Only check for OAuth redirect params when modal opens

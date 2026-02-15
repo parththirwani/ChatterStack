@@ -1,5 +1,4 @@
 import { useRef, useCallback } from 'react';
-import { Message } from '@/src/types/chat.types';
 
 interface UseChatScrollReturn {
   smoothScrollToBottom: () => void;
@@ -7,9 +6,7 @@ interface UseChatScrollReturn {
 }
 
 export const useChatScroll = (
-  containerRef: React.RefObject<HTMLDivElement | null>, 
-  messages: Message[], 
-  loading: boolean
+  containerRef: React.RefObject<HTMLDivElement | null>,
 ): UseChatScrollReturn => {
   const autoScrollEnabledRef = useRef<boolean>(true);
 

@@ -53,20 +53,22 @@ const MessageInput: React.FC<MessageInputProps> = ({
     window.addEventListener('storage', checkCouncilMode);
     
     // Also listen for custom event when model changes
-    const handleModelChange = (e: CustomEvent) => {
-      setIsCouncilMode(e.detail === 'council');
+    const handleModelChange = (e: Event) => {
+      const customEvent = e as CustomEvent<string>;
+      setIsCouncilMode(customEvent.detail === 'council');
     };
-    window.addEventListener('modelChanged' as any, handleModelChange);
+    window.addEventListener('modelChanged', handleModelChange);
     
     return () => {
       window.removeEventListener('storage', checkCouncilMode);
-      window.removeEventListener('modelChanged' as any, handleModelChange);
+      window.removeEventListener('modelChanged', handleModelChange);
     };
   }, []);
 
   return (
     <div className="relative bg-gray-800/40 backdrop-blur-xl border border-gray-700/50 rounded-2xl sm:rounded-[20px] shadow-2xl transition-all duration-300 focus-within:border-yellow-500/40 focus-within:shadow-yellow-500/20">
       <div className="relative p-3 sm:p-4">
+        {/* 🔥 LLM Token Rate Limit Indicator */}
         <LLMTokenIndicator isCouncilMode={isCouncilMode} className="mb-3" />
 
         {/* Model Selector */}

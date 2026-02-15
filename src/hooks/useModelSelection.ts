@@ -1,8 +1,6 @@
-import { useModelSelection as useModelSelectionContext } from '@/app/context/ModelSelectionContext';
+import { useModelSelection as useModelSelectionContext } from '@/src/context/ModelSelectionContext';
 
 export const useModelSelection = () => {
   return useModelSelectionContext();
 };
 
-// Re-export types
-export type { ModelId, ModelInfo } from '@/app/context/ModelSelectionContext';

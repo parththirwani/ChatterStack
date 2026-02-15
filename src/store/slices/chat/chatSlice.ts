@@ -35,7 +35,7 @@ export const createChatSlice: StateCreator<ChatSlice> = (set) => ({
       chatState: {
         ...state.chatState,
         [conversationId]: {
-          ...(state.chatState[conversationId] || initialChatState),
+          ...(state.chatState[conversationId] ?? initialChatState),
           ...updates,
         },
       },
@@ -43,10 +43,8 @@ export const createChatSlice: StateCreator<ChatSlice> = (set) => ({
 
   clearChatState: (conversationId) =>
     set((state) => {
-      const { [conversationId]: removed, ...rest } = state.chatState;
+      const rest = { ...state.chatState };
+      delete rest[conversationId];
       return { chatState: rest };
     }),
 });
-
-// Re-export Message and CouncilProgress for convenience
-export type { Message } from '@/src/types/chat.types';

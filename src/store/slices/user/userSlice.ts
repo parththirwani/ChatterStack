@@ -37,8 +37,7 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
         setUser(null);
       }
     } catch (error) {
-      // This shouldn't happen anymore, but handle it gracefully
-      console.log('[UserSlice] Failed to initialize user, setting to null');
+      console.error('[UserSlice] Failed to initialize user, setting to null',error);
       setUser(null);
     } finally {
       setUserLoading(false);

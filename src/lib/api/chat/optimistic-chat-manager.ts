@@ -110,7 +110,7 @@ export class OptimisticChatManager {
    */
   getChat(chatId: string): OptimisticChat | undefined {
     // Try direct lookup
-    let chat = this.optimisticChats.get(chatId);
+    const chat = this.optimisticChats.get(chatId);
     if (chat) return chat;
 
     // Try reverse lookup (real ID → temp ID)

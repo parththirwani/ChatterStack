@@ -1,103 +1,197 @@
-type PendingRequest<T> = Promise<T>;
-type RequestCache<T> = Map<string, { data: T; timestamp: number }>;
+// src/services/apiOptimizer.ts
+// Smart caching and request deduplication for API calls
 
-class APIOptimizer {
-  private pendingRequests: Map<string, PendingRequest<any>> = new Map();
-  private cache: RequestCache<any> = new Map();
-  private readonly DEFAULT_CACHE_TIME = 5000; // 5 seconds
+type CacheEntry<T> = {
+  data: T;
+  timestamp: number;
+  expiresAt: number;
+};
+
+type PendingRequest<T> = Promise<T>;
+
+class ApiOptimizer {
+  private cache: Map<string, CacheEntry<unknown>> = new Map();
+  private pendingRequests: Map<string, PendingRequest<unknown>> = new Map();
+
+  // Cache TTLs (in milliseconds)
+  private readonly TTL = {
+    auth: 10 * 1000, // 10 seconds
+    conversations: 30 * 1000, // 30 seconds
+    conversation: 60 * 1000, // 1 minute
+    models: 5 * 60 * 1000, // 5 minutes
+    default: 30 * 1000, // 30 seconds
+  };
 
   /**
-   * Deduplicate simultaneous identical requests
+   * Get TTL for a specific cache key
    */
-  async deduplicate<T>(
-    key: string,
-    fetcher: () => Promise<T>
-  ): Promise<T> {
-    // If already pending, return existing promise
-    if (this.pendingRequests.has(key)) {
-      return this.pendingRequests.get(key)!;
-    }
-
-    // Create new request
-    const promise = fetcher().finally(() => {
-      this.pendingRequests.delete(key);
-    });
-
-    this.pendingRequests.set(key, promise);
-    return promise;
+  private getTTL(key: string): number {
+    if (key.includes('/auth/session')) return this.TTL.auth;
+    if (key === '/conversations' || key.includes('/conversations?')) return this.TTL.conversations;
+    if (key.includes('/conversations/') && !key.includes('/messages')) return this.TTL.conversation;
+    if (key.includes('/models')) return this.TTL.models;
+    return this.TTL.default;
   }
 
   /**
-   * Cache response with TTL
+   * Generate cache key from URL and options
    */
-  getCached<T>(key: string, maxAge: number = this.DEFAULT_CACHE_TIME): T | null {
-    const cached = this.cache.get(key);
-    if (!cached) return null;
+  private getCacheKey(url: string, options?: RequestInit): string {
+    const method = options?.method || 'GET';
+    const body = options?.body ? JSON.stringify(options.body) : '';
+    return `${method}:${url}:${body}`;
+  }
 
-    const age = Date.now() - cached.timestamp;
-    if (age > maxAge) {
+  /**
+   * Get cached data if valid
+   */
+  private getFromCache<T>(key: string): T | null {
+    const entry = this.cache.get(key) as CacheEntry<T> | undefined;
+    
+    if (!entry) return null;
+
+    const now = Date.now();
+    if (now > entry.expiresAt) {
       this.cache.delete(key);
       return null;
     }
 
-    return cached.data;
+    return entry.data;
   }
 
   /**
-   * Store in cache
+   * Store data in cache
    */
-  setCache<T>(key: string, data: T): void {
-    this.cache.set(key, { data, timestamp: Date.now() });
+  private setCache<T>(key: string, data: T): void {
+    const now = Date.now();
+    const ttl = this.getTTL(key);
+    
+    this.cache.set(key, {
+      data,
+      timestamp: now,
+      expiresAt: now + ttl,
+    });
   }
 
   /**
-   * Combined deduplicate + cache
+   * Clear cache entries matching a pattern
    */
-  async optimizedFetch<T>(
-    key: string,
-    fetcher: () => Promise<T>,
-    cacheTime: number = this.DEFAULT_CACHE_TIME
-  ): Promise<T> {
-    // Check cache first
-    const cached = this.getCached<T>(key, cacheTime);
-    if (cached !== null) {
-      return cached;
+  invalidateCache(pattern?: string): void {
+    if (!pattern) {
+      this.cache.clear();
+      return;
     }
 
-    // Deduplicate and fetch
-    const data = await this.deduplicate(key, fetcher);
-    this.setCache(key, data);
-    return data;
+    const keysToDelete: string[] = [];
+    this.cache.forEach((_, key) => {
+      if (key.includes(pattern)) {
+        keysToDelete.push(key);
+      }
+    });
+
+    keysToDelete.forEach((key) => this.cache.delete(key));
   }
 
   /**
-   * Invalidate cache entry
+   * Optimized fetch with caching and deduplication
    */
-  invalidate(key: string): void {
-    this.cache.delete(key);
+  async fetch<T>(
+    url: string,
+    options?: RequestInit
+  ): Promise<T> {
+    const cacheKey = this.getCacheKey(url, options);
+    const method = options?.method || 'GET';
+
+    // Only cache GET requests
+    if (method === 'GET') {
+      // Check cache first
+      const cached = this.getFromCache<T>(cacheKey);
+      if (cached !== null) {
+        return cached;
+      }
+
+      // Check if request is already pending (deduplication)
+      const pending = this.pendingRequests.get(cacheKey) as PendingRequest<T> | undefined;
+      if (pending) {
+        return pending;
+      }
+    }
+
+    // Make the request
+    const request = (async () => {
+      try {
+        const response = await fetch(url, options);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+
+        const data = await response.json() as T;
+
+        // Cache successful GET requests
+        if (method === 'GET') {
+          this.setCache(cacheKey, data);
+        }
+
+        return data;
+      } finally {
+        // Remove from pending requests
+        this.pendingRequests.delete(cacheKey);
+      }
+    })();
+
+    // Store pending request for deduplication
+    if (method === 'GET') {
+      this.pendingRequests.set(cacheKey, request as PendingRequest<unknown>);
+    }
+
+    return request;
   }
 
   /**
-   * Clear all cache
+   * Clear cache on mutations
    */
-  clearCache(): void {
-    this.cache.clear();
+  onMutation(pattern: string): void {
+    this.invalidateCache(pattern);
+  }
+
+  /**
+   * Get cache stats
+   */
+  getStats() {
+    return {
+      cacheSize: this.cache.size,
+      pendingRequests: this.pendingRequests.size,
+    };
   }
 }
 
-export const apiOptimizer = new APIOptimizer();
+// Singleton instance
+export const apiOptimizer = new ApiOptimizer();
 
 /**
- * Generate cache key from request parameters
+ * Optimized fetch wrapper
  */
-export function generateCacheKey(
-  endpoint: string,
-  params?: Record<string, any>
-): string {
-  if (!params) return endpoint;
-  const sortedParams = Object.keys(params)
-    .sort()
-    .map(key => `${key}=${JSON.stringify(params[key])}`)
-    .join('&');
-  return `${endpoint}?${sortedParams}`;
+export async function optimizedFetch<T>(
+  url: string,
+  options?: RequestInit
+): Promise<T> {
+  return apiOptimizer.fetch<T>(url, options);
 }
+
+/**
+ * Invalidate cache after mutations
+ */
+export function invalidateCache(pattern?: string): void {
+  apiOptimizer.invalidateCache(pattern);
+}
+
+/**
+ * Helper to invalidate specific patterns
+ */
+export const cacheInvalidators = {
+  conversations: () => invalidateCache('/conversations'),
+  conversation: (id: string) => invalidateCache(`/conversations/${id}`),
+  auth: () => invalidateCache('/auth/session'),
+  all: () => invalidateCache(),
+};

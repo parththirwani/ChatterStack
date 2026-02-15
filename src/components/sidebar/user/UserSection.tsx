@@ -2,7 +2,6 @@ import React from 'react';
 import { LogOut, User, LogIn } from 'lucide-react';
 import Image from 'next/image';
 import { User as UserType } from '@/src/types/user.types';
-import TooltipButton from '../../ui/tooltip/Tooltip';
 
 interface UserSectionProps {
   user?: UserType | null;

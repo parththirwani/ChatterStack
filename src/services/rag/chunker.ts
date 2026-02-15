@@ -14,7 +14,7 @@ export interface MessageChunk {
 /**
  * Chunk a message based on token count and semantic boundaries
  */
-export function chunkMessage(content: string, messageId: string): MessageChunk[] {
+export function chunkMessage(content: string): MessageChunk[] {
   const tokens = encode(content);
 
   // Short message - no chunking needed
@@ -31,13 +31,13 @@ export function chunkMessage(content: string, messageId: string): MessageChunk[]
   }
 
   // Long message - semantic chunking
-  return semanticChunk(content, tokens);
+  return semanticChunk(content);
 }
 
 /**
  * Semantic chunking with code block awareness
  */
-function semanticChunk(content: string, tokens: number[]): MessageChunk[] {
+function semanticChunk(content: string): MessageChunk[] {
   const chunks: MessageChunk[] = [];
 
   // Split by code blocks first
@@ -45,8 +45,8 @@ function semanticChunk(content: string, tokens: number[]): MessageChunk[] {
   const codeBlocks = [...content.matchAll(codeBlockPattern)];
 
   if (codeBlocks.length > 0) {
-    // Process content between code blocks
     let lastIndex = 0;
+    let chunkIndex = 0;
 
     for (const block of codeBlocks) {
       const blockStart = block.index!;
@@ -55,12 +55,16 @@ function semanticChunk(content: string, tokens: number[]): MessageChunk[] {
       // Text before code block
       if (blockStart > lastIndex) {
         const textBefore = content.substring(lastIndex, blockStart);
-        chunks.push(...chunkByTokens(textBefore, chunks.length, false));
+        const textChunks = chunkByTokens(textBefore, chunkIndex, false);
+        chunks.push(...textChunks);
+        chunkIndex += textChunks.length;
       }
 
       // Code block itself
       const codeContent = content.substring(blockStart, blockEnd);
-      chunks.push(...chunkByTokens(codeContent, chunks.length, true));
+      const codeChunks = chunkByTokens(codeContent, chunkIndex, true);
+      chunks.push(...codeChunks);
+      chunkIndex += codeChunks.length;
 
       lastIndex = blockEnd;
     }
@@ -68,7 +72,8 @@ function semanticChunk(content: string, tokens: number[]): MessageChunk[] {
     // Text after last code block
     if (lastIndex < content.length) {
       const textAfter = content.substring(lastIndex);
-      chunks.push(...chunkByTokens(textAfter, chunks.length, false));
+      const textChunks = chunkByTokens(textAfter, chunkIndex, false);
+      chunks.push(...textChunks);
     }
   } else {
     // No code blocks - chunk by semantic boundaries
@@ -107,7 +112,6 @@ function chunkByTokens(
   while (currentStart < tokens.length) {
     const currentEnd = Math.min(currentStart + CHUNK_SIZE, tokens.length);
 
-    // Decode back to text (approximate - may not be exact)
     const chunkText = text.substring(
       Math.floor((currentStart / tokens.length) * text.length),
       Math.floor((currentEnd / tokens.length) * text.length)
@@ -147,7 +151,6 @@ function semanticChunkByParagraphs(
       currentChunk += (currentChunk ? '\n\n' : '') + para;
       currentTokens += paraTokens;
     } else {
-      // Save current chunk
       if (currentChunk) {
         chunks.push({
           content: currentChunk,
@@ -158,11 +161,10 @@ function semanticChunkByParagraphs(
         });
       }
 
-      // Start new chunk
       if (paraTokens > CHUNK_SIZE) {
-        // Paragraph too long - force split
-        chunks.push(...chunkByTokens(para, chunkIndex, false));
-        chunkIndex += chunks.length;
+        const forcedChunks = chunkByTokens(para, chunkIndex, false);
+        chunks.push(...forcedChunks);
+        chunkIndex += forcedChunks.length;
         currentChunk = '';
         currentTokens = 0;
       } else {
@@ -172,11 +174,10 @@ function semanticChunkByParagraphs(
     }
   }
 
-  // Add final chunk
   if (currentChunk) {
     chunks.push({
       content: currentChunk,
-      chunkIndex: chunkIndex,
+      chunkIndex,
       isCode: false,
       startToken: 0,
       endToken: currentTokens,
@@ -190,12 +191,11 @@ function semanticChunkByParagraphs(
  * Detect if content is primarily code
  */
 function detectCode(content: string): boolean {
-  // Check for code patterns
   const codePatterns = [
-    /```[\s\S]*?```/, // Code blocks
-    /^\s*(function|const|let|var|class|interface|type|import|export)/m, // JS/TS
-    /^\s*(def|class|import|from)/m, // Python
-    /^\s*(public|private|protected|class|interface)/m, // Java/C#
+    /```[\s\S]*?```/,
+    /^\s*(function|const|let|var|class|interface|type|import|export)/m,
+    /^\s*(def|class|import|from)/m,
+    /^\s*(public|private|protected|class|interface)/m,
   ];
 
   return codePatterns.some((pattern) => pattern.test(content));

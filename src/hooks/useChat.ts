@@ -32,7 +32,6 @@ export const useChatOptimized = () => {
     )
   );
   
-  const setChatState = useAppStore((state) => state.setChatState);
   const setCurrentConversationId = useAppStore((state) => state.setCurrentConversationId);
   const loadConversation = useAppStore((state) => state.loadConversation);
   const loadConversations = useAppStore((state) => state.loadConversations);

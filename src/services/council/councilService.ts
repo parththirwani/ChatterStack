@@ -5,6 +5,7 @@
  * 1. Proper error handling to prevent "error generating response"
  * 2. Streaming works correctly
  * 3. Better fallback when models fail
+ * 4. Fixed unused conversationHistory warning
  */
 
 import {
@@ -115,8 +116,8 @@ async function createCompletion(
               fullContent += content;
               onChunk(content);
             }
-          } catch (e) {
-            // Ignore invalid JSON chunks
+          } catch (error) {
+            console.error(`Council model parsing error:`, error);
           }
         }
       }
@@ -218,7 +219,6 @@ function parse_ranking_from_text(text: string): string[] {
 async function stage2_collect_rankings(
   userQuery: string,
   stage1Results: Stage1Result[],
-  conversationHistory: Message[] = [],
   onProgress?: (stage: string, model: string, progress: number) => void
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
   console.log('=== Stage 2: Collecting Peer Rankings ===');
@@ -389,10 +389,10 @@ export async function runCouncilProcess(
       return errorMsg;
     }
 
+    // Stage 2 doesn't need conversationHistory - removed to fix warning
     const { stage2Results, labelToModel } = await stage2_collect_rankings(
       userQuery,
       stage1Results,
-      conversationHistory,
       onProgress
     );
 

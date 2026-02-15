@@ -1,5 +1,4 @@
 import React from 'react';
-import { X } from 'lucide-react';
 
 interface DeleteConversationModalProps {
   isOpen: boolean;
@@ -43,10 +42,7 @@ const DeleteConversationModal: React.FC<DeleteConversationModalProps> = ({
         {/* Content */}
         <div className="mb-6">
           <p className="text-gray-300 text-sm mb-2">
-            You're about to permanently delete{" "}
-            <span className="font-semibold text-white">
-              "{conversationTitle}"
-            </span>.
+            {`You're about to permanently delete "${conversationTitle}".`}
           </p>
           <p className="text-gray-400 text-xs">
             This action cannot be undone. All messages in this conversation will
@@ -66,9 +62,9 @@ const DeleteConversationModal: React.FC<DeleteConversationModalProps> = ({
           <button
             onClick={onClose}
             disabled={isDeleting}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300 
+            className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300
                        hover:bg-gray-700/50 transition-all duration-150
-                       cursor-pointer disabled:cursor-not-allowed 
+                       cursor-pointer disabled:cursor-not-allowed
                        disabled:opacity-50 active:scale-[0.98]"
           >
             Cancel
@@ -77,10 +73,10 @@ const DeleteConversationModal: React.FC<DeleteConversationModalProps> = ({
           <button
             onClick={onConfirm}
             disabled={isDeleting}
-            className="px-4 py-2 rounded-lg text-sm font-medium 
+            className="px-4 py-2 rounded-lg text-sm font-medium
                        bg-red-600 hover:bg-red-700 text-white
                        transition-all duration-150 flex items-center gap-2
-                       cursor-pointer disabled:cursor-not-allowed 
+                       cursor-pointer disabled:cursor-not-allowed
                        disabled:opacity-50 active:scale-[0.98]"
           >
             {isDeleting ? (

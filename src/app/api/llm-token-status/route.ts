@@ -1,8 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 import { getLLMTokenStatus } from '@/src/middleware/llmTokenRateLimit';
 
-export async function GET(_request: NextRequest) {
+export async function GET() {
   try {
     const session = await auth();
     

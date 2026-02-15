@@ -99,6 +99,8 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
     } catch (err) {
       uncachedIndices.push(i);
       uncachedTexts.push(text);
+      console.error('OpenRouter error:', err);
+      throw new Error('Failed to generate embedding');
     }
   }
 

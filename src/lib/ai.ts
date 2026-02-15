@@ -1,15 +1,4 @@
 import { Conversation, ChatRequest } from "../types";
-interface CouncilChatRequest {
-  message: string;
-  conversationId?: string;
-}
-
-interface CouncilProgress {
-  stage: string;
-  model: string;
-  progress: number;
-}
-
 export class ApiService {
   private static baseUrl = "/api";
 

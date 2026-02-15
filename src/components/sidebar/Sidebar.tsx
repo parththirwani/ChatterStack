@@ -26,7 +26,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   onConversationSelect,
   onNewChat,
   currentConversationId,
-  refreshTrigger,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
