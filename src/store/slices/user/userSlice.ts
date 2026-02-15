@@ -2,9 +2,9 @@
 
 import { StateCreator } from 'zustand';
 import { ApiService } from '../../../services/api';
+import { signOut } from 'next-auth/react';
 import type { User } from '@/src/types/user.types';
 
-// We extend the return type so TypeScript knows reset exists when we call get()
 export interface UserSlice {
   user: User | null;
   userLoading: boolean;
@@ -46,7 +46,10 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
 
   logout: async () => {
     try {
-      await ApiService.logout();
+      // Sign out using NextAuth - this clears the session
+      await signOut({ redirect: false });
+      
+      // Reset the entire store
       const fullStore = get() as typeof get extends () => infer T ? T : never;
       if ('reset' in fullStore && typeof fullStore.reset === 'function') {
         fullStore.reset();

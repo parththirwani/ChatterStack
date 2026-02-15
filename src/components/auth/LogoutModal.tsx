@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, LogOut, AlertTriangle } from 'lucide-react';
+import { signOut } from 'next-auth/react';
 
 interface LogoutModalProps {
   isOpen: boolean;
@@ -17,8 +18,9 @@ const LogoutModal: React.FC<LogoutModalProps> = ({
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
-    await onConfirm();
-    onClose();
+    // Sign out using NextAuth
+    await signOut({ redirect: false });
+    onConfirm();
   };
 
   return (
@@ -64,20 +66,20 @@ const LogoutModal: React.FC<LogoutModalProps> = ({
               'Are you sure you want to sign out?'
             )}
             <br />
-            <span className="text-sm">You'll need to sign in again to access your conversations.</span>
+            <span className="text-sm">You&apos;ll need to sign in again to access your conversations.</span>
           </p>
 
           {/* Buttons */}
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors"
+              className="flex-1 px-4 py-3 rounded-xl bg-gray-800 hover:bg-gray-700 text-white font-medium transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
-              className="flex-1 px-4 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium transition-colors flex items-center justify-center gap-2"
+              className="flex-1 px-4 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-medium transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               Sign Out

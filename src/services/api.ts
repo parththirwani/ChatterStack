@@ -114,8 +114,8 @@ export class ApiService {
   }
 
   static async logout(): Promise<void> {
+    // Just invalidate cache - NextAuth signOut handles the actual logout
     apiOptimizer.invalidateCache('auth:session');
-    window.location.href = '/api/auth/signout';
   }
 
   // ============= CHAT (No caching - streaming) =============

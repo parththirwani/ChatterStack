@@ -10,7 +10,7 @@ interface SidebarProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
   user?: User | null;
-  onUserChange?: (user: User | null) => void;
+  onUserChange?: (user: User | null) => void; // Optional now
   onConversationSelect?: (conversationId: string) => void;
   onNewChat?: () => void;
   currentConversationId?: string;
@@ -23,7 +23,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   collapsed,
   onToggleCollapse,
   user = null,
-  onUserChange,
   onConversationSelect,
   onNewChat,
   currentConversationId,
@@ -57,7 +56,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
     if (onConversationSelect) onConversationSelect(conversationId);
   }, [onConversationSelect]);
 
-  // NEW: Just pass through to parent
   const handleLoginClick = useCallback(() => {
     console.log('[Sidebar] Login button clicked, delegating to parent');
     if (onLoginClick) {
@@ -157,7 +155,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
       )}
 
-      {/* User Section - NO MODAL HERE */}
+      {/* User Section */}
       <div className={`${collapsed ? 'p-2' : 'p-4'} shrink-0`}>
         <UserSection
           user={user}
