@@ -1,12 +1,16 @@
 {
-  "name": "frontend",
+  "name": "chatterstack",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build --turbopack",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "prisma generate"
+  },
+  "engines": {
+    "node": "24.x"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.1",
