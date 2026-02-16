@@ -20,10 +20,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ],
   pages: {
     signIn: "/",
-    error: "/",
+    error: "/", 
   },
   session: {
     strategy: "database",
+    maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
     async session({ session, user }) {
@@ -33,7 +34,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return session;
     },
   },
+  // CRITICAL: These settings fix the Configuration error
+  secret: process.env.NEXTAUTH_SECRET,
   trustHost: true,
+  debug: process.env.NODE_ENV === "development",
 });
 
 // Export GET and POST handlers directly
