@@ -19,7 +19,8 @@
 - **Secure Authentication** – OAuth and JWT-based authentication by google and github provider.  
 - **Scalable Backend** – Optimized for high-performance workloads.  
 - **Customizable UI** – Clean, modern design with theme support.  
-- **Free & Premium Tiers** – Access advanced features with subscription.  
+- **Free & Premium Tiers** – Access advanced features with subscription.
+- **RAG Integration** – The codebase integrates retrieval-augmented generation logic with support for querying large language models and handling parallel responses via in-memory stores.  
 
 ---
 
