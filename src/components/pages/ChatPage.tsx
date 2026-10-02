@@ -55,8 +55,20 @@ const ChatPage: React.FC = () => {
     }
   }, [currentConversationId, isMobile]);
 
-  // Initialize user on mount
+  // Initialize user on mount. This also covers the return from the
+  // full-page OAuth redirect (`/?auth=success`): all modal state is wiped
+  // by the navigation, so the AuthModal's own `auth=success` detector never
+  // runs. Handling it here guarantees the session is loaded and the flag
+  // is cleared even when no modal is open.
   useEffect(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has('auth') && urlParams.get('auth') === 'success') {
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    } catch {
+      // non-browser environment - ignore
+    }
     initializeUser();
   }, [initializeUser]);
 

@@ -20,9 +20,7 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
   const [message, setMessage] = useState('');
   const [pendingMessage, setPendingMessage] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
-  
-  const user = useAppStore((state) => state.user);
-  const isAuthenticated = user && user.id && user.id !== 'guest';
+  const initializeUser = useAppStore((state) => state.initializeUser);
   
   const {
     messages,
@@ -70,12 +68,42 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
     }
   }, [messages.length]);
 
+  // Restore a pending message saved before the full-page OAuth redirect.
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = sessionStorage.getItem('pendingChatMessage');
+    } catch {
+      stored = null;
+    }
+    if (stored) {
+      setPendingMessage(stored);
+      setMessage(stored);
+      try {
+        sessionStorage.removeItem('pendingChatMessage');
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
+
   const handleSendMessage = async () => {
     if (!message.trim() || loading) return;
 
+    // Read auth fresh from the store: render-time state can be stale right
+    // after the OAuth redirect and would wrongly re-open the login modal.
+    const freshUser = useAppStore.getState().user;
+    const authenticated = freshUser && freshUser.id && freshUser.id !== 'guest';
+
     // Check if user is authenticated
-    if (!isAuthenticated) {
-      setPendingMessage(message.trim());
+    if (!authenticated) {
+      const text = message.trim();
+      setPendingMessage(text);
+      try {
+        sessionStorage.setItem('pendingChatMessage', text);
+      } catch {
+        // storage unavailable
+      }
       setShowLoginModal(true);
       return;
     }
@@ -93,27 +121,66 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
 
   const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
     setShowLoginModal(false);
-    
+
+    let freshUser = useAppStore.getState().user;
+    if (!freshUser || !freshUser.id || freshUser.id === 'guest') {
+      try {
+        await initializeUser();
+      } catch {
+        // initializeUser handles errors internally
+      }
+      freshUser = useAppStore.getState().user;
+    }
+    const effectiveUser = freshUser ?? authenticatedUser;
+    const isValid = effectiveUser && effectiveUser.id && effectiveUser.id !== 'guest';
+
+    let textToSend = pendingMessage;
+    if (!textToSend) {
+      try {
+        textToSend = sessionStorage.getItem('pendingChatMessage') || '';
+      } catch {
+        textToSend = '';
+      }
+    }
+
     // Process pending message after successful login
-    if (pendingMessage && authenticatedUser) {
-      await sendMessage(pendingMessage, (newConversationId: string) => {
+    if (textToSend && isValid) {
+      try {
+        sessionStorage.removeItem('pendingChatMessage');
+      } catch {
+        // ignore
+      }
+      await sendMessage(textToSend, (newConversationId: string) => {
         if (onConversationCreated) {
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }
       });
-      
+
       setPendingMessage('');
       setMessage('');
     }
-  }, [pendingMessage, sendMessage, onConversationCreated]);
+  }, [pendingMessage, sendMessage, onConversationCreated, initializeUser]);
 
   const handleLoginModalClose = useCallback(() => {
     setShowLoginModal(false);
     // Keep the message in the input if user closes modal without logging in
-    if (pendingMessage) {
-      setMessage(pendingMessage);
+    const storedFallback = (() => {
+      try {
+        return sessionStorage.getItem('pendingChatMessage');
+      } catch {
+        return null;
+      }
+    })();
+    const restore = pendingMessage || storedFallback;
+    if (restore) {
+      setMessage(restore);
       setPendingMessage('');
+      try {
+        sessionStorage.removeItem('pendingChatMessage');
+      } catch {
+        // ignore
+      }
     }
   }, [pendingMessage]);
 

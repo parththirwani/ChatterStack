@@ -42,7 +42,6 @@ export const useChatOptimized = () => {
   const finalizeOptimisticChat = useAppStore((state) => state.finalizeOptimisticChat);
   const updateOptimisticChatStatus = useAppStore((state) => state.updateOptimisticChatStatus);
   const refreshOptimisticChats = useAppStore((state) => state.refreshOptimisticChats);
-  const user = useAppStore((state) => state.user);
   
   const isSendingRef = useRef(false);
 
@@ -51,7 +50,12 @@ export const useChatOptimized = () => {
       message: string,
       onConversationCreated?: (conversationId: string) => void
     ) => {
-      if (!message.trim() || isSendingRef.current || !user) {
+      // NOTE: Read user fresh from the store instead of the render-time
+      // closure. After an OAuth redirect the `sendMessage` closure held by
+      // `handleLoginSuccess` can still reference the old `user === null`,
+      // which silently dropped the message and forced another login prompt.
+      const freshUser = useAppStore.getState().user;
+      if (!message.trim() || isSendingRef.current || !freshUser) {
         return;
       }
 
@@ -66,7 +70,7 @@ export const useChatOptimized = () => {
 
       // OPTIMISTIC: Create temporary chat for new conversations
       if (isNewConversation) {
-        tempId = createOptimisticChat(user.id, message);
+        tempId = createOptimisticChat(freshUser.id, message);
         workingConversationId = tempId;
         
         // 🔧 FIX: Use replace for smooth navigation without reload
@@ -273,7 +277,6 @@ export const useChatOptimized = () => {
     },
     [
       selectedModel,
-      user,
       router,
       createOptimisticChat,
       linkOptimisticChatId,

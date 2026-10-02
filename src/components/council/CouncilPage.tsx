@@ -27,7 +27,7 @@ const CouncilPage: React.FC = () => {
   const [refreshConversations, setRefreshConversations] = useState(0);
 
   const initializedRef = useRef(false);
-  const lastConversationIdRef = useRef<string | undefined>();
+  const lastConversationIdRef = useRef<string | undefined>(undefined);
 
   // ---------- INIT USER ----------
   useEffect(() => {

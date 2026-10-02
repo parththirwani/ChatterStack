@@ -21,10 +21,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const [pendingMessage, setPendingMessage] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const { selectedModel } = useModelSelection();
-  const user = useAppStore((state) => state.user);
-  
-  // Allow guests to use the app, but show modal on send
-  const isAuthenticated = user && user.id && user.id !== 'guest';
+  const initializeUser = useAppStore((state) => state.initializeUser);
   
   const {
     messages,
@@ -156,9 +153,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSendMessage = useCallback(async () => {
     if (!message.trim() || loading) return;
 
+    // Re-read auth state fresh: the render-time `user` can be stale right
+    // after an OAuth redirect, which previously re-opened the login modal
+    // even though the user was already authenticated.
+    const freshUser = useAppStore.getState().user;
+    const authenticated = freshUser && freshUser.id && freshUser.id !== 'guest';
+
     // Check if user is authenticated - if not, show modal
-    if (!isAuthenticated) {
-      setPendingMessage(message.trim());
+    if (!authenticated) {
+      const text = message.trim();
+      setPendingMessage(text);
+      // Persist across the full-page OAuth redirect (React state is wiped).
+      try {
+        sessionStorage.setItem('pendingChatMessage', text);
+      } catch {
+        // storage unavailable - pending message only lives in memory
+      }
       setShowLoginModal(true);
       return;
     }
@@ -175,35 +185,95 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onConversationCreated(newConversationId);
       }
     });
-  }, [message, loading, isAuthenticated, sendMessage, onConversationCreated, currentConversationId]);
+  }, [message, loading, sendMessage, onConversationCreated, currentConversationId]);
+
+  // Restore a pending message that was saved before the full-page OAuth
+  // redirect. After returning to `/?auth=success` React state is empty, so
+  // the message would otherwise be lost and the user asked to log in again.
+  useEffect(() => {
+    let stored: string | null = null;
+    try {
+      stored = sessionStorage.getItem('pendingChatMessage');
+    } catch {
+      stored = null;
+    }
+    if (stored) {
+      setPendingMessage(stored);
+      setMessage(stored);
+      try {
+        sessionStorage.removeItem('pendingChatMessage');
+      } catch {
+        // ignore
+      }
+    }
+  }, []);
 
   const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
     setShowLoginModal(false);
-    
-    // Wait a bit for auth state to propagate
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    if (pendingMessage && authenticatedUser) {
+
+    // Ensure the store has the fresh user (the modal may have fired before
+    // ChatPage's own initialization ran).
+    let freshUser = useAppStore.getState().user;
+    if (!freshUser || !freshUser.id || freshUser.id === 'guest') {
+      try {
+        await initializeUser();
+      } catch {
+        // initializeUser already handles errors internally
+      }
+      freshUser = useAppStore.getState().user;
+    }
+    const effectiveUser = freshUser ?? authenticatedUser;
+    const isValid = effectiveUser && effectiveUser.id && effectiveUser.id !== 'guest';
+
+    // Fall back to the message saved before the OAuth redirect.
+    let textToSend = pendingMessage;
+    if (!textToSend) {
+      try {
+        textToSend = sessionStorage.getItem('pendingChatMessage') || '';
+      } catch {
+        textToSend = '';
+      }
+    }
+
+    if (textToSend && isValid) {
+      try {
+        sessionStorage.removeItem('pendingChatMessage');
+      } catch {
+        // ignore
+      }
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
-      
-      await sendMessage(pendingMessage, (newConversationId: string) => {
+
+      await sendMessage(textToSend, (newConversationId: string) => {
         if (onConversationCreated && !currentConversationId) {
           lastLoadedConversationRef.current = newConversationId;
           onConversationCreated(newConversationId);
         }
       });
-      
+
       setPendingMessage('');
       setMessage('');
     }
-  }, [pendingMessage, sendMessage, onConversationCreated, currentConversationId]);
+  }, [pendingMessage, sendMessage, onConversationCreated, currentConversationId, initializeUser]);
 
   const handleLoginModalClose = useCallback(() => {
     setShowLoginModal(false);
-    if (pendingMessage) {
-      setMessage(pendingMessage);
+    const storedFallback = (() => {
+      try {
+        return sessionStorage.getItem('pendingChatMessage');
+      } catch {
+        return null;
+      }
+    })();
+    const restore = pendingMessage || storedFallback;
+    if (restore) {
+      setMessage(restore);
       setPendingMessage('');
+      try {
+        sessionStorage.removeItem('pendingChatMessage');
+      } catch {
+        // ignore
+      }
     }
   }, [pendingMessage]);
 
