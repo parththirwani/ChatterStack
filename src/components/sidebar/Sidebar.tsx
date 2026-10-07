@@ -99,7 +99,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
     <div
       className={`
         ${collapsed ? 'w-16' : 'w-72'} 
-        h-screen 
+        h-dvh 
         shrink-0 
         transition-all duration-300 ease-in-out 
         flex flex-col 

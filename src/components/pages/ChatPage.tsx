@@ -183,7 +183,7 @@ const ChatPage: React.FC = () => {
   // Show loading state
   if (userLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#201d26]">
+      <div className="flex h-dvh items-center justify-center bg-[#201d26]">
         <div className="text-center">
           <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-400">Loading...</p>
@@ -194,7 +194,7 @@ const ChatPage: React.FC = () => {
 
   return (
     <>
-      <div className="flex h-screen overflow-hidden relative">
+      <div className="flex h-dvh overflow-hidden relative">
         {/* Mobile Menu Button */}
         {isMobile && (
           <button

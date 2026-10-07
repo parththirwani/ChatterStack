@@ -32,6 +32,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     startNewConversation,
     loadConversation,
     clearError,
+    stopGenerating,
     currentConversationId,
   } = useChatOptimized();
 
@@ -62,6 +63,15 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       
       loadConversation(selectedConversationId).finally(() => {
         isLoadingConversationRef.current = false;
+        // Land at the bottom of the loaded conversation once, then re-enable autoscroll
+        requestAnimationFrame(() => {
+          const container = messagesContainerRef.current;
+          if (container) {
+            container.scrollTop = container.scrollHeight;
+          }
+          autoScrollEnabledRef.current = true;
+          userHasScrolledRef.current = false;
+        });
       });
     } else if (!selectedConversationId && lastLoadedConversationRef.current) {
       lastLoadedConversationRef.current = undefined;
@@ -352,6 +362,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 message={message}
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
+                onStopGenerating={stopGenerating}
                 loading={loading}
                 placeholder={isCouncilMode ? "Ask the AI council a question..." : "Message AI chat..."}
               />
@@ -423,6 +434,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                 message={message}
                 onMessageChange={setMessage}
                 onSendMessage={handleSendMessage}
+                onStopGenerating={stopGenerating}
                 loading={loading}
                 placeholder={isCouncilMode ? "Ask the AI council..." : "Message AI chat..."}
               />

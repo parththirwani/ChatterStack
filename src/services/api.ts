@@ -121,11 +121,13 @@ export class ApiService {
     onChunk?: (chunk: string) => void,
     onDone?: () => void,
     onConversationId?: (id: string) => void,
-    onProgress?: (progress: CouncilProgress) => void
+    onProgress?: (progress: CouncilProgress) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     const response = await fetch('/api/chat', {
       method: 'POST',
       credentials: 'include',
+      signal,
       headers: {
         'Content-Type': 'application/json',
         'Accept': 'text/event-stream',
@@ -199,7 +201,8 @@ export class ApiService {
     onChunk: (chunk: string) => void,
     onProgress: (progress: CouncilProgress) => void,
     onDone: () => void,
-    onConversationId: (id: string) => void
+    onConversationId: (id: string) => void,
+    signal?: AbortSignal
   ): Promise<void> {
     await this.sendMessage(
       {
@@ -210,7 +213,8 @@ export class ApiService {
       onChunk,
       onDone,
       onConversationId,
-      onProgress
+      onProgress,
+      signal
     );
   }
 
