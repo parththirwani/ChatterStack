@@ -9,6 +9,7 @@ import 'katex/dist/katex.min.css';
 
 import Image from 'next/image';
 import MessageActions from '../../actions/MessageActions';
+import { getModelMeta } from '@/src/lib/models';
 
 interface AIMessageProps {
   content: string;
@@ -20,15 +21,6 @@ interface AIMessageProps {
   showDownload?: boolean;
 }
 
-const modelInfo: Record<string, { name: string; logo: string; invert?: boolean }> = {
-  'deepseek/deepseek-chat-v3.1': { name: 'DeepSeek', logo: '/deepseek.svg' },
-  'google/gemini-2.5-flash': { name: 'Gemini', logo: '/gemini.svg' },
-  'google/gemini-3-pro-preview': { name: 'Gemini 3 Pro', logo: '/gemini.svg' },
-  'openai/gpt-4o': { name: 'GPT-4o', logo: '/openai.svg', invert: true },
-  'anthropic/claude-sonnet-4.5': { name: 'Claude', logo: '/claude.svg' },
-  'council': { name: 'AI Council', logo: '/logo.png' },
-};
-
 const AIMessage: React.FC<AIMessageProps> = ({
   content,
   modelId,
@@ -38,7 +30,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
   showCopy = true,
   showDownload = true,
 }) => {
-  const model = modelId ? modelInfo[modelId] : null;
+  const model = getModelMeta(modelId);
 
   return (
     <div className="w-full">

@@ -100,7 +100,7 @@ const CouncilPage: React.FC = () => {
   // ---------- LOADING UI ----------
   if (userLoading) {
     return (
-      <div className="flex h-screen items-center justify-center bg-[#201d26]">
+      <div className="flex h-dvh items-center justify-center bg-[#201d26]">
         <motion.div
           className="w-10 h-10 border-2 border-yellow-400 border-t-transparent rounded-full"
           animate={{ rotate: 360 }}
@@ -111,7 +111,7 @@ const CouncilPage: React.FC = () => {
   }
 
   return (
-    <div className="flex h-screen bg-[#1a1822] text-white overflow-hidden">
+    <div className="flex h-dvh bg-[#1a1822] text-white overflow-hidden">
       {/* ---------- SIDEBAR ---------- */}
       <motion.div
         animate={{ width: sidebarCollapsed ? 80 : 280 }}

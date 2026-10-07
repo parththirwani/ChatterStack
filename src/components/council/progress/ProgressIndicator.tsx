@@ -2,6 +2,7 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Brain, CheckCircle, Loader2 } from 'lucide-react';
 import Image from 'next/image';
+import { getModelMeta } from '@/src/lib/models';
 
 interface CouncilProgress {
   stage: string;
@@ -13,13 +14,6 @@ interface CouncilProgressIndicatorProps {
   progress: CouncilProgress[];
   isActive: boolean;
 }
-
-const modelInfo: Record<string, { name: string; logo: string; invert?: boolean }> = {
-  'openai/gpt-5.1': { name: 'GPT-5.1', logo: '/openai.svg', invert: true },
-  'google/gemini-3-pro-preview': { name: 'Gemini 3 Pro', logo: '/gemini.svg' },
-  'anthropic/claude-sonnet-4.5': { name: 'Claude 4.5', logo: '/claude.svg' },
-  'x-ai/grok-4': { name: 'Grok 4', logo: '/grok.svg' },
-};
 
 const stageInfo: Record<string, { name: string; description: string }> = {
   initialization: { name: 'Initializing', description: 'Preparing council' },
@@ -131,7 +125,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
               {totalModels > 0 && (
                 <div className="grid grid-cols-2 gap-2">
                   {currentStageProgress.map((p) => {
-                    const model = modelInfo[p.model];
+                    const model = getModelMeta(p.model);
                     const isComplete = p.progress === 100;
                     const isProcessing = p.progress > 0 && p.progress < 100;
 

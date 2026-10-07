@@ -44,6 +44,11 @@ export const useChatOptimized = () => {
   const refreshOptimisticChats = useAppStore((state) => state.refreshOptimisticChats);
   
   const isSendingRef = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const stopGenerating = useCallback(() => {
+    abortControllerRef.current?.abort();
+  }, []);
 
   const sendMessage = useCallback(
     async (
@@ -60,6 +65,8 @@ export const useChatOptimized = () => {
       }
 
       isSendingRef.current = true;
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
 
       const store = useAppStore.getState();
       const isNewConversation = !store.currentConversationId;
@@ -223,7 +230,8 @@ export const useChatOptimized = () => {
             },
             handleProgress,
             finalizeMessage,
-            handleNewConversation
+            handleNewConversation,
+            abortController.signal
           );
         } else {
           await ApiService.sendMessage(
@@ -238,27 +246,41 @@ export const useChatOptimized = () => {
             },
             finalizeMessage,
             handleNewConversation,
-            undefined
+            undefined,
+            abortController.signal
           );
         }
 
       } catch (error) {
-        const finalState = useAppStore.getState();
-        const finalChatState = finalState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
-        
-        finalState.setChatState(conversationKey, {
-          error: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
-          messages: finalChatState.messages.filter((msg) => msg.role !== 'assistant' || msg.id),
-        });
-        
-        // Update optimistic status to error
-        if (tempId || realConversationId) {
-          const chatId = realConversationId || tempId!;
-          updateOptimisticChatStatus(
-            chatId,
-            'error',
-            error instanceof Error ? error.message : 'Failed to send message'
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          // User stopped generation: keep the partial response as-is
+          const freshState = useAppStore.getState();
+          const freshChatState = freshState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
+          const currentMessages = freshChatState.messages;
+          const updatedMessages = currentMessages.map((msg, idx) =>
+            idx === currentMessages.length - 1 && msg.role === 'assistant' && !msg.id
+              ? { ...msg, content: fullResponse, id: `${selectedModel}-${Date.now()}`, createdAt: new Date().toISOString() }
+              : msg
           );
+          freshState.setChatState(conversationKey, { messages: updatedMessages });
+        } else {
+          const finalState = useAppStore.getState();
+          const finalChatState = finalState.chatState[conversationKey] || DEFAULT_CHAT_STATE;
+
+          finalState.setChatState(conversationKey, {
+            error: error instanceof Error ? error.message : 'Failed to send message. Please try again.',
+            messages: finalChatState.messages.filter((msg) => msg.role !== 'assistant' || msg.id),
+          });
+
+          // Update optimistic status to error
+          if (tempId || realConversationId) {
+            const chatId = realConversationId || tempId!;
+            updateOptimisticChatStatus(
+              chatId,
+              'error',
+              error instanceof Error ? error.message : 'Failed to send message'
+            );
+          }
         }
       } finally {
         const finalState = useAppStore.getState();
@@ -273,6 +295,7 @@ export const useChatOptimized = () => {
         }
         
         isSendingRef.current = false;
+        abortControllerRef.current = null;
       }
     },
     [
@@ -316,5 +339,6 @@ export const useChatOptimized = () => {
     loadConversation,
     startNewConversation,
     clearError,
+    stopGenerating,
   };
 };
