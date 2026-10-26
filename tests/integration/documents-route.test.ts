@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import crypto from 'node:crypto';
+import { readFileSync } from 'node:fs';
 
 const auth = vi.fn();
 const records = new Map<string, Record<string, unknown>>();
@@ -62,9 +63,9 @@ beforeEach(() => {
   storage.stat.mockResolvedValue({ size: file.length, contentType: 'text/markdown' });
   storage.read.mockResolvedValue(file);
   storage.delete.mockResolvedValue(undefined);
-  storage.stream.mockResolvedValue({ statusCode: 200, stream: new ReadableStream({
+  storage.stream.mockImplementation(async () => ({ statusCode: 200, stream: new ReadableStream({
     start(controller) { controller.enqueue(file); controller.close(); },
-  }) });
+  }) }));
 });
 
 describe('document routes', () => {
@@ -135,6 +136,34 @@ describe('document routes', () => {
     expect((await remove(request('documents/1', {}), context(id))).status).toBe(204);
     expect(storage.delete).toHaveBeenCalledWith(storageKey);
     expect(records.has(id)).toBe(false);
+  });
+
+  it('serves an authenticated inline preview while keeping downloads as attachments', async () => {
+    const saved = await (await confirm(request('documents', input))).json();
+    const id = saved.document.id;
+    const preview = await content(new Request(`http://localhost/api/documents/${id}/content?preview=1`), context(id));
+    expect(preview.headers.get('Content-Disposition')).toMatch(/^inline;/);
+    expect(preview.headers.get('Cache-Control')).toBe('private, no-store');
+    expect(await preview.text()).toBe('# Notes');
+    const download = await content(new Request(`http://localhost/api/documents/${id}/content`), context(id));
+    expect(download.headers.get('Content-Disposition')).toMatch(/^attachment;/);
+    auth.mockResolvedValue({ user: { id: 'user-2' } });
+    expect((await content(new Request(`http://localhost/api/documents/${id}/content?preview=1`), context(id))).status).toBe(404);
+  });
+
+  it('extracts readable text from a private DOCX preview', async () => {
+    const bytes = readFileSync('tests/fixtures/attachment.docx');
+    storage.read.mockResolvedValue(bytes);
+    records.set('docx', {
+      id: 'docx', userId, name: 'attachment.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      size: bytes.length, storageKey: 'users/user-1/docx/attachment.docx',
+    });
+    const preview = await content(new Request('http://localhost/api/documents/docx/content?preview=1'), context('docx'));
+    expect(preview.status).toBe(200);
+    expect(preview.headers.get('Content-Type')).toBe('text/plain; charset=utf-8');
+    expect((await preview.text()).trim().length).toBeGreaterThan(0);
+    expect(storage.stream).not.toHaveBeenCalled();
   });
 
   it('protects the cleanup endpoint with CRON_SECRET', async () => {
