@@ -125,7 +125,7 @@ const ChatHeader = memo(function ChatHeader({
           <div className={`group flex min-w-0 items-center gap-1 ${isFirstMessage ? 'lg:hidden' : ''}`}>
             <span
               onDoubleClick={onRename && startEditing}
-              className="max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4]"
+              className={`max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4] ${onRename ? 'cursor-pointer select-none' : 'cursor-default'}`}
             >
               {title}
             </span>
