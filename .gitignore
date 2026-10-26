@@ -84,6 +84,7 @@ docker-compose.override.yml
 .vercel
 .env*
 .cora-cli/
+.codemate-vm.local.md
 
 # ==============================
 # Tests
