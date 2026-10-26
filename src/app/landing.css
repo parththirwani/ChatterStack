@@ -1810,7 +1810,7 @@
 }
 .landing-model img[src*="gemini"],
 .landing-story-model img[src*="gemini"] {
-  transform: scale(0.94);
+  transform: scale(1.08);
   filter: grayscale(1) brightness(1.7);
 }
 .landing-approach-outcome {
@@ -2022,5 +2022,20 @@
 @media (max-width: 379px) {
   .landing-self-host .landing-terminal p {
     font-size: 12px;
+  }
+}
+/* Council round 7 */
+.landing-self-host .landing-terminal code {
+  padding-top: 34px;
+}
+@media (max-width: 767px) {
+  .landing-self-host .landing-terminal code {
+    padding-top: 28px;
+  }
+  .landing-council {
+    padding-bottom: 40px;
+  }
+  .landing-story-mobile-cta {
+    margin-top: 14px;
   }
 }
