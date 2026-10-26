@@ -15,6 +15,7 @@
 
 ## Long-running CodeMate work
 
+- Open `https://app.aisdlcmarutisuzuki.com`, go to **Cloud VMs**, select **parth-machine**, and use its agent chat. Earlier chats are available in the chat sidebar.
 - If `.codemate-vm.local.md` exists, read it for this user's Cloud VM link and chat workflow. It is local and gitignored; never commit it or login credentials.
 - For a long-running task, send a clear brief to the VM workspace agent. Have it branch from the latest `origin/dev`, commit and push checkpoints, run relevant checks, and return the session link, head commit, test results, and PR URL with `dev` as the base.
 - Review the remote branch and PR before reporting the result to the user. Do not merge without the user's request.
