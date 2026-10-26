@@ -11,8 +11,10 @@ import { createSSEStream } from '@/src/lib/api/chat/sse-helper';
 import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
+import { AnalyticsEvents, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
+import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { ChatRequestSchema } from '@/src/types/chat.types';
-import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
+import { COUNCIL_MODEL_IDS, DEFAULT_THINKING_LEVEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
@@ -120,15 +122,28 @@ export async function POST(request: NextRequest) {
       isCouncilMode
     );
     if (rateLimitCheck) {
+      captureServerEvent(userId, AnalyticsEvents.RateLimitHit, {
+        council: isCouncilMode,
+        limit: rateLimitCheck.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
+      });
       return rateLimitCheck; // Returns 429 with detailed token info
     }
     // End rate limiting check
+
+    captureServerEvent(userId, AnalyticsEvents.ChatMessageSent, chatMessageSentProps({
+      modelId: selectedModel,
+      council: isCouncilMode,
+      thinkingLevel,
+      attachmentCount: attachments.length,
+      messageLength: data.message?.length ?? 0,
+    }));
 
     // Check (or claim) the conversation before streaming anything: the id
     // comes from the client, so it must belong to this user.
     if (isNewConversation) {
       try {
         await createEmptyConversation(conversationId, userId);
+        captureServerEvent(userId, AnalyticsEvents.ConversationCreated, { council: isCouncilMode });
       } catch (error) {
         if (isUniqueViolation(error)) return jsonError('Conversation already exists', 409);
         throw error;
@@ -183,6 +198,8 @@ export async function POST(request: NextRequest) {
       // On Stop/disconnect the model call is cancelled and resolves with the
       // text written so far, which is still saved and counted below.
       let fullContent = '';
+      const modelStartedAt = Date.now();
+      let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
           ? await runCouncilProcess(
@@ -207,12 +224,25 @@ export async function POST(request: NextRequest) {
             });
         send({ done: true });
       } catch (error) {
+        outcome = signal.aborted ? 'stopped' : 'error';
         if (!signal.aborted) {
           console.error('Model call failed:', error);
           send({
             error: error instanceof Error ? error.message : 'Failed to generate response',
           });
         }
+      }
+      if (signal.aborted && outcome === 'success') outcome = 'stopped';
+
+      captureServerEvent(userId, AnalyticsEvents.ChatResponseCompleted, chatResponseCompletedProps({
+        modelId: selectedModel, council: isCouncilMode, startedAt: modelStartedAt, outcome,
+      }));
+      if (isCouncilMode) {
+        captureServerEvent(userId, AnalyticsEvents.CouncilRunCompleted, councilRunCompletedProps({
+          members: data.council?.members?.length ?? COUNCIL_MODEL_IDS.length,
+          startedAt: modelStartedAt,
+          outcome,
+        }));
       }
 
       // Count every call, including stopped and failed ones: the prompt was

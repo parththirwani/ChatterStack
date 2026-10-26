@@ -428,6 +428,8 @@ export async function withLLMTokenLimit(
           'X-RateLimit-Council-Remaining': result.councilRemaining.toString(),
           'X-RateLimit-Reset': result.resetAt.toString(),
           'Retry-After': (result.retryAfter || 0).toString(),
+          // Which of the two limits tripped (the council cap or the token cap).
+          'X-RateLimit-Limit-Type': isCouncil && result.councilUsed >= result.councilLimit ? 'council' : 'tokens',
         },
       }
     );
