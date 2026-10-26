@@ -192,8 +192,12 @@ export default function LandingPage() {
                   <span>DeepSeek V4.1 Flash</span>
                   <span>Medium</span>
                 </div>
+                <div className="landing-approach-outcome">
+                  <span>Reply with the selected model</span>
+                  <p>Let’s compare the search paths before choosing an index.</p>
+                </div>
                 <span className="landing-approach-caption">
-                  Illustrative model picker
+                  Illustrative model choice and reply
                 </span>
               </div>
               <div>
@@ -205,11 +209,16 @@ export default function LandingPage() {
                 </p>
                 <div className="landing-approach-demo landing-approach-history">
                   <Search size={15} aria-hidden="true" />
-                  <span>Search system design</span>
+                  <span>Search conversations</span>
                   <ArrowRight size={14} aria-hidden="true" />
                 </div>
+                <div className="landing-approach-outcome landing-approach-result">
+                  <span>Matching conversation</span>
+                  <p>Search system design</p>
+                  <ArrowRight size={15} aria-hidden="true" />
+                </div>
                 <span className="landing-approach-caption">
-                  Illustrative conversation search
+                  Illustrative conversation result
                 </span>
               </div>
             </div>
