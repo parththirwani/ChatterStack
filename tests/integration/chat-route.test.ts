@@ -46,7 +46,7 @@ vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
 vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
 const storage = { read: vi.fn(async (key: string) => key.endsWith('plan') ? Buffer.from('# Project plan') : Buffer.from('%PDF-1.7\nexample')) };
 vi.mock('@/src/lib/server/document-storage', () => ({ documentStorage: storage }));
-const redis = { get: vi.fn(async (): Promise<unknown[]> => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}), delete: vi.fn(async () => {}) };
+const redis = { get: vi.fn<(id: string) => Promise<unknown[]>>(async () => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}), delete: vi.fn(async () => {}) };
 vi.mock('@/src/lib/redis', () => ({ redisStore: redis }));
 const recordLLMTokens = vi.fn<(user: string, tokens: number, council: boolean) => Promise<void>>(async () => {});
 vi.mock('@/src/lib/api/chat/rag-integration', () => ({
@@ -411,6 +411,51 @@ describe('POST /api/chat, when the user stops', () => {
     expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start ');
     expect(recordLLMTokens).toHaveBeenCalledTimes(1);
     expect(recordLLMTokens.mock.calls[0][1]).toBeGreaterThan('Explain TCP'.length);
+  });
+});
+
+describe('POST /api/chat, when the user steers', () => {
+  it('answers the steered message only after the interrupted turn is saved, with it in the history', async () => {
+    const cache = new Map<string, unknown[]>();
+    redis.get.mockImplementation(async (id: string) => cache.get(id) ?? []);
+    redis.set.mockImplementation(async (id: string, messages: unknown[]) => void cache.set(id, messages));
+    try {
+      // The interrupted turn is slow to save, as when Postgres is busy.
+      recordLLMTokens.mockImplementationOnce(() => new Promise((resolve) => setTimeout(resolve, 30)));
+
+      const steer = new AbortController();
+      fetchMock.mockImplementationOnce(async (_url: string, init: RequestInit) => {
+        const encoder = new TextEncoder();
+        return new Response(new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Long essay ' } }] })}\n\n`));
+            init.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')));
+          },
+        }));
+      });
+
+      const interrupted = post({ message: 'Write an essay', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }, steer.signal);
+      const firstEvents = readEvents(await interrupted);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Steer: the client drops the first request and sends the next one at once.
+      steer.abort();
+      const steered = await post({ message: 'Keep it short', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID });
+      await Promise.allSettled([firstEvents]);
+      await readEvents(steered);
+
+      const steeredBody = openRouterBodies().at(-1);
+      const sent = steeredBody.messages.map((m: { role: string; content: unknown }) =>
+        `${m.role}=${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`);
+      expect(sent).toEqual(expect.arrayContaining(['user=Write an essay', 'assistant=Long essay ']));
+      expect(sent.at(-1)).toContain('Keep it short');
+      // The cache ends with both turns, in order.
+      expect((cache.get(NEW_ID) as Array<{ content: string }>).map((m) => m.content)).toEqual([
+        'Write an essay', 'Long essay ', 'Keep it short', 'Slow start doubles cwnd.',
+      ]);
+    } finally {
+      redis.get.mockImplementation(async () => []);
+      redis.set.mockImplementation(async () => {});
+    }
   });
 });
 
