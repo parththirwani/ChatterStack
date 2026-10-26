@@ -104,3 +104,33 @@ test('pin and rename cannot touch another user’s chat', async ({ request }) =>
   const anonymous = await request.patch(`/api/conversations/${IDS.recent}`, { data: { pinned: true }, headers: { cookie: '' } });
   expect([401, 404]).toContain(anonymous.status());
 });
+
+test('renames the open chat from the pencil next to its title in the header', async ({ page }) => {
+  await openApp(page, {}, `/${IDS.recent}`);
+  const header = page.locator('header').filter({ hasText: 'Recent chat' });
+  const pencil = header.getByRole('button', { name: 'Rename chat' });
+  await expect(pencil).toHaveCSS('opacity', '0');
+  await header.getByText('Recent chat').hover();
+  await expect(pencil).toHaveCSS('opacity', '1');
+
+  await pencil.click();
+  const input = page.getByRole('textbox', { name: 'Chat title' });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('Recent chat');
+  await input.fill('Never saved');
+  await input.press('Escape');
+  expect(conversationRow(IDS.recent)?.title).toBe('Recent chat');
+
+  await pencil.click();
+  await input.fill('Header rename');
+  await input.press('Enter');
+  await expect(page.locator('header').getByText('Header rename')).toBeVisible();
+  await expect(sidebar.chats(page).getByRole('button', { name: 'Header rename', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect.poll(() => conversationRow(IDS.recent)?.title).toBe('Header rename');
+  await expect(page.getByText('Hello there')).toBeVisible();
+});
+
+test('the new-chat screen has no rename pencil', async ({ page }) => {
+  await openApp(page);
+  await expect(page.getByRole('button', { name: 'Rename chat' })).toHaveCount(0);
+});
