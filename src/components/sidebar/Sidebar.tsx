@@ -9,7 +9,8 @@ import UserSection from '@/src/components/sidebar/user/UserSection';
 import { useAppStore } from '@/src/store/rootStore';
 import { sortConversations } from '@/src/store/slices/conversations/conversationSlice';
 import Resources from './resources/Resources';
-import { Files, MessageSquare } from 'lucide-react';
+import SkillsPanel from '../skills/SkillsPanel';
+import { Files, MessageSquare, Sparkles } from 'lucide-react';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -38,7 +39,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   initialConversations,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
-  const [tab, setTab] = useState<'chats' | 'resources'>('chats');
+  const [tab, setTab] = useState<'chats' | 'resources' | 'skills'>('chats');
 
   const storedConversations = useAppStore((state) => state.conversations);
   const conversationsHydrated = useAppStore((state) => state.conversationsHydrated);
@@ -143,12 +144,13 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
       {isAuthenticated && <div role="tablist" aria-label="Sidebar sections" className={`flex gap-1 px-3 py-2 ${collapsed ? 'flex-col' : ''}`}>
         <button type="button" role="tab" aria-selected={tab === 'chats'} aria-label="Chats" onClick={() => setTab('chats')} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs ${tab === 'chats' ? 'bg-white/[0.09] text-white' : 'text-[#aaa6a2] hover:bg-white/[0.05]'}`}><MessageSquare className="h-4 w-4" />{!collapsed && 'Chats'}</button>
         <button type="button" role="tab" aria-selected={tab === 'resources'} aria-label="Resources" onClick={() => setTab('resources')} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs ${tab === 'resources' ? 'bg-white/[0.09] text-white' : 'text-[#aaa6a2] hover:bg-white/[0.05]'}`}><Files className="h-4 w-4" />{!collapsed && 'Resources'}</button>
+        <button type="button" role="tab" aria-selected={tab === 'skills'} aria-label="Skills" onClick={() => setTab('skills')} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs ${tab === 'skills' ? 'bg-white/[0.09] text-white' : 'text-[#aaa6a2] hover:bg-white/[0.05]'}`}><Sparkles className="h-4 w-4" />{!collapsed && 'Skills'}</button>
       </div>}
 
       {/* Chat History OR Spacer */}
       {!collapsed && isAuthenticated ? (
         <div className="flex-1 overflow-y-auto min-h-0 px-2">
-          {tab === 'resources' ? <Resources /> : <><NewChatDraft onOpen={handleNewChat} isOpen={currentConversationId === undefined} />
+          {tab === 'resources' ? <Resources /> : tab === 'skills' ? <SkillsPanel /> : <><NewChatDraft onOpen={handleNewChat} isOpen={currentConversationId === undefined} />
           <ChatHistory
             loadingConversations={conversationsLoading}
             chats={filteredChats}
