@@ -1,6 +1,7 @@
 import { formatMessagesWithSystemContext } from '@/src/services/prompt/promptService';
 import { effectiveThinkingLevel, type ThinkingLevel } from '@/src/config/models';
 import type { OpenRouterPart } from './attachments';
+import type { ParsedSkill } from '@/src/lib/skills/skill-file';
 
 type ChatMessage = { role: string; content: string | OpenRouterPart[] };
 
@@ -142,7 +143,7 @@ export async function streamCompletion(
 export async function createCompletion(
   messages: ChatMessage[],
   model: string,
-  options: StreamOptions = {}
+  { skills, ...options }: StreamOptions & { skills?: readonly ParsedSkill[] } = {}
 ): Promise<string> {
-  return streamCompletion(formatMessagesWithSystemContext(messages, model), model, options);
+  return streamCompletion(formatMessagesWithSystemContext(messages, model, skills), model, options);
 }

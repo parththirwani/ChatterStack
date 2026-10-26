@@ -14,6 +14,7 @@ const db = {
     findMany: vi.fn(),
     count: vi.fn(),
   },
+  skill: { findMany: vi.fn() },
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
@@ -121,6 +122,22 @@ describe('GET /api/conversations/[id]', () => {
     const response = await byId.GET(new Request('http://localhost/api/conversations/c1') as unknown as NextRequest, params('c1'));
     expect(db.conversation.findFirst.mock.calls[0][0].where).toEqual({ id: 'c1', userId: 'user-1' });
     expect((await response.json()).conversation.pinnedAt).toBe(pinnedAt.toISOString());
+  });
+
+  it('returns tagged skills and marks deleted ones as removed', async () => {
+    db.conversation.findFirst.mockResolvedValue({
+      id: 'c1', title: 'T', pinnedAt: null, userId: 'user-1', createdAt: updatedAt, updatedAt, messages: [{
+        id: 'm1', role: 'user', content: 'Hi', modelId: null, createdAt: updatedAt, updatedAt,
+        skills: [{ id: 's1', name: 'kept' }, { id: 's2', name: 'deleted' }],
+      }],
+    });
+    db.skill.findMany.mockResolvedValue([{ id: 's1' }]);
+    const response = await byId.GET(new Request('http://localhost/api/conversations/c1') as unknown as NextRequest, params('c1'));
+    expect(db.skill.findMany).toHaveBeenCalledWith({ where: { userId: 'user-1', id: { in: ['s1', 's2'] } }, select: { id: true } });
+    expect((await response.json()).conversation.messages[0].skills).toEqual([
+      { id: 's1', name: 'kept', removed: false },
+      { id: 's2', name: 'deleted', removed: true },
+    ]);
   });
 
   it("returns 404 for someone else's chat", async () => {

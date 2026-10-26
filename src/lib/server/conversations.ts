@@ -2,6 +2,7 @@ import { prisma } from '@/src/lib/prisma';
 import type { Conversation } from '@/src/types/conversation.types';
 import type { Message } from '@/src/types/chat.types';
 import type { AttachmentMeta } from '@/src/types/chat.types';
+import type { SkillTag } from '@/src/types/skill.types';
 
 /**
  * The one place conversations are read and shaped for the client, shared by
@@ -15,6 +16,7 @@ interface MessageRow {
   content: string | null;
   modelId: string | null;
   attachments?: unknown;
+  skills?: unknown;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -29,7 +31,13 @@ interface ConversationRow {
   messages: MessageRow[];
 }
 
-function serializeMessage(message: MessageRow, presentDocuments?: Set<string>): Message {
+/** Ids still present, used to mark deleted documents and skills as removed. */
+interface Present {
+  documents: Set<string>;
+  skills: Set<string>;
+}
+
+function serializeMessage(message: MessageRow, present?: Present): Message {
   return {
     id: message.id,
     role: message.role as Message['role'],
@@ -37,15 +45,18 @@ function serializeMessage(message: MessageRow, presentDocuments?: Set<string>): 
     modelId: message.modelId ?? undefined,
     attachments: Array.isArray(message.attachments)
       ? (message.attachments as AttachmentMeta[]).map(({ documentId, name, mimeType, size }) => ({
-        documentId, name, mimeType, size, removed: !!documentId && !!presentDocuments && !presentDocuments.has(documentId),
+        documentId, name, mimeType, size, removed: !!documentId && !!present && !present.documents.has(documentId),
       }))
+      : undefined,
+    skills: Array.isArray(message.skills) && message.skills.length
+      ? (message.skills as SkillTag[]).map(({ id, name }) => ({ id, name, removed: !!present && !present.skills.has(id) }))
       : undefined,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   };
 }
 
-function serializeConversation(conversation: ConversationRow, presentDocuments?: Set<string>): Conversation {
+function serializeConversation(conversation: ConversationRow, present?: Present): Conversation {
   return {
     id: conversation.id,
     title: conversation.title ?? undefined,
@@ -53,7 +64,7 @@ function serializeConversation(conversation: ConversationRow, presentDocuments?:
     userId: conversation.userId,
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
-    messages: conversation.messages.map((message) => serializeMessage(message, presentDocuments)),
+    messages: conversation.messages.map((message) => serializeMessage(message, present)),
   };
 }
 
@@ -86,8 +97,15 @@ export async function getConversation(userId: string, conversationId: string): P
       ? (message.attachments as unknown as AttachmentMeta[]).map((file) => file.documentId).filter((id): id is string => !!id)
       : []
   );
-  const documents = ids.length ? await prisma.document.findMany({
-    where: { userId, id: { in: ids } }, select: { id: true },
-  }) : [];
-  return serializeConversation(conversation, new Set(documents.map((document) => document.id)));
+  const skillIds = conversation.messages.flatMap((message) =>
+    Array.isArray(message.skills) ? (message.skills as unknown as SkillTag[]).map((skill) => skill.id) : []
+  );
+  const [documents, skills] = await Promise.all([
+    ids.length ? prisma.document.findMany({ where: { userId, id: { in: ids } }, select: { id: true } }) : [],
+    skillIds.length ? prisma.skill.findMany({ where: { userId, id: { in: skillIds } }, select: { id: true } }) : [],
+  ]);
+  return serializeConversation(conversation, {
+    documents: new Set(documents.map((document) => document.id)),
+    skills: new Set(skills.map((skill) => skill.id)),
+  });
 }

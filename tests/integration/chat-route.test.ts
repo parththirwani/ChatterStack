@@ -12,9 +12,15 @@ const auth = vi.fn();
 const OTHER_USERS_CHAT = '9f1c2d3e-0000-4000-8000-000000000000';
 const PLAN_ID = '64c8ca0b-82db-41a4-a62d-a2a920a5bb62';
 const PDF_ID = 'a36e8a04-5967-43dd-aa7a-cab1497813ee';
+const SKILL_ID = '5b1f6c2a-7d3e-4f1a-9c2b-1e2d3c4b5a69';
+const skillRows = new Map<string, { id: string; userId: string; name: string; description: string; instructions: string; source: string; createdAt: Date; updatedAt: Date }>();
 const documentRows = new Map<string, { id: string; userId: string; name: string; mimeType: string; size: number; storageKey: string }>();
 
 const db = {
+  skill: {
+    findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; userId: string } }) =>
+      [...skillRows.values()].filter((row) => row.userId === where.userId && where.id.in.includes(row.id))),
+  },
   document: {
     findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; userId: string } }) =>
       [...documentRows.values()].filter((row) => row.userId === where.userId && where.id.in.includes(row.id))),
@@ -75,6 +81,7 @@ function post(body: object, signal?: AbortSignal) {
 beforeEach(() => {
   log.length = 0;
   documentRows.clear();
+  skillRows.clear();
   storage.read.mockClear();
   db.document.findMany.mockClear();
   db.document.updateMany.mockClear();
@@ -302,6 +309,70 @@ describe('POST /api/chat, council mode', () => {
         { type: 'text', text: 'Read this' },
         { type: 'text', text: 'File: earlier.md\n\n# Earlier notes' },
       ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('POST /api/chat, skills', () => {
+  const addSkill = (userId = 'user-1') => skillRows.set(SKILL_ID, {
+    id: SKILL_ID, userId, name: 'pirate-voice', description: 'Talk like a pirate.',
+    instructions: 'Answer in pirate speak.', source: 'created', createdAt: new Date(), updatedAt: new Date(),
+  });
+
+  it('puts tagged skills in the system prompt, counts them, and saves the tags', async () => {
+    addSkill();
+    await readEvents(await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, skills: [SKILL_ID] }));
+
+    const [system, developer] = openRouterBodies()[0].messages;
+    expect(system.role).toBe('system');
+    expect(system.content).toContain('## Active skills');
+    expect(system.content).toContain('### Skill: pirate-voice');
+    expect(system.content).toContain('Answer in pirate speak.');
+    // The security policy still comes after the skill text.
+    expect(developer.role).toBe('developer');
+    expect(db.message.createMany.mock.calls[0][0].data[0]).toMatchObject({ skills: [{ id: SKILL_ID, name: 'pirate-voice' }] });
+    const counted = recordLLMTokens.mock.calls[0][1];
+    expect(counted).toBeGreaterThan('Explain TCP'.length + 'Slow start doubles cwnd.'.length + 'Answer in pirate speak.'.length);
+  });
+
+  it('adds nothing to the prompt or the saved message without skills', async () => {
+    await readEvents(await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+    expect(openRouterBodies()[0].messages[0].content).not.toContain('Active skills');
+    expect(db.message.createMany.mock.calls[0][0].data[0]).not.toHaveProperty('skills');
+  });
+
+  it("refuses a missing or someone else's skill before any model work", async () => {
+    addSkill('user-2');
+    const response = await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true, skills: [SKILL_ID] });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/no longer exists/);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects more than three or duplicate skills', async () => {
+    const ids = ['a', 'b', 'c', 'd'].map((letter) => `5b1f6c2a-7d3e-4f1a-9c2b-1e2d3c4b5a6${letter}`);
+    expect((await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', skills: ids })).status).toBe(400);
+    expect((await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', skills: [SKILL_ID, SKILL_ID] })).status).toBe(400);
+  });
+
+  it('gives council members and the chair the skill, but not the reviewers', async () => {
+    addSkill();
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const response = await post({
+        message: 'Compare REST and gRPC', selectedModel: 'council', conversationId: NEW_ID, skills: [SKILL_ID],
+        council: { members: ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5'], chair: 'anthropic/claude-sonnet-5.5' },
+      });
+      const eventsPromise = readEvents(response);
+      await vi.runAllTimersAsync();
+      await eventsPromise;
+
+      const withSkill = openRouterBodies().filter((body) => body.messages[0].content.includes('Answer in pirate speak.'));
+      // Two members in stage 1, plus the chair.
+      expect(withSkill).toHaveLength(3);
     } finally {
       vi.useRealTimers();
     }

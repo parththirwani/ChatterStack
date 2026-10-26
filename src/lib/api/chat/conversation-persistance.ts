@@ -1,6 +1,7 @@
 import { prisma } from '@/src/lib/prisma';
 import { Role } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
+import type { SkillTag } from '@/src/types/skill.types';
 import type { Prisma } from '@prisma/client';
 
 
@@ -25,12 +26,13 @@ export async function addMessagesToConversation(
   userMessage: string,
   aiResponse: string,
   selectedModel: string,
-  attachments: DocumentAttachment[] = []
+  attachments: DocumentAttachment[] = [],
+  skills: SkillTag[] = []
 ) {
   const userMessageTime = new Date();
   const aiMessageTime = new Date(userMessageTime.getTime() + 1);
   const messages = [
-    { conversationId, content: userMessage, role: Role.User, attachments: attachments as unknown as Prisma.InputJsonValue, createdAt: userMessageTime },
+    { conversationId, content: userMessage, role: Role.User, attachments: attachments as unknown as Prisma.InputJsonValue, ...(skills.length ? { skills: skills as unknown as Prisma.InputJsonValue } : {}), createdAt: userMessageTime },
     ...(aiResponse
       ? [{ conversationId, content: aiResponse, role: Role.Assistant, modelId: selectedModel, createdAt: aiMessageTime }]
       : []),
