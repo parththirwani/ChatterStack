@@ -32,7 +32,7 @@ const councilModels = [
   },
   {
     name: "Claude Sonnet 5.5",
-    image: "/claude.svg",
+    image: "/claude-mark.svg",
     note: "Keep the first version in your database. One less service to operate.",
   },
   {

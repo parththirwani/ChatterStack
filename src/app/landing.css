@@ -1778,3 +1778,78 @@
     margin-inline: 18px;
   }
 }
+
+/* Council round 3 */
+.landing-nav-icon {
+  display: none;
+}
+.landing-final-logo {
+  display: block;
+  margin-inline: auto;
+}
+.landing-story-endcap p {
+  text-wrap: balance;
+}
+.landing-story-bottom {
+  font-size: 12px;
+}
+.landing-approach-demo {
+  font-size: 13px;
+}
+.landing-section-index,
+.landing-story-step > span,
+.landing-approach-number {
+  font-size: 12px;
+}
+.landing-self-host .landing-section-index {
+  color: #6a5224;
+}
+.landing-models-inner > p {
+  color: #a9a49b;
+  font-size: 13px;
+}
+.landing-model img[src*="gemini"],
+.landing-story-model img[src*="gemini"] {
+  transform: scale(0.86);
+}
+.landing-approach-outcome {
+  padding: 14px 16px;
+}
+@media (min-width: 768px) {
+  .landing-models-inner > p br {
+    display: none;
+  }
+  .landing-models-inner > p {
+    white-space: nowrap;
+  }
+  .landing-hero-inner {
+    min-height: clamp(600px, calc(100dvh - 209px), 750px);
+  }
+}
+@media (max-width: 767px) {
+  .landing-nav a:nth-child(3) {
+    display: flex;
+    min-width: 44px;
+    justify-content: center;
+  }
+  .landing-nav-icon {
+    display: block;
+  }
+  .landing-nav-label {
+    display: none;
+  }
+  .landing-story-model {
+    align-items: flex-start;
+  }
+  .landing-story-model img {
+    margin-top: 1px;
+  }
+  .landing-story-question {
+    max-width: 88%;
+  }
+}
+@media (max-width: 420px) {
+  .landing-nav a:first-child {
+    display: none;
+  }
+}

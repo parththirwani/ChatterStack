@@ -20,7 +20,7 @@ export const metadata: Metadata = {
 
 const models = [
   { name: "GPT-6.1 Sol", image: "/openai.svg" },
-  { name: "Claude Sonnet 5.5", image: "/claude.svg" },
+  { name: "Claude Sonnet 5.5", image: "/claude-mark.svg" },
   { name: "Gemini 4 Argon", image: "/gemini.svg" },
   { name: "DeepSeek V4.1 Flash", image: "/deepseek.svg" },
 ];
@@ -43,8 +43,19 @@ export default function LandingPage() {
             href="https://github.com/parththirwani/ChatterStack"
             target="_blank"
             rel="noopener noreferrer"
+            aria-label="GitHub"
           >
-            GitHub <ArrowUpRight size={13} aria-hidden="true" />
+            <Github
+              className="landing-nav-icon"
+              size={16}
+              aria-hidden="true"
+            />
+            <span className="landing-nav-label">GitHub</span>
+            <ArrowUpRight
+              className="landing-nav-label"
+              size={13}
+              aria-hidden="true"
+            />
           </a>
         </nav>
         <Link className="landing-header-cta" href="/chat">
@@ -267,7 +278,13 @@ export default function LandingPage() {
 
         <section className="landing-final" aria-labelledby="final-title">
           <div className="landing-section-shell">
-            <Image src="/logo.png" width={42} height={33} alt="" />
+            <Image
+              className="landing-final-logo"
+              src="/logo.png"
+              width={42}
+              height={33}
+              alt=""
+            />
             <h2 id="final-title">
               Bring your next question
               <br />
