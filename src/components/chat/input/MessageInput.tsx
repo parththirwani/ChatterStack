@@ -6,19 +6,15 @@ import { ThinkingSelector } from './ModelSelector/ThinkingSelector';
 import { CouncilToggle } from './CouncilToggle';
 import LLMTokenIndicator from '../../rate-limit/LLMTokenIndicator';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
-import type { ChatAttachment } from '@/src/types/chat.types';
-
-const MIME_BY_EXTENSION: Record<string, string> = {
-  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
-  pdf: 'application/pdf', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  txt: 'text/plain', md: 'text/markdown',
-};
+import type { DocumentAttachment } from '@/src/types/chat.types';
+import { MIME_BY_EXTENSION, uploadDocument } from '@/src/lib/client/documents';
+import { useAppStore } from '@/src/store/rootStore';
 
 interface MessageInputProps {
   message: string;
   onMessageChange: (message: string) => void;
-  attachments: ChatAttachment[];
-  onAttachmentsChange: React.Dispatch<React.SetStateAction<ChatAttachment[]>>;
+  attachments: DocumentAttachment[];
+  onAttachmentsChange: React.Dispatch<React.SetStateAction<DocumentAttachment[]>>;
   onSendMessage: () => void;
   loading: boolean;
   onStopGenerating?: () => void;
@@ -31,6 +27,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   const [fileError, setFileError] = useState('');
   const [readingFiles, setReadingFiles] = useState(false);
   const { councilMode } = useModelSelection();
+  const userId = useAppStore((state) => state.user?.id);
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -51,22 +48,14 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     if (!files?.length) return;
     setFileError('');
     const selected = Array.from(files);
-    const all = [...attachments, ...selected];
-    if (all.length > 4) { setFileError('Attach up to 4 files.'); return; }
-    if (all.some((file) => file.size > 5 * 1024 * 1024 || file.size === 0)) { setFileError('Each file must be between 1 byte and 5 MB.'); return; }
-    if (all.reduce((size, file) => size + file.size, 0) > 10 * 1024 * 1024) { setFileError('Files must total 10 MB or less.'); return; }
+    if (attachments.length + selected.length > 4) { setFileError('Attach up to 4 files.'); return; }
+    if (selected.some((file) => file.size > 5 * 1024 * 1024 || file.size === 0)) { setFileError('Each file must be between 1 byte and 5 MB.'); return; }
+    if (attachments.reduce((size, file) => size + file.size, 0) + selected.reduce((size, file) => size + file.size, 0) > 10 * 1024 * 1024) { setFileError('Files must total 10 MB or less.'); return; }
     if (selected.some((file) => !MIME_BY_EXTENSION[file.name.split('.').pop()?.toLowerCase() ?? ''])) { setFileError('Use PNG, JPG, WebP, GIF, PDF, DOCX, TXT, or MD files.'); return; }
+    if (!userId || userId === 'guest') { setFileError('Sign in before attaching files.'); return; }
     setReadingFiles(true);
     try {
-      const encoded = await Promise.all(selected.map(async (file): Promise<ChatAttachment> => {
-        const dataUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve(String(reader.result));
-          reader.onerror = () => reject(new Error(`Could not read ${file.name}`));
-          reader.readAsDataURL(file);
-        });
-        return { name: file.name, mimeType: MIME_BY_EXTENSION[file.name.split('.').pop()!.toLowerCase()], size: file.size, data: dataUrl.slice(dataUrl.indexOf(',') + 1) };
-      }));
+      const encoded = await Promise.all(selected.map((file) => uploadDocument(file, userId)));
       onAttachmentsChange((current) => [...current, ...encoded]);
     } catch (error) {
       setFileError(error instanceof Error ? error.message : 'Could not read file.');

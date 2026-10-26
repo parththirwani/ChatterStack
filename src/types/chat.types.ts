@@ -19,6 +19,8 @@ export interface Message {
 }
 
 export interface AttachmentMeta {
+  documentId?: string;
+  removed?: boolean;
   name: string;
   mimeType: string;
   size: number;
@@ -27,6 +29,10 @@ export interface AttachmentMeta {
 export interface ChatAttachment extends AttachmentMeta {
   /** Base64 payload, without a data URL prefix. */
   data: string;
+}
+
+export interface DocumentAttachment extends AttachmentMeta {
+  documentId: string;
 }
 
 export interface CouncilAnswer {
@@ -69,7 +75,7 @@ export interface ChatState {
 
 export interface ChatRequest {
   message: string;
-  attachments?: ChatAttachment[];
+  attachments?: DocumentAttachment[];
   conversationId?: string;
   selectedModel: string; // single model per request
   thinkingLevel?: ThinkingLevel;
@@ -102,10 +108,10 @@ export const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),
   message: z.string().trim().max(1000),
   attachments: z.array(z.object({
+    documentId: z.string().uuid(),
     name: z.string().min(1).max(180),
     mimeType: z.string().min(1).max(100),
     size: z.number().int().positive().max(5 * 1024 * 1024),
-    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(7 * 1024 * 1024),
   })).max(4).optional(),
   selectedModel: z.string().refine(
     (id) => id === 'council' || isChatModelId(id),

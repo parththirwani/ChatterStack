@@ -8,6 +8,8 @@ import SidebarHeader from '@/src/components/sidebar/header/SidebarHeader';
 import UserSection from '@/src/components/sidebar/user/UserSection';
 import { useAppStore } from '@/src/store/rootStore';
 import { sortConversations } from '@/src/store/slices/conversations/conversationSlice';
+import Resources from './resources/Resources';
+import { Files, MessageSquare } from 'lucide-react';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -36,6 +38,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   initialConversations,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [tab, setTab] = useState<'chats' | 'resources'>('chats');
 
   const storedConversations = useAppStore((state) => state.conversations);
   const conversationsHydrated = useAppStore((state) => state.conversationsHydrated);
@@ -137,10 +140,15 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
 
       {!collapsed && isAuthenticated && <div className="mx-4 h-px bg-white/[0.06]" />}
 
+      {isAuthenticated && <div role="tablist" aria-label="Sidebar sections" className={`flex gap-1 px-3 py-2 ${collapsed ? 'flex-col' : ''}`}>
+        <button type="button" role="tab" aria-selected={tab === 'chats'} aria-label="Chats" onClick={() => setTab('chats')} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs ${tab === 'chats' ? 'bg-white/[0.09] text-white' : 'text-[#aaa6a2] hover:bg-white/[0.05]'}`}><MessageSquare className="h-4 w-4" />{!collapsed && 'Chats'}</button>
+        <button type="button" role="tab" aria-selected={tab === 'resources'} aria-label="Resources" onClick={() => setTab('resources')} className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-2 py-2 text-xs ${tab === 'resources' ? 'bg-white/[0.09] text-white' : 'text-[#aaa6a2] hover:bg-white/[0.05]'}`}><Files className="h-4 w-4" />{!collapsed && 'Resources'}</button>
+      </div>}
+
       {/* Chat History OR Spacer */}
       {!collapsed && isAuthenticated ? (
         <div className="flex-1 overflow-y-auto min-h-0 px-2">
-          <NewChatDraft onOpen={handleNewChat} isOpen={currentConversationId === undefined} />
+          {tab === 'resources' ? <Resources /> : <><NewChatDraft onOpen={handleNewChat} isOpen={currentConversationId === undefined} />
           <ChatHistory
             loadingConversations={conversationsLoading}
             chats={filteredChats}
@@ -149,7 +157,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
             currentConversationId={currentConversationId}
             onConversationClick={handleConversationClick}
             onDeleteConversation={handleDeleteConversation}
-          />
+          /></>}
         </div>
       ) : (
         <div className="flex-1" />

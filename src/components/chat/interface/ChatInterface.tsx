@@ -5,12 +5,13 @@ import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import { useChat } from '@/src/hooks/useChat';
 import { useComposerDraft } from '@/src/hooks/useComposerDraft';
-import type { ChatAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
+import type { DocumentAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
+import { canNavigateMessages, messageNavTarget } from './messageNavigation';
 
 const EMPTY_MESSAGES: Message[] = [];
 
@@ -100,7 +101,7 @@ const MessageList = memo(function MessageList({
   councilProgress,
 }: MessageListProps) {
   return (
-    <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
+    <div data-message-list className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
       {messages.map((msg, index) => {
         const isLastMessage = index === messages.length - 1;
         const key = msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
@@ -159,7 +160,7 @@ interface ChatComposerProps {
   loading: boolean;
   isCouncilMode: boolean;
   isFirstMessage: boolean;
-  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: ChatAttachment[]) => Promise<void>;
+  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: DocumentAttachment[]) => Promise<void>;
   stopGenerating: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onSendStart: () => void;
@@ -178,13 +179,28 @@ const ChatComposer = memo(function ChatComposer({
   const { message, setMessage, clearDraft } = useComposerDraft(conversationKey);
   const [pendingMessage, setPendingMessage] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
   const initializeUser = useAppStore((state) => state.initializeUser);
 
   useEffect(() => setAttachments([]), [conversationKey]);
 
+  useEffect(() => {
+    const add = (event: Event) => {
+      const file = (event as CustomEvent<DocumentAttachment>).detail;
+      if (!file?.documentId) return;
+      setAttachments((current) => {
+        if (current.some((item) => item.documentId === file.documentId)) return current;
+        if (current.length >= 4 || current.reduce((sum, item) => sum + item.size, file.size) > 10 * 1024 * 1024) return current;
+        return [...current, file];
+      });
+      document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+    };
+    window.addEventListener('chatterstack:add-document', add);
+    return () => window.removeEventListener('chatterstack:add-document', add);
+  }, []);
+
   const sendNow = useCallback(
-    async (text: string, files: ChatAttachment[] = []) => {
+    async (text: string, files: DocumentAttachment[] = []) => {
       onSendStart();
       await sendMessage(text, onConversationCreated, files);
     },
@@ -457,6 +473,33 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const handleSendStart = useCallback(() => {
     autoScrollEnabledRef.current = true;
     setShowJumpToLatest(false);
+  }, []);
+
+  // ↑/↓ step through the messages. While a smooth scroll is still running,
+  // the next press continues from where it is heading, not from mid-flight.
+  const navTargetRef = useRef<{ top: number; at: number } | null>(null);
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const container = messagesContainerRef.current;
+      const list = container?.querySelector('[data-message-list]');
+      if (!container || !list || !canNavigateMessages(event)) return;
+
+      const pending = navTargetRef.current;
+      const scrollTop = pending && performance.now() - pending.at < 600 ? pending.top : container.scrollTop;
+      const containerTop = container.getBoundingClientRect().top - container.scrollTop;
+      const tops = Array.from(list.children, (child) => child.getBoundingClientRect().top - containerTop);
+      const top = messageNavTarget(
+        { tops, scrollTop, clientHeight: container.clientHeight, scrollHeight: container.scrollHeight },
+        event.key === 'ArrowUp' ? 'up' : 'down'
+      );
+
+      event.preventDefault();
+      navTargetRef.current = { top, at: performance.now() };
+      const smooth = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      container.scrollTo({ top, behavior: smooth ? 'smooth' : 'auto' });
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   const handleJumpToLatest = useCallback(() => {

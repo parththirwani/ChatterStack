@@ -26,6 +26,7 @@ model User {
   accounts       Account[]
   sessions       Session[]
   conversations  Conversation[]
+  documents      Document[]
 
   @@map("users")
 }
@@ -99,4 +100,23 @@ model Message {
   @@index([modelId])
   @@index([conversationId, modelId])
   @@map("messages")
+}
+
+model Document {
+  id          String    @id @default(uuid())
+  userId      String
+  name        String
+  mimeType    String
+  size        Int
+  sha256      String
+  storageKey  String    @unique
+  favoritedAt DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sha256])
+  @@index([userId, lastUsedAt])
+  @@map("documents")
 }

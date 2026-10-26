@@ -4,7 +4,7 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
-  attachments?: import('@/src/types/chat.types').ChatAttachment[];
+  attachments?: Array<import('@/src/types/chat.types').DocumentAttachment | import('@/src/types/chat.types').ChatAttachment>;
 }
 
 class RedisStore {
