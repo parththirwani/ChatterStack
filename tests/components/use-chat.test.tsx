@@ -102,6 +102,24 @@ describe('starting a new chat', () => {
     call.finish();
   });
 
+  it('sends tagged skill ids and shows the tags on the question', async () => {
+    const hook = renderHook(() => useChat('new'), { wrapper });
+    act(() => {
+      void hook.result.current.sendMessage('Review this', undefined, [], [{ id: 's1', name: 'code-review' }]);
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].request.skills).toEqual(['s1']);
+    const id = calls[0].request.conversationId!;
+    expect(state().chatState[id].messages[0].skills).toEqual([{ id: 's1', name: 'code-review' }]);
+    calls[0].finish();
+  });
+
+  it('sends no skills field when none are tagged', async () => {
+    const { call } = await startNewChat();
+    expect(call.request).not.toHaveProperty('skills', expect.anything());
+    call.finish();
+  });
+
   it('moves the URL to the chat once the server has saved it', async () => {
     const { call, id } = await startNewChat();
     act(() => call.handlers.onConversationCreated?.(id));

@@ -6,6 +6,7 @@ import { useModelSelection } from '../context/ModelSelectionContext';
 import type { DocumentAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
 import type { ChatState } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
+import type { SkillTag } from '@/src/types/skill.types';
 
 const EMPTY_CHAT_STATE: ChatState = {
   messages: [],
@@ -59,7 +60,8 @@ export const useChat = (conversationKey: string) => {
     async (
       message: string,
       onConversationCreated?: (conversationId: string) => void,
-      attachments: DocumentAttachment[] = []
+      attachments: DocumentAttachment[] = [],
+      skills: SkillTag[] = []
     ) => {
       // Read the user fresh from the store: the render-time closure can be
       // stale right after an OAuth redirect.
@@ -91,6 +93,7 @@ export const useChat = (conversationKey: string) => {
         role: 'user',
         content: message,
         attachments: attachments.map(({ documentId, name, mimeType, size }) => ({ documentId, name, mimeType, size })),
+        skills: skills.length ? skills.map(({ id, name }) => ({ id, name })) : undefined,
         createdAt: now,
       };
       const aiMessage: Message = {
@@ -215,6 +218,7 @@ export const useChat = (conversationKey: string) => {
           {
             message,
             attachments,
+            skills: skills.length ? skills.map((skill) => skill.id) : undefined,
             conversationId: key,
             newConversation: isNewConversation || undefined,
             selectedModel: activeModelId,

@@ -14,6 +14,9 @@ import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
+import type { SkillTag } from '@/src/types/skill.types';
+import { ADD_SKILL_EVENT } from '@/src/lib/client/skills';
+import { MAX_SKILLS_PER_MESSAGE } from '@/src/lib/skills/skill-file';
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_TURNS: Turn[] = [];
@@ -182,7 +185,7 @@ const MessageList = memo(function MessageList({
           // Each question is an anchor the left rail jumps between.
           return (
             <div key={key} data-turn-anchor={index}>
-              <UserMessage content={msg.content} attachments={msg.attachments} />
+              <UserMessage content={msg.content} attachments={msg.attachments} skills={msg.skills} />
             </div>
           );
         }
@@ -237,7 +240,7 @@ interface ChatComposerProps {
   loading: boolean;
   isCouncilMode: boolean;
   isFirstMessage: boolean;
-  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: DocumentAttachment[]) => Promise<void>;
+  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: DocumentAttachment[], skills?: SkillTag[]) => Promise<void>;
   stopGenerating: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onSendStart: () => void;
@@ -257,9 +260,29 @@ const ChatComposer = memo(function ChatComposer({
   const [pendingMessage, setPendingMessage] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
+  const [skills, setSkills] = useState<SkillTag[]>([]);
   const initializeUser = useAppStore((state) => state.initializeUser);
 
-  useEffect(() => setAttachments([]), [conversationKey]);
+  useEffect(() => {
+    setAttachments([]);
+    setSkills([]);
+  }, [conversationKey]);
+
+  // The Skills tab tags a skill on this composer.
+  useEffect(() => {
+    const add = (event: Event) => {
+      const skill = (event as CustomEvent<SkillTag>).detail;
+      if (!skill?.id) return;
+      if (skills.some((item) => item.id === skill.id) || skills.length >= MAX_SKILLS_PER_MESSAGE) {
+        event.preventDefault();
+        return;
+      }
+      setSkills([...skills, { id: skill.id, name: skill.name }]);
+      document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+    };
+    window.addEventListener(ADD_SKILL_EVENT, add);
+    return () => window.removeEventListener(ADD_SKILL_EVENT, add);
+  }, [skills]);
 
   useEffect(() => {
     const add = (event: Event) => {
@@ -279,9 +302,9 @@ const ChatComposer = memo(function ChatComposer({
   }, [attachments]);
 
   const sendNow = useCallback(
-    async (text: string, files: DocumentAttachment[] = []) => {
+    async (text: string, files: DocumentAttachment[] = [], tags: SkillTag[] = []) => {
       onSendStart();
-      await sendMessage(text, onConversationCreated, files);
+      await sendMessage(text, onConversationCreated, files, tags);
     },
     [onSendStart, sendMessage, onConversationCreated]
   );
@@ -310,10 +333,12 @@ const ChatComposer = memo(function ChatComposer({
 
     const messageToSend = message;
     const filesToSend = attachments;
+    const skillsToSend = skills;
     clearDraft();
     setAttachments([]);
-    await sendNow(messageToSend, filesToSend);
-  }, [message, attachments, loading, sendNow, clearDraft]);
+    setSkills([]);
+    await sendNow(messageToSend, filesToSend, skillsToSend);
+  }, [message, attachments, skills, loading, sendNow, clearDraft]);
 
   // Restore a pending message that was saved before the full-page OAuth
   // redirect. After returning to `/?auth=success` React state is empty, so
@@ -374,13 +399,15 @@ const ChatComposer = memo(function ChatComposer({
         }
 
         const filesToSend = attachments;
+        const skillsToSend = skills;
         clearDraft();
         setAttachments([]);
-        await sendNow(textToSend, filesToSend);
+        setSkills([]);
+        await sendNow(textToSend, filesToSend, skillsToSend);
         setPendingMessage('');
       }
     },
-    [pendingMessage, attachments, initializeUser, sendNow, clearDraft]
+    [pendingMessage, attachments, skills, initializeUser, sendNow, clearDraft]
   );
 
   const handleLoginModalClose = useCallback(() => {
@@ -421,6 +448,8 @@ const ChatComposer = memo(function ChatComposer({
             message={message}
             attachments={attachments}
             onAttachmentsChange={setAttachments}
+            skills={skills}
+            onSkillsChange={setSkills}
             onMessageChange={setMessage}
             onSendMessage={handleSendMessage}
             onStopGenerating={stopGenerating}
