@@ -190,10 +190,7 @@ export async function POST(request: NextRequest) {
         await redisStore.add(conversationId, {
           role: 'assistant' as const,
           content: fullContent,
-          modelId:
-            selectedModel === 'council'
-              ? `council:google/gemini-3-pro-preview`
-              : selectedModel,
+          modelId: selectedModel,
         });
       }
       await ingestConversationData(

@@ -67,9 +67,7 @@ export async function ingestConversationData(
     messageId: aiMessageId,
     content: aiResponse,
     role: 'assistant',
-    modelUsed: selectedModel === 'council'
-      ? `council:google/gemini-3-pro-preview`
-      : selectedModel,
+    modelUsed: selectedModel,
   }).catch((err) => console.error('AI message ingestion failed:', err));
 
   // Update profile

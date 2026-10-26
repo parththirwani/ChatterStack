@@ -44,7 +44,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
   const isStageComplete = completedModels === totalModels && totalModels > 0;
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4 sm:px-6 py-4">
+    <div aria-live="polite" className="mx-auto w-full max-w-3xl py-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -52,16 +52,16 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
         className="relative"
       >
         {/* Main Card */}
-        <div className="bg-gray-900/50 backdrop-blur-sm border border-gray-700/50 rounded-xl p-4 shadow-lg">
+        <div className="rounded-xl border border-white/10 bg-[#242424] p-4">
           {/* Header */}
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="w-8 h-8 rounded-lg bg-yellow-500/10 border border-yellow-500/30 flex items-center justify-center">
-                  <Brain className="w-4 h-4 text-yellow-400" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8b775]/10">
+                  <Brain className="h-4 w-4 text-[#e8b775]" />
                 </div>
                 <motion.div
-                  className="absolute -top-1 -right-1 w-2 h-2 bg-yellow-500 rounded-full"
+                  className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#e8b775]"
                   animate={{ scale: [1, 1.2, 1] }}
                   transition={{ duration: 1, repeat: Infinity }}
                 />
@@ -71,7 +71,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
                 <h3 className="text-sm font-semibold text-white">
                   AI Council
                 </h3>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-[#aaa6a2]">
                   {currentStageInfo.description}
                 </p>
               </div>
@@ -79,7 +79,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
 
             {/* Stage indicator */}
             <div className="flex items-center gap-2">
-              <span className="text-xs text-gray-500">
+              <span className="text-xs text-[#aaa6a2]">
                 Step {currentStageIndex + 1}/4
               </span>
             </div>
@@ -87,9 +87,9 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
 
           {/* Progress Bar */}
           <div className="mb-4">
-            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div className="h-1 overflow-hidden rounded-full bg-white/10">
               <motion.div
-                className="h-full bg-gradient-to-r from-yellow-500 to-yellow-400"
+                className="h-full bg-[#e8b775]"
                 initial={{ width: 0 }}
                 animate={{ 
                   width: `${((currentStageIndex + (isStageComplete ? 1 : 0.5)) / 4) * 100}%` 
@@ -115,7 +115,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
                   {currentStageInfo.name}
                 </span>
                 {totalModels > 0 && (
-                  <span className="text-xs text-gray-400">
+                  <span className="text-xs text-[#aaa6a2]">
                     {completedModels}/{totalModels} models
                   </span>
                 )}
@@ -137,10 +137,10 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
                         className={`
                           flex items-center gap-2 p-2 rounded-lg transition-colors
                           ${isComplete 
-                            ? 'bg-green-500/10 border border-green-500/30' 
+                            ? 'bg-white/[0.05] border border-white/10'
                             : isProcessing
-                            ? 'bg-yellow-500/10 border border-yellow-500/30'
-                            : 'bg-gray-800/50 border border-gray-700/30'
+                            ? 'bg-white/[0.05] border border-white/10'
+                            : 'bg-white/[0.025] border border-white/[0.06]'
                           }
                         `}
                       >
@@ -169,7 +169,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
                           {isComplete ? (
                             <CheckCircle className="w-4 h-4 text-green-400" />
                           ) : isProcessing ? (
-                            <Loader2 className="w-4 h-4 text-yellow-400 animate-spin" />
+                            <Loader2 className="w-4 h-4 animate-spin text-[#e8b775]" />
                           ) : null}
                         </div>
                       </motion.div>

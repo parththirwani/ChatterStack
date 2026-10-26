@@ -1,42 +1,29 @@
 # ChatterStack
 
-<img width="1024" height="1024" alt="image" src="https://github.com/user-attachments/assets/77776fe5-e5ed-4547-a02a-f52f1899877d" />
+ChatterStack is a Next.js chat app with single-model conversations and a four-model AI Council. Chats use OpenRouter, with PostgreSQL for history, Redis for rate limits, and Qdrant for optional retrieval.
 
-- Built **ChatterStack**, an **LLM aggregator** to compare responses from multiple large language models (e.g., DeepSeek, Gemini, GPT-4o) in real time.
-- Provided **premium tier** with access to **15+ LLMs** for advanced benchmarking and research.
-- Integrated **OpenRouter** to seamlessly access and manage multiple LLMs.
-- Implemented an **in-memory store** to handle **parallel responses** and ensure **low-latency inference**.
-- Developed **backend with Express.js + Bun** for fast and scalable request handling.
-- Designed **frontend with Next.js** for an intuitive and responsive user experience.
-- Added **Postgres** for archival storage and history management.
-<img width="1194" height="529" alt="image" src="https://github.com/user-attachments/assets/d58b7e3e-8843-4cdf-9181-c3f95629439a" />
+## Models
 
----
+The current OpenRouter choices are DeepSeek V4.1 Flash, Gemini 4 Argon, GPT-6.1 Sol, and Claude Sonnet 5.5. The same four models participate in AI Council. Model IDs and displayed metadata live in [`src/config/models.ts`](src/config/models.ts). OpenRouter availability and pricing can change; check [its model catalog](https://openrouter.ai/models) before deployment.
 
-## 🚀 Features
+## Run with Docker
 
-- **Real-time Messaging** – Instant chat with minimal latency.    
-- **Secure Authentication** – OAuth and JWT-based authentication by google and github provider.  
-- **Scalable Backend** – Optimized for high-performance workloads.  
-- **Customizable UI** – Clean, modern design with theme support.  
-- **Free & Premium Tiers** – Access advanced features with subscription.
-- **RAG Integration** – The codebase integrates retrieval-augmented generation logic with support for querying large language models and handling parallel responses via in-memory stores.  
+Requires Docker Engine and Docker Compose.
 
----
+1. Copy `.env.example` to `.env.local` and fill in `OPENROUTER_API_KEY`, `NEXTAUTH_SECRET`, and the Google or GitHub OAuth credentials you intend to use. Set the OAuth callback URL at the provider to `http://localhost:3000/api/auth/callback/google` or `/github`.
+2. Run `docker compose up --build -d`.
+3. Open http://localhost:3000.
 
-## 🛠️ Tech Stack
+Compose starts PostgreSQL, Redis, Qdrant, a one-shot Prisma schema setup job, and the app. It overrides the database, Redis, and Qdrant URLs from `.env.local` with internal container addresses. The `POSTGRES_PASSWORD` variable in your shell or a Compose `.env` file overrides the local development default. To stop the stack, run `docker compose down`; add `-v` only if you want to delete stored chats and service data.
 
-- **Frontend:** React, Next.js, TypeScript, TailwindCSS  
-- **Backend:** Node.js, Express, Prisma  
-- **Database:** PostgreSQL  
-- **Authentication:** Passport.js, OAuth 2.0  
+## Run locally
 
----
-
-## 📦 Installation
-
-Clone the repository:
+Use Node.js 24 and running PostgreSQL, Redis, and Qdrant services. Copy `.env.example` to `.env.local`, set the service URLs and credentials, then run:
 
 ```bash
-git clone https://github.com/your-username/chatterstack.git
-cd chatterstack
+npm ci
+npx prisma db push
+npm run dev
+```
+
+`npm run build` checks the production build. The app uses NextAuth with Google and GitHub sign-in. The optional retrieval flow is controlled by `RAG_ENABLED`.

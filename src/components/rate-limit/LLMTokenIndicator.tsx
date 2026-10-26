@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Clock, Zap, AlertCircle, Brain } from 'lucide-react';
+import { useAppStore } from '@/src/store/rootStore';
 
 interface LLMTokenStatus {
   tokensUsed: number;
@@ -26,6 +27,7 @@ const LLMTokenIndicator: React.FC<LLMTokenIndicatorProps> = ({
   const [status, setStatus] = useState<LLMTokenStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [timeUntilReset, setTimeUntilReset] = useState('');
+  const userId = useAppStore((state) => state.user?.id);
 
   // Fetch rate limit status
   const fetchStatus = async () => {
@@ -43,11 +45,9 @@ const LLMTokenIndicator: React.FC<LLMTokenIndicatorProps> = ({
   };
 
   useEffect(() => {
-    fetchStatus();
-    // Refresh every 10 seconds (since tokens change with each message)
-    const interval = setInterval(fetchStatus, 10000);
-    return () => clearInterval(interval);
-  }, []);
+    if (userId && userId !== 'guest') fetchStatus();
+    // Status is advisory; avoid polling while signed out.
+  }, [userId]);
 
   // Update countdown timer
   useEffect(() => {
@@ -76,7 +76,7 @@ const LLMTokenIndicator: React.FC<LLMTokenIndicatorProps> = ({
     };
 
     updateTimer();
-    const interval = setInterval(updateTimer, 1000);
+    const interval = setInterval(updateTimer, 60000);
     return () => clearInterval(interval);
   }, [status]);
 

@@ -7,15 +7,22 @@ export interface ModelMeta {
 }
 
 const MODEL_META: Record<string, ModelMeta> = {
+  ...Object.fromEntries(CHAT_MODELS.map((model) => [model.id, {
+    id: model.id,
+    name: model.name,
+    logo: model.logo,
+    company: model.company,
+    invert: model.company === 'OpenAI',
+  }])),
   'deepseek/deepseek-chat-v3.1': {
     id: 'deepseek/deepseek-chat-v3.1',
-    name: 'DeepSeek',
+    name: 'DeepSeek V3.1',
     logo: '/deepseek.svg',
     company: 'DeepSeek',
   },
   'google/gemini-2.5-flash': {
     id: 'google/gemini-2.5-flash',
-    name: 'Gemini',
+    name: 'Gemini 2.5 Flash',
     logo: '/gemini.svg',
     company: 'Google',
   },
@@ -41,7 +48,7 @@ const MODEL_META: Record<string, ModelMeta> = {
   },
   'anthropic/claude-sonnet-4.5': {
     id: 'anthropic/claude-sonnet-4.5',
-    name: 'Claude 4.5',
+    name: 'Claude Sonnet 4.5',
     logo: '/claude.svg',
     company: 'Anthropic',
   },
@@ -62,5 +69,7 @@ const MODEL_META: Record<string, ModelMeta> = {
 
 export function getModelMeta(id: string | undefined): ModelMeta | null {
   if (!id) return null;
+  if (id.startsWith('council:')) return MODEL_META.council;
   return MODEL_META[id] ?? null;
 }
+import { CHAT_MODELS } from '@/src/config/models';

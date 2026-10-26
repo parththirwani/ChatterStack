@@ -58,7 +58,7 @@ const SidebarHeader: React.FC<SidebarHeaderProps> = ({
           </Link>
           <button
             onClick={onToggleCollapse}
-            className="p-1.5 rounded-lg hover:bg-gray-800/50 transition-colors duration-200 text-gray-400 hover:text-gray-200"
+            className="hidden p-1.5 rounded-lg text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-200 md:block"
             aria-label="Collapse sidebar"
           >
             <ChevronLeft className="w-4 h-4" />

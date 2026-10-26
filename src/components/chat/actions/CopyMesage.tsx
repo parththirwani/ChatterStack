@@ -36,7 +36,8 @@ const CopyButton: React.FC<CopyButtonProps> = ({
   return (
     <button
       onClick={handleCopy}
-      className={`p-2 rounded-lg bg-gray-800/80 hover:bg-gray-700/80 text-gray-400 hover:text-white transition-colors duration-200 backdrop-blur-sm ${className}`}
+      aria-label={copied ? 'Copied message' : title}
+      className={`flex h-11 w-11 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white ${className}`}
       title={title}
     >
       {copied ? (

@@ -116,16 +116,10 @@ const UserSection: React.FC<UserSectionProps> = ({
         // Expanded - Login Button
         <button
           onClick={onLoginClick}
-          className="w-full px-4 py-2.5 flex items-center justify-center gap-2 
-                     rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 
-                     hover:from-yellow-500 hover:to-yellow-700 
-                     text-black font-medium shadow-sm hover:shadow-md 
-                     transition-all duration-200 cursor-pointer 
-                     active:scale-[0.98]
-                     focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
+          className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[#c9c5c0] transition-colors hover:bg-white/[0.07] hover:text-white"
         >
           <LogIn className="w-4 h-4" />
-          <span className="text-sm">Sign In</span>
+          <span className="text-sm">Sign in</span>
         </button>
       )}
     </div>

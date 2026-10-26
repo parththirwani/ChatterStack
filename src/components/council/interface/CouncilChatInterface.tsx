@@ -11,6 +11,7 @@ import { ChatInterfaceProps } from '@/src/types/chat.types';
 import LoginModal from '@/src/components/auth/AuthModal';
 import { useAppStore } from '@/src/store/rootStore';
 import { User } from '@/src/types/user.types';
+import { CHAT_MODELS, COUNCIL_MODEL_IDS } from '@/src/config/models';
 
 
 const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
@@ -249,45 +250,13 @@ const CouncilChatInterface: React.FC<ChatInterfaceProps> = ({
 
               {/* Model Grid */}
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4 mb-6">
-                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <div className="w-6 h-6 rounded bg-gradient-to-br from-green-400 to-blue-500 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">G5</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center font-medium">GPT-5.1</p>
-                  <p className="text-xs text-gray-500 text-center mt-0.5">OpenAI</p>
-                </div>
-
-                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <div className="w-6 h-6 rounded bg-gradient-to-br from-blue-400 to-purple-500 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">G3</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center font-medium">Gemini 3 Pro</p>
-                  <p className="text-xs text-gray-500 text-center mt-0.5">Google</p>
-                </div>
-
-                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <div className="w-6 h-6 rounded bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">C4</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center font-medium">Claude 4.5</p>
-                  <p className="text-xs text-gray-500 text-center mt-0.5">Anthropic</p>
-                </div>
-
-                <div className="bg-gray-800/40 border border-gray-700/50 rounded-lg p-3 hover:border-yellow-500/30 transition-colors">
-                  <div className="flex items-center justify-center gap-2 mb-1">
-                    <div className="w-6 h-6 rounded bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center">
-                      <span className="text-white text-xs font-bold">X4</span>
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-400 text-center font-medium">Grok 4</p>
-                  <p className="text-xs text-gray-500 text-center mt-0.5">xAI</p>
-                </div>
+                {COUNCIL_MODEL_IDS.map((id) => {
+                  const model = CHAT_MODELS.find((entry) => entry.id === id);
+                  return model && <div key={id} className="rounded-lg border border-gray-700/50 bg-gray-800/40 p-3 text-center">
+                    <p className="text-xs font-medium text-gray-300">{model.name}</p>
+                    <p className="mt-0.5 text-xs text-gray-500">{model.company}</p>
+                  </div>;
+                })}
               </div>
 
               {/* Process Steps */}

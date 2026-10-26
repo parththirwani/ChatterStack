@@ -1,4 +1,6 @@
-import React, { memo } from 'react';
+"use client";
+import React, { memo, useState } from 'react';
+import { Check, Copy } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -21,6 +23,36 @@ interface AIMessageProps {
   showDownload?: boolean;
 }
 
+function codeText(node: React.ReactNode): string {
+  if (typeof node === 'string' || typeof node === 'number') return String(node);
+  if (Array.isArray(node)) return node.map(codeText).join('');
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return codeText(node.props.children);
+  return '';
+}
+
+const CodeBlock: React.FC<{ language: string; code: string; className?: string; children: React.ReactNode }> = ({ language, code, className, children }) => {
+  const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code.replace(/\n$/, ''));
+      setCopyState('copied');
+    } catch {
+      setCopyState('failed');
+    }
+    window.setTimeout(() => setCopyState('idle'), 2000);
+  };
+  return <div className="chat-code-block my-4 overflow-hidden rounded-xl border border-white/10 bg-[#111111]">
+    <div className="flex min-h-10 items-center justify-between border-b border-white/10 pl-3 pr-1 text-xs text-[#aaa6a2]">
+      <span>{language}</span>
+      <button type="button" aria-label={copyState === 'copied' ? 'Code copied' : copyState === 'failed' ? 'Could not copy code' : 'Copy code'} onClick={handleCopy} className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-md px-2 hover:bg-white/10 hover:text-white">
+        {copyState === 'copied' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+        {copyState !== 'idle' && <span>{copyState === 'copied' ? 'Copied' : 'Failed'}</span>}
+      </button>
+    </div>
+    <pre className="!my-0 !bg-transparent overflow-x-auto p-3 text-[13px] sm:p-4 sm:text-sm"><code className={className}>{children}</code></pre>
+  </div>;
+};
+
 const AIMessage: React.FC<AIMessageProps> = ({
   content,
   modelId,
@@ -34,30 +66,32 @@ const AIMessage: React.FC<AIMessageProps> = ({
 
   return (
     <div className="w-full">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6">
-        <div className="flex items-start gap-2 sm:gap-4">
+      <div className="mx-auto max-w-3xl">
+        <div className="flex flex-col gap-2">
           {/* Model Avatar - Responsive size */}
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gray-800/80 flex items-center justify-center flex-shrink-0 mt-1 border border-gray-700/50">
+          <div className="flex items-center gap-2 text-[13px] font-medium text-[#aaa6a2]">
             {model ? (
               <Image
                 src={model.logo}
-                alt={model.name}
+                alt=""
                 width={18}
                 height={18}
-                className={`${model.invert ? 'invert brightness-0' : ''} w-4 h-4 sm:w-5 sm:h-5`}
+                className={`${model.invert ? 'invert brightness-0' : ''} h-4 w-4`}
               />
             ) : (
-              <span className="text-xs font-bold text-yellow-500">AI</span>
+              <span className="text-xs font-bold text-[#e8b775]">AI</span>
             )}
+            <span>{model?.name || 'Assistant'}</span>
           </div>
 
           {/* Message Content - Responsive */}
           <div className="flex-1 min-w-0">
-            <div className="prose prose-invert prose-sm sm:prose-base max-w-none">
+            <div aria-live={loading && isLastMessage ? 'polite' : undefined} aria-busy={loading && isLastMessage} className="prose prose-invert prose-sm sm:prose-base max-w-none">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm, remarkMath]}
                 rehypePlugins={[rehypeKatex, rehypeHighlight]}
                 components={{
+                  pre: ({ children }) => <>{children}</>,
                   h1: ({ children }) => (
                     <h1 className="text-xl sm:text-2xl font-bold text-white mt-4 sm:mt-6 mb-2 sm:mb-3 first:mt-0">
                       {children}
@@ -83,35 +117,27 @@ const AIMessage: React.FC<AIMessageProps> = ({
                       {children}
                     </strong>
                   ),
-                  code: ({ className, children, ...props }) => {
+                  code: ({ className, children }) => {
                     const match = /language-(\w+)/.exec(className || '');
                     const isInline = !match;
 
                     if (isInline) {
                       return (
-                        <code className="bg-gray-800 text-yellow-300 px-1 sm:px-1.5 py-0.5 rounded text-xs sm:text-sm font-mono break-all" {...props}>
+                        <code className="rounded bg-white/10 px-1 py-0.5 font-mono text-xs text-[#eeece9] sm:text-sm">
                           {children}
                         </code>
                       );
                     }
 
-                    return (
-                      <div className="relative group my-3 sm:my-4 -mx-4 sm:mx-0">
-                        <pre className="bg-gray-900 rounded-lg overflow-x-auto text-xs sm:text-sm border border-gray-800 p-3 sm:p-4">
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        </pre>
-                      </div>
-                    );
+                    return <CodeBlock language={match?.[1] || 'Code'} code={codeText(children)} className={className}>{children}</CodeBlock>;
                   },
                   ul: ({ children }) => (
-                    <ul className="mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-gray-100 list-disc list-inside">
+                    <ul className="mb-3 list-outside list-disc space-y-1.5 pl-5 text-gray-100 sm:mb-4">
                       {children}
                     </ul>
                   ),
                   ol: ({ children }) => (
-                    <ol className="mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-gray-100 list-decimal list-inside">
+                    <ol className="mb-3 list-outside list-decimal space-y-1.5 pl-5 text-gray-100 sm:mb-4">
                       {children}
                     </ol>
                   ),
@@ -123,7 +149,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                   a: ({ href, children }) => (
                     <a
                       href={href}
-                      className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer break-all"
+                      className="cursor-pointer break-all text-[#e8b775] underline hover:text-[#f2c58b]"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -136,7 +162,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     </blockquote>
                   ),
                   table: ({ children }) => (
-                    <div className="overflow-x-auto -mx-4 sm:mx-0 my-3 sm:my-4">
+                    <div className="my-3 overflow-x-auto sm:my-4">
                       <table className="min-w-full divide-y divide-gray-700">
                         {children}
                       </table>
@@ -156,9 +182,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
               >
                 {content}
               </ReactMarkdown>
-              {loading && isLastMessage && (
-                <span className="inline-block w-1.5 sm:w-2 h-3 sm:h-4 bg-yellow-500 ml-1 animate-pulse"></span>
-              )}
+              {loading && isLastMessage && !content && <span role="status" className="text-sm text-[#aaa6a2]">Thinking…</span>}
             </div>
 
             {/* Actions - Responsive positioning */}

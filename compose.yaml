@@ -1,0 +1,68 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: chatterstack
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatterstack_dev}
+      POSTGRES_DB: chatterstack
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatterstack -d chatterstack"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.5
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  schema:
+    build:
+      context: .
+      target: schema
+    environment:
+      DATABASE_URL: postgresql://chatterstack:${POSTGRES_PASSWORD:-chatterstack_dev}@postgres:5432/chatterstack
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: app
+    env_file:
+      - path: .env.local
+        required: true
+    environment:
+      DATABASE_URL: postgresql://chatterstack:${POSTGRES_PASSWORD:-chatterstack_dev}@postgres:5432/chatterstack
+      REDIS_URL: redis://redis:6379
+      QDRANT_URL: http://qdrant:6333
+      NEXTAUTH_URL: http://localhost:3000
+      NEXT_PUBLIC_APP_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      schema:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:

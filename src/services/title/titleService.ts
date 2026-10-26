@@ -2,6 +2,7 @@
  * Title Generation Service
  * Generates concise, descriptive titles for conversations based on the first user message
  */
+import { DEFAULT_MODEL_ID } from '@/src/config/models';
 
 interface TitleGenerationParams {
   userMessage: string;
@@ -26,7 +27,7 @@ async function generateTitleWithAI(userMessage: string): Promise<string> {
         'X-Title': 'ChatterStack',
       },
       body: JSON.stringify({
-        model: 'deepseek/deepseek-chat-v3.1', // Fast and cheap model for title generation
+        model: DEFAULT_MODEL_ID,
         messages: [
           {
             role: 'system',

@@ -35,14 +35,19 @@ export interface ChatInterfaceProps {
   selectedConversationId?: string;
   onConversationCreated?: (conversationId: string) => void;
   onNewChatStarted?: () => void;
+  mobileMenuOpen?: boolean;
 }
 
 import { z } from 'zod';
+import { CHAT_MODELS } from '@/src/config/models';
 
 export const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),
   message: z.string().trim().min(1).max(1000),
-  selectedModel: z.string(),
+  selectedModel: z.string().refine(
+    (id) => id === 'council' || CHAT_MODELS.some((model) => model.id === id),
+    'Unsupported model'
+  ),
 });
 
 export enum Role {

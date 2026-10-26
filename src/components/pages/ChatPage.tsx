@@ -1,8 +1,8 @@
 "use client";
 
-import React, { useEffect, useCallback, memo, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useCallback, memo, useRef, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
+import { X } from 'lucide-react';
 
 import { useAppStore } from '@/src/store/rootStore';
 import { User } from '@/src/types/user.types';
@@ -31,29 +31,16 @@ const ChatPage: React.FC = () => {
 
   // Mobile sidebar state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isMobile, setIsMobile] = useState(false);
+  const menuWasOpenRef = useRef(false);
   
   // Modal states - AT ROOT LEVEL
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
-  // Detect mobile screen size
-  useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-    
-    checkMobile();
-    window.addEventListener('resize', checkMobile);
-    return () => window.removeEventListener('resize', checkMobile);
-  }, []);
-
   // Close mobile menu when conversation changes
   useEffect(() => {
-    if (isMobile) {
-      setMobileMenuOpen(false);
-    }
-  }, [currentConversationId, isMobile]);
+    setMobileMenuOpen(false);
+  }, [currentConversationId]);
 
   // Initialize user on mount. This also covers the return from the
   // full-page OAuth redirect (`/?auth=success`): all modal state is wiped
@@ -94,12 +81,45 @@ const ChatPage: React.FC = () => {
   }, [pathname, currentConversationId, setCurrentConversationId]);
 
   const handleToggleSidebar = useCallback(() => {
-    if (isMobile) {
-      setMobileMenuOpen(!mobileMenuOpen);
-    } else {
-      setSidebarCollapsed(!sidebarCollapsed);
+    if (window.matchMedia('(max-width: 767px)').matches) setMobileMenuOpen((open) => !open);
+    else setSidebarCollapsed(!sidebarCollapsed);
+  }, [sidebarCollapsed, setSidebarCollapsed]);
+
+  useEffect(() => {
+    window.addEventListener('chatterstack:toggle-sidebar', handleToggleSidebar);
+    return () => window.removeEventListener('chatterstack:toggle-sidebar', handleToggleSidebar);
+  }, [handleToggleSidebar]);
+
+  useLayoutEffect(() => {
+    if (mobileMenuOpen) {
+      menuWasOpenRef.current = true;
+      window.setTimeout(() => document.querySelector<HTMLElement>('#chat-sidebar button')?.focus(), 30);
+    } else if (menuWasOpenRef.current) {
+      menuWasOpenRef.current = false;
+      window.setTimeout(() => document.getElementById('chat-sidebar-toggle')?.focus(), 30);
     }
-  }, [isMobile, mobileMenuOpen, sidebarCollapsed, setSidebarCollapsed]);
+  }, [mobileMenuOpen]);
+
+  useEffect(() => {
+    if (!mobileMenuOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMenuOpen(false);
+      if (event.key === 'Tab') {
+        const controls = Array.from(document.querySelectorAll<HTMLElement>('#chat-sidebar a, #chat-sidebar button, #chat-sidebar input')).filter((element) => element.getClientRects().length > 0);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [mobileMenuOpen]);
 
   const handleUserChange = useCallback((newUser: User | null) => {
     if (!newUser || newUser.id === 'guest') {
@@ -119,10 +139,8 @@ const ChatPage: React.FC = () => {
       router.push(newUrl);
     }
     
-    if (isMobile) {
-      setMobileMenuOpen(false);
-    }
-  }, [pathname, router, setCurrentConversationId, isMobile]);
+    setMobileMenuOpen(false);
+  }, [pathname, router, setCurrentConversationId]);
 
   const handleNewChat = useCallback(() => {
     
@@ -132,10 +150,13 @@ const ChatPage: React.FC = () => {
       router.push('/');
     }
     
-    if (isMobile) {
-      setMobileMenuOpen(false);
-    }
-  }, [pathname, router, setCurrentConversationId, isMobile]);
+    setMobileMenuOpen(false);
+  }, [pathname, router, setCurrentConversationId]);
+
+  useEffect(() => {
+    window.addEventListener('chatterstack:new-chat', handleNewChat);
+    return () => window.removeEventListener('chatterstack:new-chat', handleNewChat);
+  }, [handleNewChat]);
 
   const handleConversationCreated = useCallback((conversationId: string) => {
     
@@ -183,10 +204,10 @@ const ChatPage: React.FC = () => {
   // Show loading state
   if (userLoading) {
     return (
-      <div className="flex h-dvh items-center justify-center bg-[#201d26]">
+      <div className="flex h-dvh items-center justify-center bg-[#191919]">
         <div className="text-center">
-          <div className="w-8 h-8 border-2 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-          <p className="text-gray-400">Loading...</p>
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#e8b775] border-t-transparent"></div>
+          <p className="text-[#aaa6a2]">Loading...</p>
         </div>
       </div>
     );
@@ -194,37 +215,31 @@ const ChatPage: React.FC = () => {
 
   return (
     <>
-      <div className="flex h-dvh overflow-hidden relative">
-        {/* Mobile Menu Button */}
-        {isMobile && (
-          <button
-            onClick={handleToggleSidebar}
-            className="fixed top-4 left-4 z-50 p-3 bg-gray-800/90 hover:bg-gray-700 border border-gray-600 rounded-xl text-white transition-colors shadow-lg backdrop-blur-sm md:hidden"
-            aria-label="Toggle menu"
-          >
-            {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-          </button>
-        )}
-
+      <div className="relative flex h-dvh overflow-hidden">
+        <a href="#chat-main" tabIndex={mobileMenuOpen ? -1 : 0} className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-[#2c2c2c] focus:px-4 focus:py-2 focus:text-white">Skip to chat</a>
         {/* Backdrop */}
-        {isMobile && mobileMenuOpen && (
-          <div
-            className="fixed inset-0 bg-black/60 z-30 md:hidden"
+        {mobileMenuOpen && (
+          <button
+            type="button"
+            aria-hidden="true"
+            tabIndex={-1}
+            className="fixed inset-0 z-30 bg-black/60 md:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         )}
 
         {/* Sidebar */}
-        <div
+        <aside
+          id="chat-sidebar"
+          aria-label="Chat navigation"
           className={`
-            ${isMobile ? 'fixed inset-y-0 left-0 z-40' : 'relative'}
-            ${isMobile && !mobileMenuOpen ? '-translate-x-full' : 'translate-x-0'}
-            transition-transform duration-300 ease-in-out
-            ${isMobile ? 'w-80' : ''}
+            fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ease-in-out md:relative md:z-auto md:w-auto md:translate-x-0
+            ${mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full md:visible'}
           `}
         >
+          <button ref={(node) => { if (node && mobileMenuOpen) node.focus(); }} type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-[#aaa6a2] hover:bg-white/[0.07] md:hidden"><X className="h-4 w-4" /></button>
           <MemoizedSidebar
-            collapsed={!isMobile && sidebarCollapsed}
+            collapsed={sidebarCollapsed}
             onToggleCollapse={handleToggleSidebar}
             user={user}
             onUserChange={handleUserChange}
@@ -234,15 +249,16 @@ const ChatPage: React.FC = () => {
             onLoginClick={handleLoginClick}
             onLogoutClick={handleLogoutClick}
           />
-        </div>
+        </aside>
         
         {/* Main Chat Area */}
-        <div className={`flex-1 flex flex-col overflow-hidden ${isMobile ? 'w-full' : ''}`}>
+        <main id="chat-main" inert={mobileMenuOpen} className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <MemoizedChatInterface
             selectedConversationId={currentConversationId}
             onConversationCreated={handleConversationCreated}
+            mobileMenuOpen={mobileMenuOpen}
           />
-        </div>
+        </main>
       </div>
 
       {/* Login Modal - AT ROOT LEVEL, OUTSIDE MAIN LAYOUT */}
@@ -264,9 +280,7 @@ const ChatPage: React.FC = () => {
   );
 };
 
-const MemoizedChatInterface = memo(ChatInterface, (prev, next) => {
-  return prev.selectedConversationId === next.selectedConversationId;
-});
+const MemoizedChatInterface = memo(ChatInterface);
 
 const MemoizedSidebar = memo(Sidebar, (prev, next) => {
   return (

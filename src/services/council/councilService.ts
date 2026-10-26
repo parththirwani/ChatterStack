@@ -13,15 +13,11 @@ import {
   getCouncilStage2Prompt,
   getCouncilChairmanPrompt,
 } from '../prompt/promptService';
+import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS } from '@/src/config/models';
 
-export const COUNCIL_MODELS = [
-  "openai/gpt-5.1",
-  "google/gemini-3-pro-preview",
-  "anthropic/claude-sonnet-4.5",
-  "x-ai/grok-4",
-] as const;
+export const COUNCIL_MODELS = COUNCIL_MODEL_IDS;
 
-export const CHAIRMAN_MODEL = "google/gemini-3-pro-preview" as const;
+export const CHAIRMAN_MODEL = COUNCIL_CHAIR_MODEL;
 
 export type CouncilModel = typeof COUNCIL_MODELS[number];
 
@@ -73,7 +69,6 @@ async function createCompletion(
       model: model,
       messages: messages,
       stream: !!onChunk,
-      temperature: 0.7,
       max_tokens: 4000,
     }),
   });
@@ -92,36 +87,40 @@ async function createCompletion(
     }
 
     let fullContent = '';
+    let pending = '';
+
+    const handleLine = (line: string): boolean => {
+      if (!line.startsWith('data:')) return false;
+      const data = line.slice(5).trim();
+      if (data === '[DONE]') return true;
+      if (!data) return false;
+
+      const parsed = JSON.parse(data);
+      if (parsed.error) {
+        throw new Error(parsed.error.message || 'OpenRouter stream error');
+      }
+      const content = parsed.choices?.[0]?.delta?.content;
+      if (typeof content === 'string' && content) {
+        fullContent += content;
+        onChunk(content);
+      }
+      return false;
+    };
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split(/\r?\n/);
+      pending = lines.pop() || '';
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6).trim();
-
-          if (data === '[DONE]') {
-            return fullContent;
-          }
-
-          try {
-            const parsed = JSON.parse(data);
-            const content = parsed.choices?.[0]?.delta?.content;
-
-            if (content) {
-              fullContent += content;
-              onChunk(content);
-            }
-          } catch (error) {
-            console.error(`Council model parsing error:`, error);
-          }
-        }
+        if (handleLine(line)) return fullContent;
       }
     }
+
+    pending += decoder.decode();
+    if (pending && handleLine(pending)) return fullContent;
 
     return fullContent;
   } else {
@@ -270,9 +269,6 @@ async function stage2_collect_rankings(
     }
   }
 
-    `Stage 2 complete: ${stage2Results.length}/${COUNCIL_MODELS.length} models provided rankings`
-  ;
-  
   return { stage2Results, labelToModel };
 }
 

@@ -23,7 +23,7 @@ const SidebarActionButtons: React.FC<SidebarActionButtonsProps> = ({
           {/* New Chat - smaller and minimalistic */}
           <button
             onClick={onNewChat}
-            className="w-7 h-7 rounded-md bg-gradient-to-br from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-black flex items-center justify-center transition-all active:scale-95"
+            className="flex h-8 w-8 items-center justify-center rounded-md text-[#c9c5c0] transition-colors hover:bg-white/[0.07]"
             title="New Chat"
           >
             <Plus className="w-3.5 h-3.5" />
@@ -44,10 +44,10 @@ const SidebarActionButtons: React.FC<SidebarActionButtonsProps> = ({
         <>
           <button
             onClick={onNewChat}
-            className="w-full flex items-center justify-center space-x-2 px-4 py-2.5 rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 hover:from-yellow-500 hover:to-yellow-700 text-black font-medium shadow-sm hover:shadow-md transition-all duration-200 active:scale-[0.98]"
+            className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-left text-sm font-medium text-[#e5e2de] transition-colors hover:bg-white/[0.07]"
           >
             <Plus className="w-4 h-4" />
-            <span className="text-sm">New Chat</span>
+            <span className="text-sm">New chat</span>
           </button>
           
           {isAuthenticated && (

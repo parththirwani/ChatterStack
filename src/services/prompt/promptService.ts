@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { CHAT_MODELS, COUNCIL_MODEL_IDS } from '@/src/config/models';
 
 // Load the system prompt from file
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'src/prompts/system-prompt.md');
@@ -43,12 +44,12 @@ export const getChatterStackSystemPrompt = (modelId?: string): string => {
     // Add council mode context if applicable
     if (modelId.startsWith('council:')) {
       prompt += `\n### Council Mode Active\n\n`;
-      prompt += `This response represents the collective analysis of 4 expert AI models:\n`;
-      prompt += `- GPT-5.1 (OpenAI)\n`;
-      prompt += `- Gemini 3 Pro Preview (Google)\n`;
-      prompt += `- Claude Sonnet 4.5 (Anthropic)\n`;
-      prompt += `- Grok 4 (xAI)\n\n`;
-      prompt += `Your response should acknowledge this collaborative process and present the synthesized wisdom.\n`;
+      prompt += `The council is configured with these four OpenRouter models:\n`;
+      for (const id of COUNCIL_MODEL_IDS) {
+        const model = CHAT_MODELS.find((entry) => entry.id === id);
+        if (model) prompt += `- ${model.name} (${model.company})\n`;
+      }
+      prompt += `\nSome members may fail. Only describe responses actually available in the council context.\n`;
     }
   }
   
@@ -59,6 +60,8 @@ export const getChatterStackSystemPrompt = (modelId?: string): string => {
  * Get display name for a model ID
  */
 function getModelDisplayName(modelId: string): string {
+  const currentModel = CHAT_MODELS.find((model) => model.id === modelId);
+  if (currentModel) return `${currentModel.company} ${currentModel.name}`;
   const modelMap: Record<string, string> = {
     'deepseek/deepseek-chat-v3.1': 'DeepSeek Chat v3.1',
     'google/gemini-2.5-flash': 'Google Gemini 2.5 Flash',
@@ -81,6 +84,8 @@ function getModelDisplayName(modelId: string): string {
  * Get model-specific context and strengths
  */
 function getModelContext(modelId: string): string {
+  const currentModel = CHAT_MODELS.find((model) => model.id === modelId);
+  if (currentModel) return `Respond using your available text capabilities. ChatterStack can switch among the current OpenRouter models or use Council mode for multiple perspectives.\n`;
   const contextMap: Record<string, string> = {
     'deepseek/deepseek-chat-v3.1': `
 **Your Strengths**:

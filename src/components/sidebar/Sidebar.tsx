@@ -98,13 +98,13 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   return (
     <div
       className={`
-        ${collapsed ? 'w-16' : 'w-72'} 
+        ${collapsed ? 'w-16' : isAuthenticated ? 'w-72' : 'w-60'}
         h-dvh 
         shrink-0 
         transition-all duration-300 ease-in-out 
         flex flex-col 
-        bg-[#1a1721]
-        border-r border-gray-800/50
+        bg-[#151515]
+        border-r border-white/[0.07]
         overflow-hidden
       `}
     >
@@ -127,6 +127,13 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         />
       </div>
 
+      {!collapsed && !isAuthenticated && (
+        <div className="px-4 pt-2 text-[13px] leading-5 text-[#aaa6a2]">
+          <p className="font-medium text-[#c9c5c0]">Your chats</p>
+          <p className="mt-1">Sign in to save and revisit conversations.</p>
+        </div>
+      )}
+
       {/* Divider */}
       {!collapsed && isAuthenticated && (
         <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
@@ -146,11 +153,6 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         </div>
       ) : (
         <div className="flex-1" />
-      )}
-
-      {/* Divider */}
-      {!collapsed && (
-        <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
       )}
 
       {/* User Section */}

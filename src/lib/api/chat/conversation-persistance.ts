@@ -26,9 +26,7 @@ export async function createNewConversation(
           {
             content: aiResponse || 'Error generating response',
             role: Role.Assistant,
-            modelId: selectedModel === 'council'
-              ? `council:google/gemini-3-pro-preview`
-              : selectedModel,
+            modelId: selectedModel,
             createdAt: aiMessageTime,
           },
         ],
@@ -60,9 +58,7 @@ export async function addMessagesToConversation(
         conversationId,
         content: aiResponse || 'Error generating response',
         role: Role.Assistant,
-        modelId: selectedModel === 'council'
-          ? `council:google/gemini-3-pro-preview`
-          : selectedModel,
+        modelId: selectedModel,
         createdAt: aiMessageTime,
       },
     ],

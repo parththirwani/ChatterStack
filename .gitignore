@@ -83,3 +83,4 @@ docker-compose.override.yml
 *.crt
 .vercel
 .env*
+.cora-cli/

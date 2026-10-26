@@ -1,55 +1,19 @@
 "use client"
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { CHAT_MODELS, COUNCIL_DESCRIPTION, DEFAULT_MODEL_ID } from '@/src/config/models';
 
-// Define the model type with optional isPro
-export interface ModelInfo {
-  id: string;
-  name: string;
-  description: string;
-  logo: string;
-  company: string;
-  isPro?: boolean;
-}
-
-export const AVAILABLE_MODELS: readonly ModelInfo[] = [
-  {
-    id: 'deepseek/deepseek-chat-v3.1',
-    name: 'DeepSeek',
-    description: 'Efficient reasoning and coding',
-    logo: '/deepseek.svg',
-    company: 'DeepSeek',
-  },
-  {
-    id: 'google/gemini-2.5-flash',
-    name: 'Gemini',
-    description: 'Fast multimodal AI',
-    logo: '/gemini.svg',
-    company: 'Google',
-  },
-  {
-    id: 'openai/gpt-4o',
-    name: 'GPT-4o',
-    description: 'Advanced reasoning model',
-    logo: '/openai.svg',
-    company: 'OpenAI',
-  },
-  {
-    id: 'anthropic/claude-sonnet-4.5',
-    name: 'Claude',
-    description: 'Most intelligent Claude model',
-    logo: '/claude.svg',
-    company: 'Anthropic',
-  },
+export const AVAILABLE_MODELS = [
+  ...CHAT_MODELS,
   {
     id: 'council',
     name: 'AI Council',
-    description: '4 expert models working together',
+    description: COUNCIL_DESCRIPTION,
     logo: '/logo.png',
     company: 'ChatterStack',
-    isPro: true,
   },
 ] as const;
 
+export type ModelInfo = (typeof AVAILABLE_MODELS)[number];
 export type ModelId = typeof AVAILABLE_MODELS[number]['id'];
 
 interface ModelSelectionContextType {
@@ -61,7 +25,7 @@ interface ModelSelectionContextType {
 const ModelSelectionContext = createContext<ModelSelectionContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'selectedModel';
-const DEFAULT_MODEL: ModelId = 'deepseek/deepseek-chat-v3.1';
+const DEFAULT_MODEL: ModelId = DEFAULT_MODEL_ID;
 
 export const ModelSelectionProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [selectedModel, setSelectedModelState] = useState<ModelId>(() => {

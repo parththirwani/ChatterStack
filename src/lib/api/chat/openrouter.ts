@@ -23,7 +23,6 @@ export async function createCompletion(
       model: model,
       messages: formattedMessages,
       stream: true,
-      temperature: 0.7,
       max_tokens: 4000,
     }),
   });
@@ -40,36 +39,40 @@ export async function createCompletion(
   }
 
   let fullContent = '';
+  let pending = '';
+
+  const handleLine = (line: string): boolean => {
+    if (!line.startsWith('data:')) return false;
+    const data = line.slice(5).trim();
+    if (data === '[DONE]') return true;
+    if (!data) return false;
+
+    const parsed = JSON.parse(data);
+    if (parsed.error) {
+      throw new Error(parsed.error.message || 'OpenRouter stream error');
+    }
+    const content = parsed.choices?.[0]?.delta?.content;
+    if (typeof content === 'string' && content) {
+      fullContent += content;
+      onChunk(content);
+    }
+    return false;
+  };
 
   while (true) {
     const { done, value } = await reader.read();
     if (done) break;
 
-    const chunk = decoder.decode(value);
-    const lines = chunk.split('\n');
-
+    pending += decoder.decode(value, { stream: true });
+    const lines = pending.split(/\r?\n/);
+    pending = lines.pop() || '';
     for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        const data = line.slice(6).trim();
-
-        if (data === '[DONE]') {
-          return fullContent;
-        }
-
-        try {
-          const parsed = JSON.parse(data);
-          const content = parsed.choices?.[0]?.delta?.content;
-
-          if (content) {
-            fullContent += content;
-            onChunk(content);
-          }
-        } catch {
-          // Ignore invalid JSON chunks
-        }
-      }
+      if (handleLine(line)) return fullContent;
     }
   }
+
+  pending += decoder.decode();
+  if (pending && handleLine(pending)) return fullContent;
 
   return fullContent;
 }

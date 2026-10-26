@@ -1,12 +1,11 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, ArrowDown, Code2, GitCompareArrows, Mail, Menu, Plus } from 'lucide-react';
 import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../../council/progress/ProgressIndicator';
 import { useChatOptimized } from '@/src/hooks/useChat';
 import { ChatInterfaceProps } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
-import QuickToolButton from './QuickToolButton';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
@@ -16,12 +15,15 @@ import { User } from '@/src/types/user.types';
 const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedConversationId,
   onConversationCreated,
+  mobileMenuOpen = false,
 }) => {
   const [message, setMessage] = useState('');
   const [pendingMessage, setPendingMessage] = useState('');
+  const [showJumpToLatest, setShowJumpToLatest] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
   const { selectedModel } = useModelSelection();
   const initializeUser = useAppStore((state) => state.initializeUser);
+  const conversationTitle = useAppStore((state) => state.conversations.find((conversation) => conversation.id === selectedConversationId)?.title);
   
   const {
     messages,
@@ -48,6 +50,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const previousMessagesLengthRef = useRef(0);
 
   const isFirstMessage = messages.length === 0;
+  const displayTitle = conversationTitle || messages.find((item) => item.role === 'user')?.content || 'Conversation';
   const isCouncilMode = selectedModel === 'council';
   const showCouncilProgress = loading && isCouncilMode && councilProgress.length > 0;
 
@@ -90,19 +93,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (distanceFromBottom > 100) {
       autoScrollEnabledRef.current = false;
       userHasScrolledRef.current = true;
+      setShowJumpToLatest(true);
     } else if (distanceFromBottom < 10) {
       autoScrollEnabledRef.current = true;
       userHasScrolledRef.current = false;
+      setShowJumpToLatest(false);
     }
   }, []);
-
-  useEffect(() => {
-    const container = messagesContainerRef.current;
-    if (container) {
-      container.addEventListener('scroll', handleScroll, { passive: true });
-      return () => container.removeEventListener('scroll', handleScroll);
-    }
-  }, [handleScroll]);
 
   const smoothScrollToBottom = useCallback(() => {
     if (!messagesContainerRef.current || !autoScrollEnabledRef.current) return;
@@ -294,170 +291,63 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   }, [message, error, clearError]);
 
   return (
-    <div className="h-full flex flex-col bg-[#201d26] relative">
-      {/* Background Grid */}
-      <div className="absolute inset-0 pointer-events-none opacity-[0.015]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px)
-          `,
-          backgroundSize: '50px 50px'
-        }}
-      />
+    <div className={`relative flex h-full min-h-0 flex-col bg-[#191919] text-[#efeeec] ${isFirstMessage ? 'chat-empty-shell justify-center' : ''}`}>
+      <header className={`z-20 flex h-14 shrink-0 items-center justify-between px-4 md:px-6 ${isFirstMessage ? 'absolute inset-x-0 top-0' : ''}`}>
+        <div className="flex items-center gap-3">
+          <button id="chat-sidebar-toggle" type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Toggle sidebar" aria-controls="chat-sidebar" aria-expanded={mobileMenuOpen} className="flex h-11 w-11 items-center justify-center rounded-lg text-[#aaa7a3] hover:bg-white/5 hover:text-white md:hidden"><Menu className="h-5 w-5" /></button>
+          <span className="max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4]">{isFirstMessage ? 'New chat' : displayTitle}</span>
+        </div>
+        {!isFirstMessage && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:new-chat'))} aria-label="New chat" className="flex h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] hover:bg-white/5 hover:text-white"><Plus className="h-4 w-4" /></button>}
+      </header>
 
-      {/* Error Banner */}
       {error && (
-        <div className="flex-shrink-0 bg-red-500/10 border-b border-red-500/20 relative z-10">
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3">
-            <div className="flex items-center gap-2 text-red-400">
-              <AlertCircle className="w-4 h-4 flex-shrink-0" />
-              <span className="text-sm flex-1">{error}</span>
-              <button
-                onClick={clearError}
-                className="ml-auto text-red-400 hover:text-red-300 text-sm underline transition-colors duration-200 cursor-pointer flex-shrink-0"
-              >
-                Dismiss
-              </button>
-            </div>
-          </div>
+        <div role="alert" className="mx-auto flex w-full max-w-[760px] items-center gap-2 px-5 py-3 text-sm text-red-300">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span className="flex-1">{error}</span>
+          <button onClick={clearError} className="rounded-md px-2 py-1 hover:bg-white/5">Dismiss</button>
         </div>
       )}
 
-      {isFirstMessage ? (
-        // Empty State
-        <div className="flex-1 flex items-center justify-center p-4 sm:p-6 overflow-y-auto relative z-10">
-          <div className="text-center max-w-4xl w-full">
-            <div className="mb-8 sm:mb-12 animate-in fade-in duration-700">
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 tracking-tight leading-tight px-4">
-                {isCouncilMode ? "AI Council Mode" : "What's on your mind today?"}
-              </h1>
-              <p className="text-base sm:text-lg text-gray-400 px-4">
-                {isCouncilMode 
-                  ? "Multiple expert AI models working together to provide the best answer"
-                  : "Ask anything, explore ideas, or get help with your work"
-                }
-              </p>
-            </div>
-
-            {isCouncilMode && (
-              <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 sm:p-4 mb-6 sm:mb-8 max-w-3xl mx-auto">
-                <p className="text-yellow-300 text-xs sm:text-sm leading-relaxed">
-                  ⚡ <strong>Council mode</strong> uses 4 advanced AI models to analyze, debate, and synthesize the best possible answer to your question.
-                </p>
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-1 sm:gap-2 text-xs text-yellow-400/80">
-                  <span>GPT-5.1</span>
-                  <span className="hidden sm:inline">•</span>
-                  <span>Gemini 3 Pro</span>
-                  <span className="hidden sm:inline">•</span>
-                  <span>Claude 4.5</span>
-                  <span className="hidden sm:inline">•</span>
-                  <span>Grok 4</span>
-                </div>
-              </div>
-            )}
-
-            <div className="max-w-3xl mx-auto mb-6 sm:mb-8 px-4">
-              <MessageInput
-                message={message}
-                onMessageChange={setMessage}
-                onSendMessage={handleSendMessage}
-                onStopGenerating={stopGenerating}
-                loading={loading}
-                placeholder={isCouncilMode ? "Ask the AI council a question..." : "Message AI chat..."}
-              />
-            </div>
-
-            {!isCouncilMode && (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:flex md:flex-wrap gap-2 sm:gap-3 justify-center max-w-4xl mx-auto mb-6 sm:mb-8 px-4">
-                <QuickToolButton icon="✍️" label="AI script writer" onClick={() => setMessage("Help me write a script for ")} />
-                <QuickToolButton icon="💻" label="Coding Assistant" onClick={() => setMessage("Help me with coding: ")} />
-                <QuickToolButton icon="📝" label="Essay writer" onClick={() => setMessage("Help me write an essay about ")} />
-                <QuickToolButton icon="💼" label="Business" onClick={() => setMessage("Help me with business advice on ")} />
-                <QuickToolButton icon="🌐" label="Translate" onClick={() => setMessage("Translate this text: ")} />
-                <QuickToolButton icon="✉️" label="AI Email writing" onClick={() => setMessage("Help me write an email about ")} />
-                <QuickToolButton icon="📄" label="AI PDF chat" onClick={() => setMessage("Help me analyze this PDF: ")} />
-                <QuickToolButton icon="🔍" label="Research assistant" onClick={() => setMessage("Research this topic: ")} />
-              </div>
-            )}
-
-            <div className="text-xs text-gray-500 px-4">
-              Powered by advanced AI models • ChatterStack can make mistakes
-            </div>
+      <div ref={messagesContainerRef} onScroll={handleScroll} className={`relative z-10 min-h-0 overflow-y-auto overscroll-contain ${isFirstMessage ? 'shrink-0' : 'flex-1'}`}>
+        {isFirstMessage ? (
+          <div className="flex flex-col items-center justify-center px-5 pb-3 text-center">
+            <h1 className="max-w-[620px] font-serif text-[30px] font-normal leading-[1.18] tracking-[-0.025em] text-[#f1efec] sm:text-[44px]">
+              {isCouncilMode ? 'Bring the council together' : 'What can I help you work on?'}
+            </h1>
+            <p className="chat-empty-subtitle mt-3 max-w-[520px] text-sm leading-6 text-[#a7a39e] sm:text-[15px]">
+              {isCouncilMode ? 'Up to four models examine your question and combine their findings.' : 'Ask a question, work through an idea, or start with a task below.'}
+            </p>
           </div>
+        ) : (
+          <div className="mx-auto w-full max-w-[800px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
+            {messages.map((msg, index) => {
+              const isLastMessage = index === messages.length - 1;
+              if (msg.role === 'user') return <MemoizedUserMessage key={`user-${index}-${msg.createdAt}`} content={msg.content} />;
+              return <MemoizedAIMessage key={`ai-${index}-${msg.createdAt}`} content={msg.content} modelId={msg.modelId} loading={loading && isLastMessage} isLastMessage={isLastMessage} />;
+            })}
+            {showCouncilProgress && <CouncilProgressIndicator progress={councilProgress} isActive={true} />}
+            <div ref={messagesEndRef} />
+          </div>
+        )}
+      </div>
+
+      <div className="relative z-20 shrink-0 bg-gradient-to-t from-[#191919] via-[#191919] to-[#191919]/90 px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 sm:px-6">
+        {showJumpToLatest && !isFirstMessage && <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTop = el.scrollHeight; autoScrollEnabledRef.current = true; userHasScrolledRef.current = false; setShowJumpToLatest(false); }} className="mx-auto mb-3 flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-[#292929] px-4 text-xs text-white shadow-lg"><ArrowDown className="h-3.5 w-3.5" /> Jump to latest</button>}
+        <div className="mx-auto max-w-[720px]">
+          <MessageInput message={message} onMessageChange={setMessage} onSendMessage={handleSendMessage} onStopGenerating={stopGenerating} loading={loading} placeholder={isCouncilMode ? 'Ask the council anything' : 'Ask anything'} />
+          {isFirstMessage && !isCouncilMode && <div className="mx-auto mt-4 grid w-full max-w-[620px] grid-cols-2 gap-2 text-left">
+            {[
+              { label: 'Explain code', prompt: 'Explain this code: ', Icon: Code2 },
+              { label: 'Draft an email', prompt: 'Help me draft an email about ', Icon: Mail },
+              { label: 'Compare ideas', prompt: 'Compare these ideas: ', Icon: GitCompareArrows },
+              { label: 'Plan a project', prompt: 'Help me plan a project for ', Icon: Plus },
+            ].map(({ label, prompt, Icon }) => <button key={label} type="button" onClick={() => { setMessage((current) => current || prompt); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(), 0); }} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.025] px-3 text-[13px] text-[#c9c5c0] transition-colors hover:border-white/20 hover:bg-white/[0.055] hover:text-white max-[340px]:gap-1.5 max-[340px]:px-2 sm:gap-3 sm:px-4 sm:text-sm"><Icon className="h-4 w-4 shrink-0 text-[#e8b775]" />{label}</button>)}
+          </div>}
+          <p className="mt-3 text-center text-xs leading-5 text-[#aaa6a2]">ChatterStack can make mistakes. Check important information.</p>
         </div>
-      ) : (
-        <>
-          {/* Messages Container */}
-          <div 
-            ref={messagesContainerRef}
-            className="flex-1 overflow-y-auto relative z-10"
-            style={{ 
-              willChange: 'scroll-position',
-              scrollBehavior: 'auto'
-            }}
-          >
-            <div className="py-4 sm:py-6 space-y-4 sm:space-y-6">
-              {messages.map((msg, index) => {
-                const isLastMessage = index === messages.length - 1;
-                
-                if (msg.role === 'user') {
-                  return <MemoizedUserMessage key={`user-${index}-${msg.createdAt}`} content={msg.content} />;
-                } else {
-                  return (
-                    <MemoizedAIMessage
-                      key={`ai-${index}-${msg.createdAt}`}
-                      content={msg.content}
-                      modelId={msg.modelId}
-                      loading={loading && isLastMessage}
-                      isLastMessage={isLastMessage}
-                    />
-                  );
-                }
-              })}
+      </div>
 
-              {showCouncilProgress && (
-                <CouncilProgressIndicator
-                  progress={councilProgress}
-                  isActive={true}
-                />
-              )}
-              
-              <div ref={messagesEndRef} />
-            </div>
-          </div>
-
-          {/* Input Bar */}
-          <div className="flex-shrink-0 border-t border-gray-700/50 bg-[#282230] backdrop-blur-sm relative z-10 pb-safe">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
-              <MessageInput
-                message={message}
-                onMessageChange={setMessage}
-                onSendMessage={handleSendMessage}
-                onStopGenerating={stopGenerating}
-                loading={loading}
-                placeholder={isCouncilMode ? "Ask the AI council..." : "Message AI chat..."}
-              />
-              <div className="flex items-center justify-center mt-2 text-xs text-gray-500">
-                <span className="text-center">
-                  {isCouncilMode 
-                    ? "Council mode synthesizes insights from 4 expert AI models"
-                    : "ChatterStack can make mistakes. Check important info."
-                  }
-                </span>
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Login Modal - Rendered at root level */}
-      <LoginModal
-        isOpen={showLoginModal}
-        onClose={handleLoginModalClose}
-        onLoginSuccess={handleLoginSuccess}
-        message="Sign in to start chatting"
-      />
+      <LoginModal isOpen={showLoginModal} onClose={handleLoginModalClose} onLoginSuccess={handleLoginSuccess} message="Sign in to start chatting" />
     </div>
   );
 };
