@@ -134,7 +134,8 @@ export function CouncilStory() {
             </div>
           ))}
           <div className="landing-story-endcap">
-            <span>Ready for a wider view?</span>
+            <span>Your turn</span>
+            <p>Bring a question into the room.</p>
             <Link href="/chat">
               Open the council <ArrowRight size={15} aria-hidden="true" />
             </Link>
