@@ -251,6 +251,9 @@ export function CouncilStory() {
               </span>
             </div>
           </div>
+          <Link className="landing-story-mobile-cta" href="/chat">
+            Open the council <ArrowRight size={15} aria-hidden="true" />
+          </Link>
         </div>
       </div>
     </section>
