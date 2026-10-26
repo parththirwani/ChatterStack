@@ -1810,7 +1810,6 @@
 }
 .landing-model img[src*="gemini"],
 .landing-story-model img[src*="gemini"] {
-  transform: scale(1.08);
   filter: grayscale(1) brightness(1.7);
 }
 .landing-approach-outcome {
@@ -1967,12 +1966,12 @@
 }
 .landing-story-question span,
 .landing-story-response-label {
-  color: #cdb47f;
+  color: #dac38c;
 }
 .landing-model img[src*="deepseek"],
 .landing-story-model img[src*="deepseek"],
 .landing-approach-demo img[src*="deepseek"] {
-  transform: scale(1.12);
+  transform: scale(1.04);
 }
 .landing-terminal {
   min-height: 0;
@@ -2030,7 +2029,7 @@
 }
 @media (max-width: 767px) {
   .landing-self-host .landing-terminal code {
-    padding-top: 28px;
+    padding-top: 34px;
   }
   .landing-council {
     padding-bottom: 40px;
