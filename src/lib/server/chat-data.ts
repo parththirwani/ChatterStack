@@ -16,7 +16,7 @@ export interface ChatPageData {
  * Read the signed-in user on the server so the first paint can contain the
  * real sidebar/account state instead of a client-side loading spinner.
  */
-export async function getSessionUser(): Promise<User | null> {
+async function getSessionUser(): Promise<User | null> {
   const session = await auth();
   if (!session?.user?.id) return null;
 

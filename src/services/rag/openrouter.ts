@@ -147,15 +147,3 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
   // Filter out undefined values and return properly typed array
   return embeddings.filter((e): e is number[] => e !== undefined);
 }
-
-/**
- * Clear embedding cache for a specific text
- */
-export async function clearEmbeddingCache(text: string): Promise<void> {
-  try {
-    const cacheKey = generateCacheKey(text);
-    await redisStore.deleteKey(cacheKey);
-  } catch (error) {
-    console.warn('Failed to clear embedding cache:', error);
-  }
-}

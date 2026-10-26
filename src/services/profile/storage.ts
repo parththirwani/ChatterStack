@@ -105,7 +105,7 @@ export async function saveUserProfile(profile: UserProfile): Promise<void> {
 /**
  * Initialize profile for new user
  */
-export async function initializeProfile(userId: string): Promise<UserProfile> {
+async function initializeProfile(userId: string): Promise<UserProfile> {
   const profile: UserProfile = {
     ...DEFAULT_PROFILE,
     userId,

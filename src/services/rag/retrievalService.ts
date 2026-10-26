@@ -37,7 +37,7 @@ interface RankResult {
 /**
  * Retrieve relevant context for a user query
  */
-export async function retrieveContext(params: {
+async function retrieveContext(params: {
   userId: string;
   query: string;
   currentConversationId?: string;

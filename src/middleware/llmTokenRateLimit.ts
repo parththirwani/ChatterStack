@@ -362,7 +362,7 @@ const llmTokenRateLimiter = new LLMTokenRateLimiter();
 /**
  * Check if user can send a message (before sending)
  */
-export async function checkLLMTokenLimit(
+async function checkLLMTokenLimit(
   userId: string,
   message: string,
   isCouncil: boolean
@@ -442,5 +442,3 @@ export async function withLLMTokenLimit(
 export function countTokens(text: string): number {
   return encode(text).length;
 }
-
-export default llmTokenRateLimiter;
