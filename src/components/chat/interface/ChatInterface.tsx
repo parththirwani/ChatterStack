@@ -269,19 +269,23 @@ const ChatComposer = memo(function ChatComposer({
         }
       }
 
-      if (textToSend && isValid) {
+      // Files stay in the composer while the modal is open, so send them
+      // with the text (or on their own).
+      if ((textToSend || attachments.length > 0) && isValid) {
         try {
           sessionStorage.removeItem('pendingChatMessage');
         } catch {
           // ignore
         }
 
+        const filesToSend = attachments;
         clearDraft();
-        await sendNow(textToSend);
+        setAttachments([]);
+        await sendNow(textToSend, filesToSend);
         setPendingMessage('');
       }
     },
-    [pendingMessage, initializeUser, sendNow, clearDraft]
+    [pendingMessage, attachments, initializeUser, sendNow, clearDraft]
   );
 
   const handleLoginModalClose = useCallback(() => {

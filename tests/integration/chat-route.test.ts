@@ -236,6 +236,35 @@ describe('POST /api/chat, council mode', () => {
       vi.useRealTimers();
     }
   });
+
+  it('shows members the files from earlier turns', async () => {
+    const bytes = Buffer.from('# Earlier notes');
+    redis.get.mockResolvedValueOnce([{
+      role: 'user', content: 'Read this', attachments: [{
+        name: 'earlier.md', mimeType: 'text/markdown', size: bytes.length, data: bytes.toString('base64'),
+      }],
+    }]);
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const response = await post({
+        message: 'What did I attach?',
+        selectedModel: 'council',
+        conversationId: NEW_ID,
+        council: { members: ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5'], chair: 'anthropic/claude-sonnet-5.5' },
+      });
+      const eventsPromise = readEvents(response);
+      await vi.runAllTimersAsync();
+      await eventsPromise;
+
+      const member = openRouterBodies().find((body) => body.model === 'openai/gpt-6.1-sol');
+      expect(member.messages[1].content).toEqual([
+        { type: 'text', text: 'Read this' },
+        { type: 'text', text: 'File: earlier.md\n\n# Earlier notes' },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe('POST /api/chat, validation', () => {

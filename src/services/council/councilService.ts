@@ -24,6 +24,8 @@ interface Message {
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
+  /** The message as sent to members, including any files it carried. */
+  parts?: string | OpenRouterPart[];
 }
 
 export interface Stage1Result {
@@ -96,7 +98,7 @@ async function stage1_collect_responses(
         { role: 'system', content: systemPrompt },
         ...conversationHistory.map(m => ({
           role: m.role === 'user' ? 'user' : 'assistant',
-          content: m.content,
+          content: m.parts ?? m.content,
         })),
         { role: 'user', content: attachmentContent.length ? [{ type: 'text' as const, text: userQuery || 'Please examine the attached file(s).' }, ...attachmentContent] : userQuery },
       ];

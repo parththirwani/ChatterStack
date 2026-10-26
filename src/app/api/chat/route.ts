@@ -170,7 +170,8 @@ export async function POST(request: NextRequest) {
         fullContent = isCouncilMode
           ? await runCouncilProcess(
               data.message,
-              conversationHistory,
+              // Members see earlier files too; the chair's prompt uses the text.
+              conversationHistory.map((m, index) => ({ ...m, parts: messagesForAI[index].content })),
               { members: data.council?.members, chair: data.council?.chair, thinkingLevel, signal },
               {
                 onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
