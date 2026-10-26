@@ -52,6 +52,15 @@ services:
       QDRANT_URL: http://qdrant:6333
       NEXTAUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      # Secrets are read from .env (Compose interpolation). The rest of .env is
+      # deliberately not loaded: its Upstash/Qdrant Cloud settings would take
+      # priority over the bundled redis and qdrant services.
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     ports:
       - "3000:3000"
     depends_on:
