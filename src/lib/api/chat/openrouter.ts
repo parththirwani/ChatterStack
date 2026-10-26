@@ -79,6 +79,18 @@ export async function streamCompletion(
 
   let fullContent = '';
   let pending = '';
+  let finishReason: string | undefined;
+
+  // A stream that ends normally without any answer text (for example, the
+  // model spent its whole token budget thinking) must not look like success.
+  const finish = () => {
+    if (fullContent) return fullContent;
+    throw new Error(
+      finishReason === 'length'
+        ? 'The model ran out of tokens while thinking and gave no answer. Try a lower thinking level.'
+        : `The model returned no answer${finishReason ? ` (${finishReason})` : ''}. Try again or pick another model.`
+    );
+  };
 
   const handleLine = (line: string): boolean => {
     if (!line.startsWith('data:')) return false;
@@ -90,7 +102,9 @@ export async function streamCompletion(
     if (parsed.error) {
       throw new Error(parsed.error.message || 'OpenRouter stream error');
     }
-    const delta = parsed.choices?.[0]?.delta;
+    const choice = parsed.choices?.[0];
+    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    const delta = choice?.delta;
     if (typeof delta?.reasoning === 'string' && delta.reasoning) {
       onReasoning?.(delta.reasoning);
     }
@@ -110,7 +124,7 @@ export async function streamCompletion(
       const lines = pending.split(/\r?\n/);
       pending = lines.pop() || '';
       for (const line of lines) {
-        if (handleLine(line)) return fullContent;
+        if (handleLine(line)) return finish();
       }
     }
   } catch (error) {
@@ -119,9 +133,9 @@ export async function streamCompletion(
   }
 
   pending += decoder.decode();
-  if (pending && handleLine(pending)) return fullContent;
+  if (pending && handleLine(pending)) return finish();
 
-  return fullContent;
+  return finish();
 }
 
 export async function createCompletion(

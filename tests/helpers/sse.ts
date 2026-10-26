@@ -19,8 +19,8 @@ export function sseResponse(events: Array<object | string>, fragmentSize = 7): R
 }
 
 /** OpenRouter-style chat completion chunk. */
-export function delta(fields: { content?: string; reasoning?: string }) {
-  return { choices: [{ delta: fields }] };
+export function delta(fields: { content?: string; reasoning?: string }, finishReason?: string) {
+  return { choices: [{ delta: fields, ...(finishReason ? { finish_reason: finishReason } : {}) }] };
 }
 
 /** Read a server SSE Response into the list of JSON payloads it sent. */
