@@ -142,7 +142,7 @@ export default function LandingPage() {
         <section className="landing-models" aria-label="Available models">
           <div className="landing-section-shell landing-models-inner">
             <p>
-              Choose a model
+              Choose a model{" "}
               <br />
               for the work.
             </p>
@@ -181,7 +181,7 @@ export default function LandingPage() {
             </div>
             <div className="landing-approach-grid">
               <div>
-                <span className="landing-approach-number">01</span>
+                <span className="landing-approach-number">01 / 02</span>
                 <h3>Choose how deeply to think.</h3>
                 <p>
                   Switch models in a conversation and set a supported reasoning
@@ -193,7 +193,7 @@ export default function LandingPage() {
                   <span>Medium</span>
                 </div>
                 <div className="landing-approach-outcome">
-                  <span>Reply with the selected model</span>
+                  <span>DeepSeek V4.1 Flash · Medium reasoning</span>
                   <p>Let’s compare the search paths before choosing an index.</p>
                 </div>
                 <span className="landing-approach-caption">
@@ -201,7 +201,7 @@ export default function LandingPage() {
                 </span>
               </div>
               <div>
-                <span className="landing-approach-number">02</span>
+                <span className="landing-approach-number">02 / 02</span>
                 <h3>Return to an earlier idea.</h3>
                 <p>
                   Search saved conversations in the sidebar, then reopen a
@@ -209,12 +209,14 @@ export default function LandingPage() {
                 </p>
                 <div className="landing-approach-demo landing-approach-history">
                   <Search size={15} aria-hidden="true" />
-                  <span>Search conversations</span>
-                  <ArrowRight size={14} aria-hidden="true" />
+                  <span>search</span>
+                  <i className="landing-approach-caret" aria-hidden="true" />
                 </div>
                 <div className="landing-approach-outcome landing-approach-result">
                   <span>Matching conversation</span>
-                  <p>Search system design</p>
+                  <p>
+                    <mark>Search</mark> system design
+                  </p>
                   <ArrowRight size={15} aria-hidden="true" />
                 </div>
                 <span className="landing-approach-caption">
@@ -258,7 +260,7 @@ export default function LandingPage() {
               <code>
                 <span>$</span> docker compose up --build -d
               </code>
-              <p>PostgreSQL · Redis · Qdrant · ChatterStack</p>
+              <p>Postgres · Redis · Qdrant · ChatterStack</p>
             </div>
           </div>
         </section>

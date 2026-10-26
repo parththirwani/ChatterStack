@@ -194,11 +194,15 @@ export function CouncilStory() {
                       />
                       <div>
                         <strong>{model.name}</strong>
-                        <p>
-                          {displayStage === 0
-                            ? "Ready to weigh in"
-                            : model.note}
-                        </p>
+                        {displayStage === 0 ? (
+                          <p className="landing-story-pending">
+                            <span>Waiting to respond</span>
+                            <i />
+                            <i />
+                          </p>
+                        ) : (
+                          <p>{model.note}</p>
+                        )}
                       </div>
                       {displayStage > 0 && (
                         <Check size={15} aria-hidden="true" />
@@ -206,12 +210,22 @@ export function CouncilStory() {
                     </div>
                   ))}
                 </div>
-                {displayStage === 2 && (
-                  <div className="landing-story-synthesis">
-                    <span>
-                      <Image src="/logo.png" width={18} height={15} alt="" /> 03
-                      / Combined finding
-                    </span>
+                <div
+                  className="landing-story-synthesis"
+                  data-pending={displayStage < 2 ? "true" : undefined}
+                >
+                  <span>
+                    <Image src="/logo.png" width={18} height={15} alt="" /> 03
+                    / Combined finding
+                    {displayStage < 2 && (
+                      <em>
+                        {displayStage === 0
+                          ? "After four perspectives"
+                          : "Combining…"}
+                      </em>
+                    )}
+                  </span>
+                  {displayStage === 2 ? (
                     <p>
                       Start with keyword search in the existing database.
                       DeepSeek favors embeddings for natural language queries;
@@ -219,8 +233,15 @@ export function CouncilStory() {
                       and add semantic retrieval when those queries show a real
                       gap.
                     </p>
-                  </div>
-                )}
+                  ) : (
+                    <p className="landing-story-pending">
+                      <span>Waiting for the combined finding</span>
+                      <i />
+                      <i />
+                      <i />
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
             <div className="landing-story-bottom">
