@@ -104,7 +104,38 @@ class RedisStore {
       console.error('⚠️  Redis connection failed:', error instanceof Error ? error.message : error);
       this.isConnected = false;
       this.client = null;
+      // Allow a later call to retry the connection (e.g. after a transient
+      // outage); without this one failed attempt would disable Redis forever.
+      this.connectionAttempted = false;
       // Don't throw - let the app work without Redis
+    }
+  }
+
+  /**
+   * Runs a Lua script atomically on the server (EVAL with KEYS/ARGV).
+   * Unlike the other methods this one throws when Redis is not configured,
+   * connected, or the script fails - callers that can degrade (e.g. the
+   * rate limiter) decide what to do with the error.
+   */
+  async evalScript(
+    script: string,
+    options: { keys: string[]; arguments: Array<string | number> }
+  ): Promise<unknown> {
+    if (!this.client || !this.isConnected) {
+      await this.connect();
+    }
+    if (!this.client || !this.isConnected) {
+      throw new Error('Redis is not available');
+    }
+    try {
+      return await this.client.eval(script, {
+        keys: options.keys,
+        arguments: options.arguments.map(String),
+      });
+    } catch (error) {
+      // Treat script errors that indicate a lost connection as outages.
+      this.isConnected = this.client.isReady;
+      throw error;
     }
   }
 
