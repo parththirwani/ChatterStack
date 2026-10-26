@@ -26,7 +26,7 @@ const db = {
   },
   message: {
     findMany: vi.fn(async (): Promise<Array<{ role: string; content: string; modelId: string | null }>> => []),
-    createMany: vi.fn(async ({ data }: { data: Array<{ role: string; content: string }> }) => {
+    createMany: vi.fn(async ({ data }: { data: Array<{ role: string; content: string; attachments?: unknown }> }) => {
       log.push(`db:messages:${data.map((m) => `${m.role}=${m.content}`).join('|')}`);
       return { count: data.length };
     }),
@@ -36,7 +36,7 @@ const db = {
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
 vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
-const redis = { get: vi.fn(async (): Promise<unknown[]> => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}) };
+const redis = { get: vi.fn(async (): Promise<unknown[]> => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}), delete: vi.fn(async () => {}) };
 vi.mock('@/src/lib/redis', () => ({ redisStore: redis }));
 const recordLLMTokens = vi.fn<(user: string, tokens: number, council: boolean) => Promise<void>>(async () => {});
 vi.mock('@/src/lib/api/chat/rag-integration', () => ({
@@ -72,6 +72,7 @@ beforeEach(() => {
   db.message.findMany.mockClear();
   redis.get.mockClear();
   redis.set.mockClear();
+  redis.delete.mockClear();
   recordLLMTokens.mockClear();
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -154,6 +155,40 @@ describe('POST /api/chat, existing conversation', () => {
     expect(events.some((e) => e !== '[DONE]' && 'conversationCreated' in e)).toBe(false);
     expect(log.some((entry) => entry.startsWith('db:messages:user=And fast recovery?'))).toBe(true);
   });
+
+  it('passes files to the model and stores their payload with the user message', async () => {
+    const markdown = Buffer.from('# Project plan').toString('base64');
+    const pdf = Buffer.from('%PDF-1.7\nexample').toString('base64');
+    const attachments = [
+      { name: 'plan.md', mimeType: 'text/markdown', size: 14, data: markdown },
+      { name: 'brief.pdf', mimeType: 'application/pdf', size: 16, data: pdf },
+    ];
+    await readEvents(await post({ message: 'Summarize', selectedModel: 'deepseek/deepseek-v4.1-flash-1017', conversationId: NEW_ID, attachments }));
+
+    const content = openRouterBodies()[0].messages.at(-1).content;
+    expect(content).toEqual([
+      { type: 'text', text: 'Summarize' },
+      { type: 'text', text: 'File: plan.md\n\n# Project plan' },
+      { type: 'file', file: { filename: 'brief.pdf', file_data: `data:application/pdf;base64,${pdf}` } },
+    ]);
+    expect(db.message.createMany.mock.calls[0][0].data[0].attachments).toEqual(attachments);
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(redis.delete).toHaveBeenCalledWith(NEW_ID);
+  });
+
+  it('replays an earlier attachment on the next turn', async () => {
+    const bytes = Buffer.from('# Earlier notes');
+    redis.get.mockResolvedValueOnce([{
+      role: 'user', content: 'Read this', attachments: [{
+        name: 'earlier.md', mimeType: 'text/markdown', size: bytes.length, data: bytes.toString('base64'),
+      }],
+    }]);
+    await readEvents(await post({ message: 'What did I attach?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+    expect(openRouterBodies()[0].messages.at(-2).content).toEqual([
+      { type: 'text', text: 'Read this' },
+      { type: 'text', text: 'File: earlier.md\n\n# Earlier notes' },
+    ]);
+  });
 });
 
 describe('POST /api/chat, thinking level', () => {
@@ -214,6 +249,17 @@ describe('POST /api/chat, validation', () => {
     expect(
       (await post({ message: 'hi', selectedModel: 'council', council: { members: ['openai/gpt-6.1-sol'], chair: 'openai/gpt-6.1-sol' } })).status
     ).toBe(400);
+  });
+
+  it('rejects a fake PDF before creating a conversation', async () => {
+    const bytes = Buffer.from('not a pdf');
+    const response = await post({
+      message: '', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true,
+      attachments: [{ name: 'fake.pdf', mimeType: 'application/pdf', size: bytes.length, data: bytes.toString('base64') }],
+    });
+    expect(response.status).toBe(400);
+    expect(db.conversation.create).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

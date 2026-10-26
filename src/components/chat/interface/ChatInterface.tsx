@@ -181,6 +181,8 @@ const ChatComposer = memo(function ChatComposer({
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const initializeUser = useAppStore((state) => state.initializeUser);
 
+  useEffect(() => setAttachments([]), [conversationKey]);
+
   const sendNow = useCallback(
     async (text: string, files: ChatAttachment[] = []) => {
       onSendStart();

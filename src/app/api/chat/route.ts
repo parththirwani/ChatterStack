@@ -49,7 +49,11 @@ async function loadHistory(conversationId: string): Promise<RedisMessage[]> {
     modelId: m.modelId ?? undefined,
     attachments: Array.isArray(m.attachments) ? m.attachments as unknown as ChatAttachment[] : undefined,
   }));
-  if (history.length > 0) await redisStore.set(conversationId, history);
+  // Binary payloads can be several MB each. Keep those conversations in Postgres,
+  // rather than copying the entire history into Redis on every turn.
+  if (history.length > 0 && history.every((message) => !message.attachments?.length)) {
+    await redisStore.set(conversationId, history);
+  }
   return history;
 }
 
@@ -206,7 +210,11 @@ export async function POST(request: NextRequest) {
         { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
-      await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+      if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
+        await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+      } else {
+        await redisStore.delete(conversationId);
+      }
       await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
       if (fullContent) {
         await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);

@@ -14,7 +14,7 @@ interface MessageRow {
   role: string;
   content: string | null;
   modelId: string | null;
-  attachments: unknown;
+  attachments?: unknown;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -62,7 +62,9 @@ export async function listConversations(
 ): Promise<Conversation[]> {
   const conversations = await prisma.conversation.findMany({
     where: { userId },
-    include: { messages: { orderBy: { createdAt: 'asc' }, take: 1 } },
+    include: { messages: { orderBy: { createdAt: 'asc' }, take: 1, select: {
+      id: true, role: true, content: true, modelId: true, createdAt: true, updatedAt: true,
+    } } },
     orderBy: [{ pinnedAt: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }],
     take: limit,
     skip: offset,
