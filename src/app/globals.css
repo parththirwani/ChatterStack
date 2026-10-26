@@ -62,6 +62,32 @@ body {
     outline: 2px solid var(--focus-ring);
     outline-offset: 2px;
   }
+
+  /* Tailwind v4 resets buttons to the default cursor; anything clickable
+     shows a pointer. Utility classes (e.g. cursor-default) still win. */
+  :where(
+    button,
+    a[href],
+    summary,
+    select,
+    label[for],
+    input[type="checkbox"],
+    input[type="radio"],
+    input[type="submit"],
+    input[type="button"],
+    [role="button"],
+    [role="option"],
+    [role="checkbox"],
+    [role="menuitem"],
+    [role="tab"],
+    [role="switch"]
+  ) {
+    cursor: pointer;
+  }
+
+  :where(:disabled, [aria-disabled="true"]) {
+    cursor: not-allowed;
+  }
 }
 
 ::selection {

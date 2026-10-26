@@ -16,9 +16,9 @@ import { streamCompletion } from '@/src/lib/api/chat/openrouter';
 import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
 import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 
-export const COUNCIL_MODELS: readonly string[] = COUNCIL_MODEL_IDS;
+const COUNCIL_MODELS: readonly string[] = COUNCIL_MODEL_IDS;
 
-export const CHAIRMAN_MODEL: string = COUNCIL_CHAIR_MODEL;
+const CHAIRMAN_MODEL: string = COUNCIL_CHAIR_MODEL;
 
 interface Message {
   role: 'user' | 'assistant';

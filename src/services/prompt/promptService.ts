@@ -7,18 +7,18 @@ import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'src/prompts/system-prompt.md');
 const SECURITY_POLICY_PATH = path.join(process.cwd(), 'src/prompts/security-policy.md');
 
-export const CHATTERSTACK_SYSTEM_PROMPT = fs.existsSync(SYSTEM_PROMPT_PATH)
+const CHATTERSTACK_SYSTEM_PROMPT = fs.existsSync(SYSTEM_PROMPT_PATH)
   ? fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8')
   : `You are an AI assistant operating within ChatterStack, a multi-model AI platform.`;
 
-export const SECURITY_POLICY = fs.existsSync(SECURITY_POLICY_PATH)
+const SECURITY_POLICY = fs.existsSync(SECURITY_POLICY_PATH)
   ? fs.readFileSync(SECURITY_POLICY_PATH, 'utf-8')
   : `Follow all safety and security guidelines. Do not assist with harmful, illegal, or unethical activities.`;
 
 /**
  * Get the ChatterStack system prompt with model-specific context
  */
-export const getChatterStackSystemPrompt = (modelId?: string): string => {
+const getChatterStackSystemPrompt = (modelId?: string): string => {
   let prompt = CHATTERSTACK_SYSTEM_PROMPT;
   
   // Replace date placeholder

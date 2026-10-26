@@ -10,7 +10,7 @@ export interface ChatState {
   councilProgress: CouncilProgress[];
 }
 
-export const initialChatState: ChatState = {
+const initialChatState: ChatState = {
   messages: [],
   loading: false,
   error: undefined,

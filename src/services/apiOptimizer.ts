@@ -178,16 +178,6 @@ export class HttpError extends Error {
 export const apiOptimizer = new ApiOptimizer();
 
 /**
- * Optimized fetch wrapper
- */
-export async function optimizedFetch<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
-  return apiOptimizer.fetch<T>(url, options);
-}
-
-/**
  * Invalidate cache after mutations
  */
 export function invalidateCache(pattern?: string): void {
