@@ -156,9 +156,27 @@ a,
   animation: menuIn 120ms ease-out;
 }
 
+/* Question preview card on the chat's left rail: appears beside the tick
+   it came from, sliding in from it. */
+@keyframes turnPreviewIn {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.turn-preview {
+  animation: turnPreviewIn 130ms ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-in,
   .animate-menu-in,
+  .turn-preview,
   .skeleton {
     animation: none;
   }

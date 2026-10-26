@@ -1,5 +1,5 @@
 "use client";
-import React, { useState, useEffect, useLayoutEffect, useRef, memo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, memo, useCallback, useMemo } from 'react';
 import { AlertCircle, ArrowDown, Code2, GitCompareArrows, ListTodo, Mail, PanelLeft, Pencil, Plus } from 'lucide-react';
 import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
@@ -7,12 +7,16 @@ import { useChat } from '@/src/hooks/useChat';
 import { useComposerDraft } from '@/src/hooks/useComposerDraft';
 import type { DocumentAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
+import TurnNavigator from '../navigation/TurnNavigator';
+import { buildTurns } from '../navigation/turns';
+import type { Turn } from '../navigation/turns';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 
 const EMPTY_MESSAGES: Message[] = [];
+const EMPTY_TURNS: Turn[] = [];
 
 const starterPrompts = [
   { label: 'Explain code', prompt: 'Explain this code: ', Icon: Code2 },
@@ -175,7 +179,12 @@ const MessageList = memo(function MessageList({
         const key = msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
 
         if (msg.role === 'user') {
-          return <UserMessage key={key} content={msg.content} attachments={msg.attachments} />;
+          // Each question is an anchor the left rail jumps between.
+          return (
+            <div key={key} data-turn-anchor={index}>
+              <UserMessage content={msg.content} attachments={msg.attachments} />
+            </div>
+          );
         }
 
         return (
@@ -562,6 +571,13 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     if (container) container.scrollTop = container.scrollHeight;
   }, []);
 
+  // One rail tick per question. Nothing to navigate while the chat is the
+  // draft state, still loading, or holds a single question.
+  const turns = useMemo(
+    () => (isFirstMessage || showSkeleton ? EMPTY_TURNS : buildTurns(activeMessages)),
+    [activeMessages, isFirstMessage, showSkeleton]
+  );
+
   return (
     <div className={`relative flex h-full min-h-0 flex-col bg-[#191919] text-[#efeeec] ${isFirstMessage ? 'chat-empty-shell justify-center' : ''}`}>
       <ChatHeader
@@ -593,22 +609,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         </div>
       ) : (
         <>
-          <div
-            ref={messagesContainerRef}
-            onScroll={handleScroll}
-            className={`relative z-10 min-h-0 overflow-y-auto overscroll-contain ${isFirstMessage ? 'shrink-0' : 'flex-1'}`}
-          >
-            {isFirstMessage ? (
-              <EmptyState isCouncilMode={isCouncilMode} />
-            ) : showSkeleton ? (
-              <ConversationSkeleton />
-            ) : (
-              <MessageList
-                messages={activeMessages}
-                loading={loading}
-                councilProgress={councilProgress}
-              />
-            )}
+          <div className={`relative flex min-h-0 ${isFirstMessage ? 'shrink-0' : 'flex-1'}`}>
+            <TurnNavigator containerRef={messagesContainerRef} turns={turns} />
+            <div
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
+              className="relative z-10 min-h-0 w-full flex-1 overflow-y-auto overscroll-contain"
+            >
+              {isFirstMessage ? (
+                <EmptyState isCouncilMode={isCouncilMode} />
+              ) : showSkeleton ? (
+                <ConversationSkeleton />
+              ) : (
+                <MessageList
+                  messages={activeMessages}
+                  loading={loading}
+                  councilProgress={councilProgress}
+                />
+              )}
+            </div>
           </div>
 
           <div className="relative">
