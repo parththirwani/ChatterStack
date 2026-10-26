@@ -1,6 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { auth } from '@/src/lib/auth';
 import { retrieveContextWithFallback, formatContextForLLM } from '@/src/services/rag/retrievalService';
+import { RAG_RETRIEVE_LIMITS, withUserRateLimits } from '@/src/middleware/requestRateLimit';
+
+const RetrieveRequestSchema = z.object({
+  query: z.string().trim().min(1).max(8000),
+  currentConversationId: z.string().uuid().optional(),
+  shortTermMessages: z
+    .array(
+      z.object({
+        role: z.enum(['user', 'assistant']),
+        content: z.string().max(20_000),
+      })
+    )
+    .max(50)
+    .optional(),
+  timeWindowDays: z.coerce.number().int().min(1).max(365).optional(),
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -11,13 +28,20 @@ export async function POST(request: NextRequest) {
     }
 
     const userId = session.user.id;
-    const body = await request.json();
-    const { query, currentConversationId, shortTermMessages, timeWindowDays } = body;
 
-    // Validation
-    if (!query) {
-      return NextResponse.json({ error: 'Query is required' }, { status: 400 });
+    // Retrieval embeds the query on every call: cap it per user.
+    const limited = await withUserRateLimits(userId, RAG_RETRIEVE_LIMITS);
+    if (limited) return limited;
+
+    const body = await request.json().catch(() => null);
+    const parsed = RetrieveRequestSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid request', errors: parsed.error.issues },
+        { status: 400 }
+      );
     }
+    const { query, currentConversationId, shortTermMessages, timeWindowDays } = parsed.data;
 
     // Retrieve context with fallback
     const retrievalParams: {
@@ -30,10 +54,9 @@ export async function POST(request: NextRequest) {
       userId,
       query,
       currentConversationId,
-      shortTermMessages: shortTermMessages || [],
+      shortTermMessages: shortTermMessages ?? [],
     };
 
-    // Only add timeWindowDays if it's defined
     if (timeWindowDays !== undefined) {
       retrievalParams.timeWindowDays = timeWindowDays;
     }
