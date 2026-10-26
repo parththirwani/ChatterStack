@@ -1,6 +1,6 @@
 "use client";
 import React, { useState, useEffect, useLayoutEffect, useRef, memo, useCallback } from 'react';
-import { AlertCircle, ArrowDown, Code2, GitCompareArrows, ListTodo, Mail, PanelLeft, Plus } from 'lucide-react';
+import { AlertCircle, ArrowDown, Code2, GitCompareArrows, ListTodo, Mail, PanelLeft, Pencil, Plus } from 'lucide-react';
 import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import { useChat } from '@/src/hooks/useChat';
@@ -29,11 +29,15 @@ function dispatchToggleSidebar() {
   window.dispatchEvent(new Event('chatterstack:toggle-sidebar'));
 }
 
+const TITLE_MAX_LENGTH = 80;
+
 interface ChatHeaderProps {
   title: string;
   isFirstMessage: boolean;
   mobileMenuOpen: boolean;
   sidebarCollapsed: boolean;
+  /** Set when the chat can be renamed (it exists in the conversation list). */
+  onRename?: (title: string) => void;
 }
 
 const ChatHeader = memo(function ChatHeader({
@@ -41,7 +45,35 @@ const ChatHeader = memo(function ChatHeader({
   isFirstMessage,
   mobileMenuOpen,
   sidebarCollapsed,
+  onRename,
 }: ChatHeaderProps) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+
+  // Switching chats mid-edit drops the edit rather than renaming the new chat.
+  useEffect(() => setEditing(false), [title]);
+
+  useLayoutEffect(() => {
+    if (!editing) return;
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, [editing]);
+
+  const startEditing = () => {
+    setDraft(title);
+    setEditing(true);
+  };
+
+  const finishEditing = (save: boolean) => {
+    if (!editing) return;
+    setEditing(false);
+    const next = draft.trim().slice(0, TITLE_MAX_LENGTH);
+    if (save && next && next !== title) onRename?.(next);
+    requestAnimationFrame(() => editButtonRef.current?.focus());
+  };
+
   return (
     <header className={`z-20 flex h-14 shrink-0 items-center justify-between px-4 lg:px-6 ${isFirstMessage ? 'absolute inset-x-0 top-0' : ''}`}>
       <div className="flex items-center gap-3">
@@ -68,11 +100,48 @@ const ChatHeader = memo(function ChatHeader({
             <PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} />
           </button>
         )}
-        <span
-          className={`max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4] ${isFirstMessage ? 'lg:hidden' : ''}`}
-        >
-          {title}
-        </span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            value={draft}
+            maxLength={TITLE_MAX_LENGTH}
+            aria-label="Chat title"
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => finishEditing(true)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                finishEditing(true);
+              }
+              if (event.key === 'Escape') {
+                event.preventDefault();
+                finishEditing(false);
+              }
+            }}
+            className="h-8 w-[min(55vw,420px)] rounded-md border border-white/[0.18] bg-[#1d1d1d] px-2 text-sm font-medium text-white outline-none focus:border-white/[0.38]"
+          />
+        ) : (
+          <div className={`group flex min-w-0 items-center gap-1 ${isFirstMessage ? 'lg:hidden' : ''}`}>
+            <span
+              onDoubleClick={onRename && startEditing}
+              className="max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4]"
+            >
+              {title}
+            </span>
+            {onRename && (
+              <button
+                ref={editButtonRef}
+                type="button"
+                onClick={startEditing}
+                aria-label="Rename chat"
+                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#a9a5a0] transition-[opacity,color,background-color] hover:bg-white/[0.08] hover:text-white focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+              >
+                <Pencil className="h-3.5 w-3.5" strokeWidth={1.8} aria-hidden="true" />
+              </button>
+            )}
+          </div>
+        )}
       </div>
       {!isFirstMessage && (
         <button
@@ -390,6 +459,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const conversationTitle = useAppStore(
     (state) => state.conversations.find((conversation) => conversation.id === conversationKey)?.title
   );
+  const conversationListed = useAppStore((state) =>
+    state.conversations.some((conversation) => conversation.id === conversationKey)
+  );
+  const renameConversation = useAppStore((state) => state.renameConversation);
+  const handleRename = useCallback(
+    (title: string) => {
+      renameConversation(conversationKey, title).catch((error) => console.error('Failed to rename chat:', error));
+    },
+    [renameConversation, conversationKey]
+  );
 
   const initialMessages =
     initialConversation?.id === conversationKey ? initialConversation.messages : undefined;
@@ -473,6 +552,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         isFirstMessage={isFirstMessage}
         mobileMenuOpen={mobileMenuOpen}
         sidebarCollapsed={sidebarCollapsed}
+        onRename={!isFirstMessage && conversationListed ? handleRename : undefined}
       />
 
       {error && (
