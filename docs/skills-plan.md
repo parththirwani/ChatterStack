@@ -78,7 +78,7 @@ Choose a `.md` file (for example a `SKILL.md`) or paste its text. The text is pa
 4. Chat route integration (schema, prompt injection, council, persistence) and tests.
 5. Sidebar Skills tab, editor, skill creator, and import/export UI.
 6. Composer tagging (`/` picker, chips, message display) and component tests.
-7. e2e spec, README section, and PR into `dev`.
+7. e2e spec and README section. The pull request into `dev` is opened after the feature has been reviewed.
 
 ## Out of scope for now
 
