@@ -35,6 +35,7 @@ const ChatPage: React.FC = () => {
   
   // Modal states - AT ROOT LEVEL
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Close mobile menu when conversation changes
@@ -50,8 +51,17 @@ const ChatPage: React.FC = () => {
   useEffect(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has('auth') && urlParams.get('auth') === 'success') {
+      const authSuccess = urlParams.get('auth') === 'success';
+      const errorCode = urlParams.get('error');
+      if (authSuccess || errorCode) {
         window.history.replaceState({}, document.title, window.location.pathname);
+      }
+      // The OAuth provider sends users back with ?error=... when sign-in
+      // fails. Reopen the dialog with a human-readable reason instead of
+      // leaving them on a page where it looks like nothing happened.
+      if (errorCode) {
+        setAuthError(errorCode);
+        setShowLoginModal(true);
       }
     } catch {
       // non-browser environment - ignore
@@ -175,6 +185,7 @@ const ChatPage: React.FC = () => {
   }, [pathname, router, setCurrentConversationId, loadConversations]);
 
   const handleLoginClick = useCallback(() => {
+    setAuthError(null);
     setShowLoginModal(true);
   }, []);
 
@@ -185,6 +196,7 @@ const ChatPage: React.FC = () => {
   // NEW: Handle login success
   const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
     setShowLoginModal(false);
+    setAuthError(null);
     
     // Reinitialize user
     await initializeUser();
@@ -204,6 +216,7 @@ const ChatPage: React.FC = () => {
   // NEW: Handle modal close
   const handleLoginModalClose = useCallback(() => {
     setShowLoginModal(false);
+    setAuthError(null);
   }, []);
 
   // Show loading state
@@ -275,6 +288,7 @@ const ChatPage: React.FC = () => {
         onClose={handleLoginModalClose}
         onLoginSuccess={handleLoginSuccess}
         message="Sign in to save your conversations"
+        initialError={authError}
       />
 
       {/* Logout Modal - AT ROOT LEVEL */}

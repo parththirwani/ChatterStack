@@ -4,6 +4,7 @@ import Image from 'next/image';
 import { signIn } from 'next-auth/react';
 import { useAppStore } from '@/src/store/rootStore';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
+import { authErrorMessage } from '@/src/lib/auth/error-messages';
 import type { User } from '@/src/types/user.types';
 
 interface LoginModalProps {
@@ -11,6 +12,8 @@ interface LoginModalProps {
   onClose: () => void;
   onLoginSuccess?: (user: User | null) => void;
   message?: string;
+  // NextAuth error code from the OAuth redirect (?error=...).
+  initialError?: string | null;
 }
 
 const LoginModal: React.FC<LoginModalProps> = ({
@@ -18,8 +21,10 @@ const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onLoginSuccess,
   message,
+  initialError,
 }) => {
   const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
   const initializeUser = useAppStore((state) => state.initializeUser);
   const user = useAppStore((state) => state.user);
   const firstActionRef = useRef<HTMLButtonElement>(null);
@@ -53,16 +58,40 @@ const LoginModal: React.FC<LoginModalProps> = ({
     }
   }, [user, isOpen, onLoginSuccess, onClose]);
 
+  // Reset transient state each time the modal opens, and surface errors
+  // handed back by the OAuth redirect (e.g. ?error=Configuration).
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoading(false);
+    setError(authErrorMessage(initialError));
+  }, [isOpen, initialError]);
+
   // OAuth login using NextAuth
   const handleLogin = async (provider: 'google' | 'github') => {
     setLoading(true);
+    setError(null);
     try {
-      await signIn(provider, {
+      const result = await signIn(provider, {
         callbackUrl: '/?auth=success',
-        redirect: true,
+        redirect: false,
       });
-    } catch (error) {
-      console.error('Login error:', error);
+
+      if (result?.error) {
+        setError(authErrorMessage(result.error));
+        setLoading(false);
+        return;
+      }
+
+      if (result?.url) {
+        window.location.assign(result.url);
+        return;
+      }
+
+      setError(authErrorMessage('OAuthSignin'));
+      setLoading(false);
+    } catch (loginError) {
+      console.error('Login error:', loginError);
+      setError(authErrorMessage('OAuthSignin'));
       setLoading(false);
     }
   };
@@ -142,6 +171,12 @@ const LoginModal: React.FC<LoginModalProps> = ({
             <span>{loading ? 'Signing in…' : 'Continue with GitHub'}</span>
           </button>
         </div>
+
+        {error && (
+          <p role="alert" className="mt-3 rounded-lg border border-red-500/20 bg-red-500/[0.07] px-3 py-2 text-[12.5px] leading-5 text-red-200">
+            {error}
+          </p>
+        )}
 
         <p className="mt-6 text-center text-[11.5px] leading-5 text-[#8f8b86]">
           By continuing, you agree to our Terms and Privacy Policy.
