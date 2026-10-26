@@ -42,8 +42,6 @@ export function deferred() {
   return { promise, resolve };
 }
 
-export const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-
 export const test = base.extend<{ mockChat: MockChat; cleanDatabase: void }>({
   // Every test starts with no chats for the test user.
   cleanDatabase: [

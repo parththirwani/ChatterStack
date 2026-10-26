@@ -4,7 +4,7 @@ import { prisma } from "./prisma";
 import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [
     Google({
@@ -39,6 +39,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   debug: process.env.NODE_ENV === "development",
 });
-
-// Export GET and POST handlers directly
-export const { GET, POST } = handlers;

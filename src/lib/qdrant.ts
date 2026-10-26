@@ -38,31 +38,3 @@ export function getQdrantClient(): QdrantClient {
   
   return qdrantClient;
 }
-
-/**
- * Test Qdrant connection
- */
-export async function testQdrantConnection(): Promise<boolean> {
-  try {
-    const client = getQdrantClient();
-    await client.getCollections();
-    return true;
-  } catch (error) {
-    console.error('⚠️  Qdrant connection failed:', error instanceof Error ? error.message : error);
-    return false;
-  }
-}
-
-/**
- * Get connection info
- */
-export function getQdrantConnectionInfo(): { isCloud: boolean; url: string | undefined } {
-  const qdrantUrl = process.env.QDRANT_URL || process.env.QDRANT_ENDPOINT;
-  const qdrantApiKey = process.env.QDRANT_API_KEY;
-  const isCloud = !!qdrantUrl && (qdrantUrl.includes('qdrant.io') || qdrantUrl.includes('qdrant.tech') || !!qdrantApiKey);
-  
-  return {
-    isCloud,
-    url: qdrantUrl,
-  };
-}
