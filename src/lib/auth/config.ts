@@ -9,8 +9,8 @@ export const authConfig: NextAuthConfig = {
   providers: getProviders(),
   callbacks: getCallbacks(),
   pages: {
-    signIn: '/',
-    error: '/',
+    signIn: '/chat',
+    error: '/chat',
   },
   session: {
     strategy: 'database' as const, // Explicitly type as const

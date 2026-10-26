@@ -32,7 +32,7 @@ export interface ChatPageProps {
 
 function conversationIdFromPathname(pathname: string): string | undefined {
   const [first] = pathname.split('/').filter(Boolean);
-  return first || undefined;
+  return first === 'chat' ? undefined : first || undefined;
 }
 
 const ChatPage: React.FC<ChatPageProps> = ({
@@ -264,7 +264,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
     await logout();
     setShowLogoutModal(false);
     startTransition(() => {
-      router.push('/');
+      router.push('/chat');
       router.refresh();
     });
   }, [logout, router]);

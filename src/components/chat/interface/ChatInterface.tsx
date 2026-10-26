@@ -216,7 +216,7 @@ const ChatComposer = memo(function ChatComposer({
   }, [message, loading, sendNow, clearDraft]);
 
   // Restore a pending message that was saved before the full-page OAuth
-  // redirect. After returning to `/?auth=success` React state is empty, so
+  // redirect. After returning to `/chat?auth=success` React state is empty, so
   // the message would otherwise be lost and the user asked to log in again.
   useEffect(() => {
     let stored: string | null = null;

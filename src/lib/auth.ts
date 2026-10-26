@@ -19,8 +19,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   pages: {
-    signIn: "/",
-    error: "/", 
+    signIn: "/chat",
+    error: "/chat",
   },
   session: {
     strategy: "database",

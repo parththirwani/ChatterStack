@@ -5,7 +5,7 @@
  * usePathname and keeps back/forward working.
  */
 export function showConversation(conversationId: string | undefined, { replace = false } = {}) {
-  const path = conversationId ? `/${conversationId}` : '/';
+  const path = conversationId ? `/${conversationId}` : '/chat';
   if (window.location.pathname === path) return;
   window.history[replace ? 'replaceState' : 'pushState'](null, '', path);
 }

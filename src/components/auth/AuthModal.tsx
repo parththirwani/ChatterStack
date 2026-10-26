@@ -72,7 +72,7 @@ const LoginModal: React.FC<LoginModalProps> = ({
     setError(null);
     try {
       const result = await signIn(provider, {
-        callbackUrl: '/?auth=success',
+        callbackUrl: '/chat?auth=success',
         redirect: false,
       });
 
