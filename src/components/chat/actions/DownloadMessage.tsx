@@ -34,10 +34,10 @@ const DownloadButton: React.FC<DownloadButtonProps> = ({
     <button
       onClick={handleDownload}
       aria-label={title}
-      className={`flex h-11 w-11 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white ${className}`}
+      className={`flex h-8 w-8 items-center justify-center rounded-md text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-2 focus-visible:outline-white ${className}`}
       title={title}
     >
-      <Download className="w-4 h-4" />
+      <Download className="h-[15px] w-[15px]" />
     </button>
   );
 };

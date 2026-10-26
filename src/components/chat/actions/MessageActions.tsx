@@ -21,7 +21,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
   if (!content) return null;
 
   return (
-    <div className={`-ml-3.5 flex space-x-1 ${className}`}>
+    <div className={`flex items-center gap-0.5 ${className}`}>
       {showCopy && (
         <CopyButton content={content} />
       )}

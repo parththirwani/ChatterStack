@@ -103,6 +103,16 @@ describe('createCompletion', () => {
     expect(body.messages.at(-1)).toEqual({ role: 'user', content: 'hi' });
     expect(body.reasoning).toEqual({ effort: 'xhigh' });
   });
+
+  it('preserves image and file parts in the request', async () => {
+    const content = [
+      { type: 'text' as const, text: 'Read these' },
+      { type: 'image_url' as const, image_url: { url: 'data:image/png;base64,AAAA' } },
+      { type: 'file' as const, file: { filename: 'a.pdf', file_data: 'data:application/pdf;base64,AAAA' } },
+    ];
+    await createCompletion([{ role: 'user', content }], 'google/gemini-4-argon');
+    expect(requestBody().messages.at(-1)).toEqual({ role: 'user', content });
+  });
 });
 
 describe('stopping a stream', () => {

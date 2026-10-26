@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { CHAT_MODELS, COUNCIL_MODEL_IDS } from '@/src/config/models';
+import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 
 // Load the system prompt from file
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'src/prompts/system-prompt.md');
@@ -173,9 +174,9 @@ function getModelContext(modelId: string): string {
  * Format messages with system context and security policy
  */
 export const formatMessagesWithSystemContext = (
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: string | OpenRouterPart[] }>,
   modelId?: string
-): Array<{ role: string; content: string }> => {
+): Array<{ role: string; content: string | OpenRouterPart[] }> => {
   const systemPrompt = getChatterStackSystemPrompt(modelId);
   
   return [

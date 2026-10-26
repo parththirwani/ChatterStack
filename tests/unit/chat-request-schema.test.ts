@@ -57,4 +57,13 @@ describe('ChatRequestSchema', () => {
   it('rejects unsupported models', () => {
     expect(ChatRequestSchema.safeParse({ ...base, selectedModel: 'x/unknown' }).success).toBe(false);
   });
+
+  it('accepts a file without message text and rejects oversized or unsupported payloads', () => {
+    const file = { name: 'notes.md', mimeType: 'text/markdown', size: 2, data: 'aGk=' };
+    expect(ChatRequestSchema.safeParse({ ...base, message: '', attachments: [file] }).success).toBe(true);
+    expect(ChatRequestSchema.safeParse({ ...base, message: '' }).success).toBe(false);
+    expect(ChatRequestSchema.safeParse({ ...base, attachments: [{ ...file, size: 6 * 1024 * 1024 }] }).success).toBe(false);
+    expect(ChatRequestSchema.safeParse({ ...base, attachments: Array(5).fill(file) }).success).toBe(false);
+    expect(ChatRequestSchema.safeParse({ ...base, attachments: [{ ...file, data: '@@@' }] }).success).toBe(false);
+  });
 });

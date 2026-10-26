@@ -37,13 +37,13 @@ const CopyButton: React.FC<CopyButtonProps> = ({
     <button
       onClick={handleCopy}
       aria-label={copied ? 'Copied message' : title}
-      className={`flex h-11 w-11 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white ${className}`}
+      className={`flex h-8 w-8 items-center justify-center rounded-md text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-2 focus-visible:outline-white ${className}`}
       title={title}
     >
       {copied ? (
-        <Check className="w-4 h-4 text-green-400" />
+        <Check className="h-[15px] w-[15px] text-green-400" />
       ) : (
-        <Copy className="w-4 h-4" />
+        <Copy className="h-[15px] w-[15px]" />
       )}
     </button>
   );

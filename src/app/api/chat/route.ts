@@ -13,11 +13,14 @@ import { prisma } from '@/src/lib/prisma';
 import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
 import { ChatRequestSchema } from '@/src/types/chat.types';
 import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
+import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
+import type { ChatAttachment } from '@/src/types/chat.types';
 
 interface RedisMessage {
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
+  attachments?: ChatAttachment[];
 }
 
 function jsonError(error: string, status: number) {
@@ -38,12 +41,13 @@ async function loadHistory(conversationId: string): Promise<RedisMessage[]> {
   const rows = await prisma.message.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
-    select: { role: true, content: true, modelId: true },
+    select: { role: true, content: true, modelId: true, attachments: true },
   });
   const history: RedisMessage[] = rows.map((m) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
     content: m.content,
     modelId: m.modelId ?? undefined,
+    attachments: Array.isArray(m.attachments) ? m.attachments as unknown as ChatAttachment[] : undefined,
   }));
   if (history.length > 0) await redisStore.set(conversationId, history);
   return history;
@@ -81,10 +85,17 @@ export async function POST(request: NextRequest) {
     const selectedModel = data.selectedModel;
     const isCouncilMode = selectedModel === 'council';
     const thinkingLevel = data.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
+    const attachments = data.attachments ?? [];
+    let currentParts;
+    try {
+      currentParts = await attachmentParts(attachments);
+    } catch (error) {
+      return jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400);
+    }
 
     const rateLimitCheck = await withLLMTokenLimit(
       userId,
-      data.message,
+      data.message + currentParts.filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
       isCouncilMode
     );
     if (rateLimitCheck) {
@@ -117,7 +128,7 @@ export async function POST(request: NextRequest) {
       let titleTask: Promise<void> = Promise.resolve();
       if (isNewConversation) {
         send({ conversationCreated: conversationId });
-        titleTask = generateConversationTitle({ userMessage: data.message })
+        titleTask = generateConversationTitle({ userMessage: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}` })
           .then(async (title) => {
             // Saved even if the client has gone; only sent if it's still there.
             if (await saveGeneratedTitle(conversationId, title)) send({ title });
@@ -134,17 +145,18 @@ export async function POST(request: NextRequest) {
         conversationHistory
       );
 
-      const messagesForAI = [
+      const messagesForAI = await Promise.all([
         ...conversationHistory,
-        { role: 'user' as const, content: data.message },
-      ].map((m) => ({
+        { role: 'user' as const, content: data.message, attachments },
+      ].map(async (m, index) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
-        content: m.content,
-      }));
+        content: messageContent(m.content, index === conversationHistory.length ? currentParts : await attachmentParts(m.attachments ?? [])),
+      })));
 
       if (ragContext) {
         const lastMessage = messagesForAI[messagesForAI.length - 1];
-        lastMessage.content = `Context from past conversations:\n\n${ragContext}\n\n---\n\nCurrent question: ${lastMessage.content}`;
+        const context = `Context from past conversations:\n\n${ragContext}\n\n---\n\nCurrent question: ${data.message}`;
+        lastMessage.content = messageContent(context, currentParts);
       }
 
       // On Stop/disconnect the model call is cancelled and resolves with the
@@ -162,7 +174,8 @@ export async function POST(request: NextRequest) {
                 onReasoning: (reasoning) => send({ reasoning }),
                 onAnswer: (councilAnswer) => send({ councilAnswer }),
                 onRankings: (councilRankings) => send({ councilRankings }),
-              }
+              },
+              currentParts
             )
           : await createCompletion(messagesForAI, selectedModel, {
               thinkingLevel,
@@ -183,18 +196,18 @@ export async function POST(request: NextRequest) {
       // Count every call, including stopped and failed ones: the prompt was
       // still sent, and skipping this would let Stop bypass the rate limit.
       try {
-        const inputTokens = countTokens(messagesForAI.map((m) => m.content).join('\n'));
+        const inputTokens = countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
         await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
       } catch (error) {
         console.error('Failed to record tokens:', error);
       }
 
       const exchange: RedisMessage[] = [
-        { role: 'user', content: data.message },
+        { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
       await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
-      await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel);
+      await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
       if (fullContent) {
         await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);
       }

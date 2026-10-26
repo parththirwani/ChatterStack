@@ -1,6 +1,7 @@
 import { prisma } from '@/src/lib/prisma';
 import type { Conversation } from '@/src/types/conversation.types';
 import type { Message } from '@/src/types/chat.types';
+import type { ChatAttachment } from '@/src/types/chat.types';
 
 /**
  * The one place conversations are read and shaped for the client, shared by
@@ -13,6 +14,7 @@ interface MessageRow {
   role: string;
   content: string | null;
   modelId: string | null;
+  attachments: unknown;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -33,6 +35,9 @@ function serializeMessage(message: MessageRow): Message {
     role: message.role as Message['role'],
     content: message.content ?? '',
     modelId: message.modelId ?? undefined,
+    attachments: Array.isArray(message.attachments)
+      ? (message.attachments as ChatAttachment[]).map(({ name, mimeType, size }) => ({ name, mimeType, size }))
+      : undefined,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   };

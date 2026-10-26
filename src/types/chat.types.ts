@@ -15,6 +15,18 @@ export interface Message {
   reasoningStartedAt?: number;
   reasoningDurationMs?: number;
   council?: CouncilDetails;
+  attachments?: AttachmentMeta[];
+}
+
+export interface AttachmentMeta {
+  name: string;
+  mimeType: string;
+  size: number;
+}
+
+export interface ChatAttachment extends AttachmentMeta {
+  /** Base64 payload, without a data URL prefix. */
+  data: string;
 }
 
 export interface CouncilAnswer {
@@ -57,6 +69,7 @@ export interface ChatState {
 
 export interface ChatRequest {
   message: string;
+  attachments?: ChatAttachment[];
   conversationId?: string;
   selectedModel: string; // single model per request
   thinkingLevel?: ThinkingLevel;
@@ -87,7 +100,13 @@ import {
 
 export const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),
-  message: z.string().trim().min(1).max(1000),
+  message: z.string().trim().max(1000),
+  attachments: z.array(z.object({
+    name: z.string().min(1).max(180),
+    mimeType: z.string().min(1).max(100),
+    size: z.number().int().positive().max(5 * 1024 * 1024),
+    data: z.string().regex(/^[A-Za-z0-9+/]*={0,2}$/).max(7 * 1024 * 1024),
+  })).max(4).optional(),
   selectedModel: z.string().refine(
     (id) => id === 'council' || isChatModelId(id),
     'Unsupported model'
@@ -104,6 +123,12 @@ export const ChatRequestSchema = z.object({
       chair: z.string().refine(isChatModelId, 'Unsupported model'),
     })
     .optional(),
+}).refine((request) => request.message.length > 0 || Boolean(request.attachments?.length), {
+  message: 'Add a message or a file',
+  path: ['message'],
+}).refine((request) => (request.attachments ?? []).reduce((size, file) => size + file.size, 0) <= 10 * 1024 * 1024, {
+  message: 'Files exceed 10 MB in total',
+  path: ['attachments'],
 });
 
 export enum Role {

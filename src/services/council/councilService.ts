@@ -14,6 +14,7 @@ import {
 import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/src/config/models';
 import { streamCompletion } from '@/src/lib/api/chat/openrouter';
 import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
+import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 
 export const COUNCIL_MODELS: readonly string[] = COUNCIL_MODEL_IDS;
 
@@ -75,6 +76,7 @@ function delay(ms: number, signal?: AbortSignal): Promise<void> {
 
 async function stage1_collect_responses(
   userQuery: string,
+  attachmentContent: OpenRouterPart[],
   conversationHistory: Message[],
   members: readonly string[],
   thinkingLevel: ThinkingLevel,
@@ -96,7 +98,7 @@ async function stage1_collect_responses(
           role: m.role === 'user' ? 'user' : 'assistant',
           content: m.content,
         })),
-        { role: 'user', content: userQuery },
+        { role: 'user', content: attachmentContent.length ? [{ type: 'text' as const, text: userQuery || 'Please examine the attached file(s).' }, ...attachmentContent] : userQuery },
       ];
 
       const response = await streamCompletion(messages, model, { thinkingLevel, signal });
@@ -289,12 +291,14 @@ export async function runCouncilProcess(
   userQuery: string,
   conversationHistory: Message[] = [],
   { members = COUNCIL_MODELS, chair = CHAIRMAN_MODEL, thinkingLevel = 'off', signal }: CouncilOptions = {},
-  callbacks: CouncilCallbacks = {}
+  callbacks: CouncilCallbacks = {},
+  attachmentContent: OpenRouterPart[] = []
 ): Promise<string> {
   const { onProgress, onRankings } = callbacks;
 
   const stage1Results = await stage1_collect_responses(
     userQuery,
+    attachmentContent,
     conversationHistory,
     members,
     thinkingLevel,
