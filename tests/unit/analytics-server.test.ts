@@ -39,6 +39,13 @@ type CacheHolder = { __chatterstackPostHog?: unknown };
 const cacheHolder = globalThis as unknown as CacheHolder;
 
 const USER = '11111111-2222-3333-4444-555555555555';
+const SENT_PROPS = {
+  model_id: 'openai/gpt-6.1-sol',
+  council: false,
+  thinking_level: 'medium' as const,
+  attachment_count: 0,
+  message_length_bucket: '1-99' as const,
+};
 
 beforeEach(() => {
   constructed.length = 0;
@@ -82,14 +89,14 @@ describe('getPostHogClient', () => {
 
 describe('captureServerEvent', () => {
   it('does nothing without a key', () => {
-    captureServerEvent(USER, 'chat_message_sent', { model_id: 'openai/gpt-6.1-sol' });
+    captureServerEvent(USER, 'chat_message_sent', SENT_PROPS);
     expect(capture).not.toHaveBeenCalled();
     expect(afterCalls).toHaveLength(0);
   });
 
   it('does nothing without a user id', () => {
     vi.stubEnv('POSTHOG_KEY', 'phc_test');
-    captureServerEvent(undefined, 'chat_message_sent', { model_id: 'openai/gpt-6.1-sol' });
+    captureServerEvent(undefined, 'chat_message_sent', SENT_PROPS);
     expect(capture).not.toHaveBeenCalled();
   });
 
