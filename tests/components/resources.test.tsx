@@ -22,6 +22,7 @@ describe('Resources', () => {
     const fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url === '/api/documents' && !init) return Response.json({ documents: files });
+      if (url === `/api/documents/${document.id}/content?preview=1`) return new Response('# Project plan');
       if (url.endsWith(document.id) && init?.method === 'PATCH') {
         files[0].favoritedAt = new Date().toISOString() as never;
         return Response.json({ document: files[0] });
@@ -34,10 +35,15 @@ describe('Resources', () => {
     window.addEventListener('chatterstack:add-document', added);
     try {
       render(<Resources />);
-      const link = await screen.findByRole('link', { name: 'plan.md' });
-      expect(link).toHaveAttribute('href', `/api/documents/${document.id}/content`);
+      const previewButton = await screen.findByRole('button', { name: 'Preview plan.md' });
       expect(screen.getByText(/2.0 KB/)).toBeInTheDocument();
       expect(screen.getByText(/Deletes in/)).toBeInTheDocument();
+      await user.click(previewButton);
+      expect(await screen.findByRole('dialog', { name: 'plan.md' })).toBeInTheDocument();
+      expect(await screen.findByText('# Project plan')).toBeInTheDocument();
+      expect(screen.getByRole('link', { name: 'Download plan.md' })).toHaveAttribute('href', `/api/documents/${document.id}/content`);
+      await user.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).toBeNull();
       await user.click(screen.getByRole('button', { name: 'Add plan.md to chat' }));
       expect((added.mock.calls[0][0] as CustomEvent).detail).toEqual({
         documentId: document.id, name: document.name, mimeType: document.mimeType, size: document.size,
@@ -46,7 +52,7 @@ describe('Resources', () => {
       await waitFor(() => expect(screen.getByText(/Kept/)).toBeInTheDocument());
       expect(screen.getByRole('button', { name: 'Unfavourite plan.md' })).toBeInTheDocument();
       await user.click(screen.getByRole('button', { name: 'Delete plan.md' }));
-      expect(screen.queryByRole('link', { name: 'plan.md' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Preview plan.md' })).toBeNull();
       expect(fetcher).toHaveBeenCalledWith(`/api/documents/${document.id}`, expect.objectContaining({ method: 'DELETE' }));
     } finally {
       window.removeEventListener('chatterstack:add-document', added);
@@ -60,6 +66,6 @@ describe('Resources', () => {
     expect(await screen.findByText(/Files you attach/)).toBeInTheDocument();
     files = [document];
     window.dispatchEvent(new Event('chatterstack:documents-changed'));
-    expect(await screen.findByRole('link', { name: 'plan.md' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Preview plan.md' })).toBeInTheDocument();
   });
 });

@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { FileText, Plus, Star, Trash2 } from 'lucide-react';
 import type { DocumentAttachment } from '@/src/types/chat.types';
+import DocumentPreview from './DocumentPreview';
 
 interface DocumentRow extends DocumentAttachment {
   id: string;
@@ -21,6 +22,7 @@ export default function Resources() {
   const [documents, setDocuments] = useState<DocumentRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [preview, setPreview] = useState<DocumentRow | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -54,6 +56,7 @@ export default function Resources() {
     const response = await fetch(`/api/documents/${document.id}`, { method: 'DELETE' });
     if (!response.ok) { setError('Could not delete document'); return; }
     setDocuments((current) => current.filter((item) => item.id !== document.id));
+    if (preview?.id === document.id) setPreview(null);
   };
 
   const addToChat = (document: DocumentRow) => {
@@ -74,7 +77,7 @@ export default function Resources() {
         <div key={document.id} className="rounded-xl border border-white/[0.07] bg-white/[0.025] p-3">
           <div className="flex min-w-0 items-center gap-2">
             <FileText className="h-4 w-4 shrink-0 text-[#aaa6a2]" />
-            <a href={`/api/documents/${document.id}/content`} className="min-w-0 truncate text-sm text-[#eee] hover:underline" title={document.name}>{document.name}</a>
+            <button type="button" onClick={() => setPreview(document)} className="min-w-0 truncate text-left text-sm text-[#eee] hover:underline" title={document.name} aria-label={`Preview ${document.name}`}>{document.name}</button>
           </div>
           <p className="mt-1 pl-6 text-[11px] text-[#aaa6a2]">{document.name.split('.').at(-1)?.toUpperCase()} · {(document.size / 1024).toFixed(1)} KB · {expiryLabel(document)}</p>
           <div className="mt-2 flex items-center gap-1 pl-5">
@@ -84,6 +87,7 @@ export default function Resources() {
           </div>
         </div>
       ))}
+      {preview && <DocumentPreview document={preview} onClose={() => setPreview(null)} />}
     </section>
   );
 }
