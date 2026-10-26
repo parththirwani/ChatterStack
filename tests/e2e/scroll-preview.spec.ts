@@ -110,8 +110,8 @@ test('hovering a line shows what was asked and what was answered', async ({ page
   await expect(preview(page)).not.toContainText('`');
 
   // It sits beside the rail and stays on screen.
-  const box = await preview(page).boundingBox();
-  const viewport = page.viewportSize();
+  const box = (await preview(page).boundingBox())!;
+  const viewport = page.viewportSize()!;
   expect(box.x).toBeGreaterThanOrEqual(0);
   expect(box.x).toBeLessThan(viewport.width / 2);
   expect(box.y).toBeGreaterThanOrEqual(0);
@@ -163,8 +163,8 @@ test('clicking a line glides the chat to that question', async ({ page }) => {
 
   // It landed just below the top edge, with a little of the question above it.
   const offset = await page.evaluate(() => {
-    const scroller = document.querySelector<HTMLElement>('#chat-main .overflow-y-auto');
-    const anchor = scroller.querySelector<HTMLElement>('[data-turn-anchor="0"]');
+    const scroller = document.querySelector<HTMLElement>('#chat-main .overflow-y-auto')!;
+    const anchor = scroller.querySelector<HTMLElement>('[data-turn-anchor="0"]')!;
     return anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
   });
   expect(Math.abs(offset - 16)).toBeLessThanOrEqual(2);
