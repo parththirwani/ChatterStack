@@ -116,3 +116,6 @@ export const COUNCIL_DESCRIPTION = `Up to four models: ${COUNCIL_MODEL_IDS.map(
 
 // Small, fast model for naming chats. Verified on OpenRouter 2026-10-26.
 export const TITLE_MODEL = 'openai/gpt-5.6-luna' as const;
+
+// Drafts skills in the skill creator. Fast, cheap, and good at following a format.
+export const SKILL_CREATOR_MODEL: ChatModelId = DEFAULT_MODEL_ID;
