@@ -11,7 +11,7 @@ import { createSSEStream, type SSEStream } from '@/src/lib/api/chat/sse-helper';
 import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
 import { prisma } from '@/src/lib/prisma';
 
-import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
+import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { ChatRequestSchema } from '@/src/types/chat.types';
 import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
@@ -115,26 +115,10 @@ export async function POST(request: NextRequest) {
       return jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400);
     }
 
-    const rateLimitCheck = await withLLMTokenLimit(
-      userId,
-      data.message + currentParts.filter((part) => part.type === 'text').map((part) => part.text).join('\n'),
-      isCouncilMode
-    );
-    if (rateLimitCheck) {
-      return rateLimitCheck; // Returns 429 with detailed token info
-    }
-    // End rate limiting check
-
     // Check (or claim) the conversation before streaming anything: the id
-    // comes from the client, so it must belong to this user.
-    if (isNewConversation) {
-      try {
-        await createEmptyConversation(conversationId, userId);
-      } catch (error) {
-        if (isUniqueViolation(error)) return jsonError('Conversation already exists', 409);
-        throw error;
-      }
-    } else {
+    // comes from the client, so it must belong to this user. Ownership is
+    // verified before any history is read or budget is reserved.
+    if (!isNewConversation) {
       const owned = await prisma.conversation.findFirst({
         where: { id: conversationId, userId },
         select: { id: true },
@@ -142,7 +126,41 @@ export async function POST(request: NextRequest) {
       if (!owned) return jsonError('Conversation not found', 404);
     }
 
+    // The limit is estimated from the full prompt the model will see:
+    // cached history + the new message + current attachment text. The
+    // reservation is reconciled with the actual usage in `respond` below.
+    const historyForEstimate = isNewConversation ? [] : await loadHistory(conversationId);
+    const estimateText = [
+      ...historyForEstimate.map((m) => m.content),
+      data.message,
+      ...currentParts.filter((part) => part.type === 'text').map((part) => part.text),
+    ].join('\n');
+
+    const rateLimitCheck = await withLLMTokenLimit(userId, estimateText, isCouncilMode);
+    if (rateLimitCheck) {
+      return rateLimitCheck; // Returns 429 (or 503) with detailed token info
+    }
+
+    // Claim a new chat only once the budget is reserved; a rejected claim
+    // releases the reservation again (0 tokens) so it is not wasted.
+    if (isNewConversation) {
+      try {
+        await createEmptyConversation(conversationId, userId);
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
+          return jsonError('Conversation already exists', 409);
+        }
+        await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
+        throw error;
+      }
+    }
+
     const respond = async ({ send, signal }: SSEStream) => {
+      // The reservation from withLLMTokenLimit above must never be left
+      // dangling: whichever path `respond` exits through, usage is recorded.
+      let usageRecorded = false;
+      try {
       send({ status: 'starting' });
 
       // A new chat is named in parallel with the answer, so the sidebar can
@@ -219,6 +237,7 @@ export async function POST(request: NextRequest) {
       // Count every call, including stopped and failed ones: the prompt was
       // still sent, and skipping this would let Stop bypass the rate limit.
       try {
+        usageRecorded = true;
         const inputTokens = countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
         await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
       } catch (error) {
@@ -242,6 +261,16 @@ export async function POST(request: NextRequest) {
 
       // Usually finished long before the answer; bounded by the title timeout.
       await titleTask;
+      } finally {
+        if (!usageRecorded) {
+          // Failed before the model call (e.g. RAG or attachment setup):
+          // settle the reservation with the estimate so it is not stuck
+          // against the window for 24 hours.
+          await recordLLMTokens(userId, estimatePromptTokens(estimateText, isCouncilMode), isCouncilMode).catch((error) =>
+            console.error('Failed to release token reservation:', error)
+          );
+        }
+      }
     };
 
     const turn = beginConversationTurn(conversationId);
