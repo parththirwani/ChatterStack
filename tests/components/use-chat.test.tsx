@@ -51,6 +51,7 @@ beforeEach(() => {
     user: { id: 'u1', name: 'T', email: 't@example.com', avatarUrl: null },
     conversations: [],
     chatState: {},
+    queues: {},
     currentConversationId: undefined,
   });
 });
@@ -202,5 +203,79 @@ describe('failures and stopping', () => {
     expect(call.signal.aborted).toBe(true);
     expect(state().chatState[id].messages.at(-1)?.content).toBe('Partial');
     expect(state().conversations.map((c) => c.id)).toEqual([id]);
+  });
+});
+
+describe('queueing messages while a reply streams', () => {
+  async function streamingChat() {
+    const started = await startNewChat('First');
+    act(() => started.call.handlers.onConversationCreated?.(started.id));
+    const view = renderHook(() => useChat(started.id), { wrapper });
+    return { ...started, view };
+  }
+  const sentMessages = () => calls.map((c) => c.request.message);
+
+  it('holds queued messages and sends them one at a time as each reply finishes', async () => {
+    const { view, call } = await streamingChat();
+    act(() => {
+      view.result.current.queueMessage('Second');
+      view.result.current.queueMessage('Third');
+    });
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Second', 'Third']);
+    expect(calls).toHaveLength(1);
+
+    act(() => call.finish());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(sentMessages()).toEqual(['First', 'Second']);
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Third']);
+
+    act(() => calls[1].finish());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(sentMessages()).toEqual(['First', 'Second', 'Third']);
+    expect(view.result.current.queue).toEqual([]);
+    calls[2].finish();
+  });
+
+  it('Steer interrupts the reply, keeps what streamed, and sends the steered message next', async () => {
+    const { view, call, id } = await streamingChat();
+    act(() => call.handlers.onChunk?.('Partial'));
+    act(() => {
+      view.result.current.queueMessage('Later');
+      view.result.current.queueMessage('Change of plan');
+    });
+    const steered = view.result.current.queue[1].id;
+
+    act(() => view.result.current.steerQueuedMessage(steered));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(call.signal.aborted).toBe(true);
+    expect(sentMessages()).toEqual(['First', 'Change of plan']);
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Later']);
+    const contents = state().chatState[id].messages.map((m) => m.content);
+    expect(contents.slice(0, 3)).toEqual(['First', 'Partial', 'Change of plan']);
+    calls[1].finish();
+  });
+
+  it('Stop pauses the queue, and Send on a paused message sends it', async () => {
+    const { view, pending } = await streamingChat();
+    act(() => view.result.current.queueMessage('Queued'));
+    act(() => view.result.current.stopGenerating());
+    await act(() => pending);
+    expect(calls).toHaveLength(1);
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Queued']);
+
+    act(() => view.result.current.steerQueuedMessage(view.result.current.queue[0].id));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(sentMessages()).toEqual(['First', 'Queued']);
+    calls[1].finish();
+  });
+
+  it('carries queued attachments along', async () => {
+    const { view, call } = await streamingChat();
+    const file = { documentId: 'd1', name: 'notes.pdf', mimeType: 'application/pdf', size: 10 };
+    act(() => view.result.current.queueMessage('See file', [file]));
+    act(() => call.finish());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1].request.attachments).toEqual([file]);
+    calls[1].finish();
   });
 });

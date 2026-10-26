@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useLayoutEffect, useRef, memo, useCallback, useMemo } from 'react';
 import { AlertCircle, ArrowDown, Code2, GitCompareArrows, ListTodo, Mail, PanelLeft, Pencil, Plus } from 'lucide-react';
 import MessageInput from '../input/MessageInput';
+import QueuedMessages from '../input/QueuedMessages';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import { useChat } from '@/src/hooks/useChat';
 import { useComposerDraft } from '@/src/hooks/useComposerDraft';
@@ -14,6 +15,7 @@ import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
+import type { QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_TURNS: Turn[] = [];
@@ -238,6 +240,9 @@ interface ChatComposerProps {
   isCouncilMode: boolean;
   isFirstMessage: boolean;
   sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: DocumentAttachment[]) => Promise<void>;
+  queue: QueuedMessage[];
+  queueMessage: (message: string, attachments?: DocumentAttachment[]) => void;
+  steerQueuedMessage: (id: string) => void;
   stopGenerating: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onSendStart: () => void;
@@ -249,6 +254,9 @@ const ChatComposer = memo(function ChatComposer({
   isCouncilMode,
   isFirstMessage,
   sendMessage,
+  queue,
+  queueMessage,
+  steerQueuedMessage,
   stopGenerating,
   onConversationCreated,
   onSendStart,
@@ -287,7 +295,7 @@ const ChatComposer = memo(function ChatComposer({
   );
 
   const handleSendMessage = useCallback(async () => {
-    if ((!message.trim() && attachments.length === 0) || loading) return;
+    if (!message.trim() && attachments.length === 0) return;
 
     // Re-read auth state fresh: the render-time `user` can be stale right
     // after an OAuth redirect, which previously re-opened the login modal
@@ -312,8 +320,21 @@ const ChatComposer = memo(function ChatComposer({
     const filesToSend = attachments;
     clearDraft();
     setAttachments([]);
+    // A reply is still streaming: hold this one until it finishes.
+    if (loading) {
+      queueMessage(messageToSend, filesToSend);
+      return;
+    }
     await sendNow(messageToSend, filesToSend);
-  }, [message, attachments, loading, sendNow, clearDraft]);
+  }, [message, attachments, loading, sendNow, queueMessage, clearDraft]);
+
+  const handleSteer = useCallback(
+    (id: string) => {
+      onSendStart();
+      steerQueuedMessage(id);
+    },
+    [onSendStart, steerQueuedMessage]
+  );
 
   // Restore a pending message that was saved before the full-page OAuth
   // redirect. After returning to `/?auth=success` React state is empty, so
@@ -426,6 +447,14 @@ const ChatComposer = memo(function ChatComposer({
             onStopGenerating={stopGenerating}
             loading={loading}
             placeholder={isCouncilMode ? 'Ask the council anything' : 'Ask anything'}
+            queue={
+              <QueuedMessages
+                conversationKey={conversationKey}
+                queue={queue}
+                loading={loading}
+                onSteer={handleSteer}
+              />
+            }
           />
           {isFirstMessage && !isCouncilMode && (
             <div className="mx-auto mt-4 grid w-full max-w-[720px] grid-cols-2 gap-2 text-left">
@@ -476,7 +505,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     loading,
     error,
     councilProgress,
+    queue,
     sendMessage,
+    queueMessage,
+    steerQueuedMessage,
     clearError,
     stopGenerating,
   } = useChat(conversationKey);
@@ -647,6 +679,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               isCouncilMode={isCouncilMode}
               isFirstMessage={isFirstMessage}
               sendMessage={sendMessage}
+              queue={queue}
+              queueMessage={queueMessage}
+              steerQueuedMessage={steerQueuedMessage}
               stopGenerating={stopGenerating}
               onConversationCreated={onConversationCreated}
               onSendStart={handleSendStart}
