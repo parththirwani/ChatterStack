@@ -107,3 +107,30 @@ export async function cleanupUnusedDocuments(now = new Date()) {
   }
   return removed;
 }
+
+/** Clear uploads that reached Blob but were never confirmed in Postgres. */
+export async function cleanupUnconfirmedUploads(now = new Date()) {
+  const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
+  let cursor: string | undefined;
+  let removed = 0;
+  while (true) {
+    const listing = await documentStorage.list(cursor);
+    const old = listing.blobs.filter((blob) => blob.uploadedAt.getTime() < cutoff);
+    if (old.length) {
+      const known = await prisma.document.findMany({
+        where: { storageKey: { in: old.map((blob) => blob.pathname) } },
+        select: { storageKey: true },
+      });
+      const active = new Set(known.map((document) => document.storageKey));
+      for (const blob of old) {
+        if (!active.has(blob.pathname)) {
+          await documentStorage.delete(blob.pathname);
+          removed += 1;
+        }
+      }
+    }
+    if (!listing.hasMore || !listing.cursor) break;
+    cursor = listing.cursor;
+  }
+  return removed;
+}

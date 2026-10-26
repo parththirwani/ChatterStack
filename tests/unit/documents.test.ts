@@ -6,8 +6,8 @@ const db = {
   document: {
     findUnique: vi.fn(async ({ where }: { where: { userId_sha256: { userId: string; sha256: string } } }) =>
       [...records.values()].find((row) => row.userId === where.userId_sha256.userId && row.sha256 === where.userId_sha256.sha256) ?? null),
-    findMany: vi.fn(async ({ where }: { where: { id?: { in: string[] }; userId?: string } }) =>
-      [...records.values()].filter((row) => (!where.userId || row.userId === where.userId) && (!where.id || where.id.in.includes(String(row.id))))),
+    findMany: vi.fn(async ({ where }: { where: { id?: { in: string[] }; userId?: string; storageKey?: { in: string[] } } }) =>
+      [...records.values()].filter((row) => (!where.userId || row.userId === where.userId) && (!where.id || where.id.in.includes(String(row.id))) && (!where.storageKey || where.storageKey.in.includes(String(row.storageKey))))),
     findFirst: vi.fn(async ({ where }: { where: { id: string; userId: string } }) =>
       [...records.values()].find((row) => row.id === where.id && row.userId === where.userId) ?? null),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -24,10 +24,11 @@ const storage = {
   read: vi.fn(),
   save: vi.fn(),
   delete: vi.fn(),
+  list: vi.fn(),
 };
 vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
 vi.mock('@/src/lib/server/document-storage', () => ({ documentStorage: storage }));
-const { confirmUpload, cleanupUnusedDocuments, newStorageKey, resolveDocuments, validStorageKey } =
+const { confirmUpload, cleanupUnconfirmedUploads, cleanupUnusedDocuments, newStorageKey, resolveDocuments, validStorageKey } =
   await import('@/src/lib/server/documents');
 
 const userId = 'user-1';
@@ -43,6 +44,7 @@ beforeEach(() => {
   storage.read.mockResolvedValue(bytes);
   storage.save.mockResolvedValue({});
   storage.delete.mockResolvedValue(undefined);
+  storage.list.mockResolvedValue({ blobs: [], hasMore: false });
 });
 
 describe('document storage rules', () => {
@@ -122,5 +124,23 @@ describe('document storage rules', () => {
     expect(storage.delete).toHaveBeenCalledWith('stale');
     expect(records.has('stale')).toBe(false);
     expect(records.has('favorite')).toBe(true);
+  });
+
+  it('deletes only unconfirmed objects older than one day, across listing pages', async () => {
+    const old = new Date('2026-10-20T00:00:00Z');
+    const recent = new Date('2026-10-27T00:00:00Z');
+    records.set('known', { id: 'known', userId, storageKey: 'users/known' });
+    storage.list
+      .mockResolvedValueOnce({ blobs: [
+        { pathname: 'users/known', uploadedAt: old },
+        { pathname: 'users/orphan', uploadedAt: old },
+      ], hasMore: true, cursor: 'next' })
+      .mockResolvedValueOnce({ blobs: [{ pathname: 'users/recent', uploadedAt: recent }], hasMore: false });
+    db.document.findMany.mockImplementation(async ({ where }: { where: { id?: { in: string[] }; userId?: string; storageKey?: { in: string[] } } }) =>
+      [...records.values()].filter((row) => where.storageKey?.in.includes(String(row.storageKey))));
+    expect(await cleanupUnconfirmedUploads(new Date('2026-10-27T12:00:00Z'))).toBe(1);
+    expect(storage.list).toHaveBeenNthCalledWith(2, 'next');
+    expect(storage.delete).toHaveBeenCalledTimes(1);
+    expect(storage.delete).toHaveBeenCalledWith('users/orphan');
   });
 });

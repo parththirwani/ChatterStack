@@ -40,7 +40,8 @@ function request body limit.
    `BLOB_READ_WRITE_TOKEN` for client upload tokens. For local development,
    pull the project environment with `vercel env pull`.
 2. Set a random `CRON_SECRET` (at least 16 characters) in Vercel. The daily
-   cron in `vercel.json` removes unfavourited files unused for 30 days.
+   cron in `vercel.json` removes unfavourited files unused for 30 days and
+   unfinished uploads after 24 hours.
 3. Apply the Prisma schema with `npx prisma db push` before deploying this
    version. The Docker `schema` service runs that command automatically.
 4. Run `node scripts/migrate-attachments.mjs` once against the database used

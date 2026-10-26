@@ -1,4 +1,4 @@
-import { del, get, head, put } from '@vercel/blob';
+import { del, get, head, list, put } from '@vercel/blob';
 
 /** File bytes live only in a private Vercel Blob store. */
 export const documentStorage = {
@@ -18,5 +18,8 @@ export const documentStorage = {
   },
   async delete(pathname: string) {
     await del(pathname);
+  },
+  async list(cursor?: string) {
+    return list({ prefix: 'users/', cursor, limit: 1000 });
   },
 };
