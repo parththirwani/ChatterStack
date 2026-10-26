@@ -104,7 +104,7 @@ export const test = base.extend<{ mockChat: MockChat; cleanDatabase: void }>({
 });
 
 /** Opens the app with the given composer settings in localStorage. */
-export async function openApp(page: Page, settings: Record<string, string> = {}, path = '/') {
+export async function openApp(page: Page, settings: Record<string, string> = {}, path = '/chat') {
   await page.goto(path);
   await page.evaluate((entries) => {
     localStorage.clear();

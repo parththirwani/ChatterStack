@@ -12,7 +12,7 @@ Requires Docker Engine and Docker Compose.
 
 1. Copy `.env.example` to `.env.local` and fill in `OPENROUTER_API_KEY`, `NEXTAUTH_SECRET`, and the Google or GitHub OAuth credentials you intend to use. Set the OAuth callback URL at the provider to `http://localhost:3000/api/auth/callback/google` or `/github`.
 2. Run `docker compose up --build -d`.
-3. Open http://localhost:3000.
+3. Open http://localhost:3000 for the landing page, then choose **Open chat**. The chat is also available at http://localhost:3000/chat.
 
 Compose starts PostgreSQL, Redis, Qdrant, a one-shot Prisma schema setup job, and the app. It overrides the database, Redis, and Qdrant URLs from `.env.local` with internal container addresses. The `POSTGRES_PASSWORD` variable in your shell or a Compose `.env` file overrides the local development default. To stop the stack, run `docker compose down`; add `-v` only if you want to delete stored chats and service data.
 

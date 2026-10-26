@@ -122,7 +122,7 @@ test('the logo opens a new chat without requesting the page', async ({ page }) =
   const result = await watch(page, () => page.getByRole('button', { name: 'ChatterStack home' }).click());
   expect(result.serverRequests).toEqual([]);
   expect(result.sidebarRemounted).toBe(false);
-  await expect(page).toHaveURL('/');
+  await expect(page).toHaveURL('/chat');
 });
 
 test('back and forward move between chats without reloading', async ({ page }) => {
