@@ -1,5 +1,6 @@
 import { StateCreator } from 'zustand';
 import type { CouncilProgress, DocumentAttachment, Message } from '@/src/types/chat.types';
+import type { SendSettings } from '@/src/context/ModelSelectionContext';
 
 export type { CouncilProgress };
 
@@ -15,6 +16,10 @@ export interface QueuedMessage {
   id: string;
   content: string;
   attachments: DocumentAttachment[];
+  /** The model and thinking chosen when it was queued; it is sent with these. */
+  settings: SendSettings;
+  /** Open in the editor: never sent automatically until the edit is done. */
+  editing?: boolean;
 }
 
 const initialChatState: ChatState = {
@@ -33,13 +38,22 @@ export interface ChatSlice {
 
   /** Messages waiting to be sent, per conversation, in send order. */
   queues: Record<string, QueuedMessage[]>;
+  /**
+   * Conversations whose queue is on hold (the user pressed Stop, or a reply
+   * failed). A held queue only sends when the user picks a message.
+   */
+  queuesPaused: Record<string, boolean>;
   enqueueMessage: (conversationId: string, message: QueuedMessage) => void;
-  updateQueuedMessage: (conversationId: string, id: string, content: string) => void;
+  updateQueuedMessage: (conversationId: string, id: string, patch: Partial<Pick<QueuedMessage, 'content' | 'editing'>>) => void;
   removeQueuedMessage: (conversationId: string, id: string) => void;
   /** Move a queued message to `toIndex` (0 sends it next). */
   moveQueuedMessage: (conversationId: string, id: string, toIndex: number) => void;
-  /** Remove and return the next message to send, if any. */
-  shiftQueuedMessage: (conversationId: string) => QueuedMessage | undefined;
+  /** Remove and return the next message that isn't being edited, if any. */
+  takeNextQueuedMessage: (conversationId: string) => QueuedMessage | undefined;
+  setQueuePaused: (conversationId: string, paused: boolean) => void;
+  /** Move a queue (and its hold) to another key, e.g. back to the draft. */
+  moveQueue: (from: string, to: string) => void;
+  clearQueue: (conversationId: string) => void;
 }
 
 function withQueue(queues: Record<string, QueuedMessage[]>, conversationId: string, queue: QueuedMessage[]) {
@@ -84,15 +98,16 @@ export const createChatSlice: StateCreator<ChatSlice> = (set, get) => ({
     }),
 
   queues: {},
+  queuesPaused: {},
 
   enqueueMessage: (conversationId, message) =>
     set((state) => withQueue(state.queues, conversationId, [...(state.queues[conversationId] ?? []), message])),
 
-  updateQueuedMessage: (conversationId, id, content) =>
+  updateQueuedMessage: (conversationId, id, patch) =>
     set((state) => {
       const queue = state.queues[conversationId];
       if (!queue?.some((item) => item.id === id)) return state;
-      return withQueue(state.queues, conversationId, queue.map((item) => (item.id === id ? { ...item, content } : item)));
+      return withQueue(state.queues, conversationId, queue.map((item) => (item.id === id ? { ...item, ...patch } : item)));
     }),
 
   removeQueuedMessage: (conversationId, id) =>
@@ -114,9 +129,41 @@ export const createChatSlice: StateCreator<ChatSlice> = (set, get) => ({
       return withQueue(state.queues, conversationId, next);
     }),
 
-  shiftQueuedMessage: (conversationId) => {
-    const [next, ...rest] = get().queues[conversationId] ?? [];
-    if (next) set((state) => withQueue(state.queues, conversationId, rest));
+  takeNextQueuedMessage: (conversationId) => {
+    const queue = get().queues[conversationId] ?? [];
+    const next = queue.find((item) => !item.editing);
+    if (next) set((state) => withQueue(state.queues, conversationId, queue.filter((item) => item !== next)));
     return next;
   },
+
+  setQueuePaused: (conversationId, paused) =>
+    set((state) => {
+      if (Boolean(state.queuesPaused[conversationId]) === paused) return state;
+      const queuesPaused = { ...state.queuesPaused };
+      if (paused) queuesPaused[conversationId] = true;
+      else delete queuesPaused[conversationId];
+      return { queuesPaused };
+    }),
+
+  moveQueue: (from, to) =>
+    set((state) => {
+      const queue = state.queues[from];
+      if (from === to || !queue) return state;
+      const queues = { ...state.queues, [to]: [...(state.queues[to] ?? []), ...queue] };
+      delete queues[from];
+      const queuesPaused = { ...state.queuesPaused };
+      if (queuesPaused[from]) queuesPaused[to] = true;
+      delete queuesPaused[from];
+      return { queues, queuesPaused };
+    }),
+
+  clearQueue: (conversationId) =>
+    set((state) => {
+      if (!state.queues[conversationId] && !state.queuesPaused[conversationId]) return state;
+      const queues = { ...state.queues };
+      const queuesPaused = { ...state.queuesPaused };
+      delete queues[conversationId];
+      delete queuesPaused[conversationId];
+      return { queues, queuesPaused };
+    }),
 });

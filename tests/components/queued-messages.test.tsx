@@ -11,18 +11,29 @@ import { useAppStore } from '@/src/store/rootStore';
 
 const KEY = 'c1';
 const EMPTY: never[] = [];
+const settings = { activeModelId: 'openai/gpt-6.1-sol', thinkingLevel: 'medium', councilMembers: [], councilChair: 'openai/gpt-6.1-sol' } as const;
 const queued = () => (useAppStore.getState().queues[KEY] ?? []).map((item) => item.content);
 
 function Panel({ loading = true, onSteer = vi.fn() }: { loading?: boolean; onSteer?: (id: string) => void }) {
   const queue = useAppStore((state) => state.queues[KEY] ?? EMPTY);
-  return <QueuedMessages conversationKey={KEY} queue={queue} loading={loading} onSteer={onSteer} />;
+  const store = useAppStore.getState();
+  return (
+    <QueuedMessages
+      conversationKey={KEY}
+      queue={queue}
+      loading={loading}
+      onSteer={onSteer}
+      onEditStart={(id) => store.updateQueuedMessage(KEY, id, { editing: true })}
+      onEditEnd={(id, content) => store.updateQueuedMessage(KEY, id, { editing: false, ...(content !== undefined && { content }) })}
+    />
+  );
 }
 
 beforeEach(() => {
-  useAppStore.setState({ queues: {} });
+  useAppStore.setState({ queues: {}, queuesPaused: {} });
   const store = useAppStore.getState();
-  store.enqueueMessage(KEY, { id: 'a', content: 'First question', attachments: [] });
-  store.enqueueMessage(KEY, { id: 'b', content: 'Second question', attachments: [] });
+  store.enqueueMessage(KEY, { id: 'a', content: 'First question', attachments: [], settings: { ...settings, councilMembers: [] } });
+  store.enqueueMessage(KEY, { id: 'b', content: 'Second question', attachments: [], settings: { ...settings, councilMembers: [] } });
 });
 
 const rows = () => within(screen.getByRole('region', { name: 'Queued messages' })).getAllByRole('listitem');
@@ -50,14 +61,27 @@ describe('queued messages panel', () => {
     const user = userEvent.setup();
     render(<Panel />);
     await user.click(within(rows()[0]).getByRole('button', { name: 'Edit queued message' }));
+    // Held while open, so the queue can't send it mid-edit.
+    expect(useAppStore.getState().queues[KEY][0].editing).toBe(true);
     const input = screen.getByRole('textbox', { name: 'Edit queued message' });
     await user.clear(input);
     await user.type(input, 'Rewritten{Enter}');
     expect(queued()).toEqual(['Rewritten', 'Second question']);
+    expect(useAppStore.getState().queues[KEY][0].editing).toBe(false);
 
     await user.click(within(rows()[1]).getByRole('button', { name: 'Edit queued message' }));
     await user.type(screen.getByRole('textbox', { name: 'Edit queued message' }), ' extra{Escape}');
     expect(queued()).toEqual(['Rewritten', 'Second question']);
+  });
+
+  it('releases the edit hold if the list is collapsed mid-edit', async () => {
+    const user = userEvent.setup();
+    render(<Panel />);
+    await user.click(within(rows()[0]).getByRole('button', { name: 'Edit queued message' }));
+    expect(useAppStore.getState().queues[KEY][0].editing).toBe(true);
+    await user.click(screen.getByRole('button', { name: /Queued/ }));
+    expect(useAppStore.getState().queues[KEY][0].editing).toBe(false);
+    expect(queued()).toEqual(['First question', 'Second question']);
   });
 
   it('Steer hands the message id to the composer; it reads Send when nothing streams', async () => {

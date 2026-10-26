@@ -113,6 +113,7 @@ export const useAppStore = create<AppState>()(
           currentConversationId: undefined,
           chatState: {},
           queues: {},
+          queuesPaused: {},
           drafts: {},
           draftsOwner: null,
           // sidebarCollapsed stays (persisted)

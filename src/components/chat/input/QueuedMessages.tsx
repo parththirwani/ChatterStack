@@ -1,5 +1,5 @@
 "use client";
-import React, { memo, useLayoutEffect, useRef, useState } from 'react';
+import React, { memo, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown, Forward, GripVertical, ListOrdered, Paperclip, Pencil, X } from 'lucide-react';
 import type { QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
@@ -10,6 +10,9 @@ interface QueuedMessagesProps {
   /** A reply is streaming: Steer interrupts it instead of just sending. */
   loading: boolean;
   onSteer: (id: string) => void;
+  onEditStart: (id: string) => void;
+  /** `content` is undefined when the edit was cancelled. */
+  onEditEnd: (id: string, content?: string) => void;
 }
 
 interface QueuedRowProps {
@@ -18,7 +21,8 @@ interface QueuedRowProps {
   loading: boolean;
   dragging: boolean;
   onSteer: (id: string) => void;
-  onSave: (id: string, content: string) => void;
+  onEditStart: (id: string) => void;
+  onEditEnd: (id: string, content?: string) => void;
   onRemove: (id: string) => void;
   onDragStart: (id: string) => void;
   onDragEnd: () => void;
@@ -28,10 +32,20 @@ interface QueuedRowProps {
 const iconButton =
   'flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-[#a9a5a0] transition-colors hover:bg-white/[0.08] hover:text-white';
 
-function QueuedRow({ item, index, loading, dragging, onSteer, onSave, onRemove, onDragStart, onDragEnd, onDropAt }: QueuedRowProps) {
+function QueuedRow({ item, index, loading, dragging, onSteer, onEditStart, onEditEnd, onRemove, onDragStart, onDragEnd, onDropAt }: QueuedRowProps) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState('');
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const editingRef = useRef(false);
+  editingRef.current = editing;
+
+  // A row that goes away mid-edit (collapsed, chat switched) releases its
+  // hold, so the queue doesn't wait on an editor nobody can see.
+  const onEditEndRef = useRef(onEditEnd);
+  onEditEndRef.current = onEditEnd;
+  useEffect(() => () => {
+    if (editingRef.current) onEditEndRef.current(item.id);
+  }, [item.id]);
 
   useLayoutEffect(() => {
     if (!editing) return;
@@ -43,7 +57,7 @@ function QueuedRow({ item, index, loading, dragging, onSteer, onSave, onRemove, 
   const finishEditing = (save: boolean) => {
     if (!editing) return;
     setEditing(false);
-    if (save && draft !== item.content) onSave(item.id, draft);
+    onEditEnd(item.id, save && draft !== item.content ? draft : undefined);
   };
 
   const preview = item.content.trim() || item.attachments.map((file) => file.name).join(', ');
@@ -99,6 +113,7 @@ function QueuedRow({ item, index, loading, dragging, onSteer, onSave, onRemove, 
         onClick={() => {
           setDraft(item.content);
           setEditing(true);
+          onEditStart(item.id);
         }}
         aria-label="Edit queued message"
         title="Edit"
@@ -126,18 +141,13 @@ function QueuedRow({ item, index, loading, dragging, onSteer, onSave, onRemove, 
  * Messages written while a reply streams. They go out one at a time as each
  * reply finishes; Steer sends one immediately.
  */
-const QueuedMessages = memo(function QueuedMessages({ conversationKey, queue, loading, onSteer }: QueuedMessagesProps) {
+const QueuedMessages = memo(function QueuedMessages({ conversationKey, queue, loading, onSteer, onEditStart, onEditEnd }: QueuedMessagesProps) {
   const [collapsed, setCollapsed] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
 
   if (queue.length === 0) return null;
 
   const store = useAppStore.getState;
-  const save = (id: string, content: string) => {
-    const item = queue.find((entry) => entry.id === id);
-    if (!content.trim() && !item?.attachments.length) store().removeQueuedMessage(conversationKey, id);
-    else store().updateQueuedMessage(conversationKey, id, content);
-  };
 
   return (
     <section
@@ -165,7 +175,8 @@ const QueuedMessages = memo(function QueuedMessages({ conversationKey, queue, lo
               loading={loading}
               dragging={draggingId === item.id}
               onSteer={onSteer}
-              onSave={save}
+              onEditStart={onEditStart}
+              onEditEnd={onEditEnd}
               onRemove={(id) => store().removeQueuedMessage(conversationKey, id)}
               onDragStart={setDraggingId}
               onDragEnd={() => setDraggingId(null)}

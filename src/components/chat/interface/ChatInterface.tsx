@@ -243,6 +243,8 @@ interface ChatComposerProps {
   queue: QueuedMessage[];
   queueMessage: (message: string, attachments?: DocumentAttachment[]) => void;
   steerQueuedMessage: (id: string) => void;
+  startEditingQueued: (id: string) => void;
+  finishEditingQueued: (id: string, content?: string) => void;
   stopGenerating: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onSendStart: () => void;
@@ -257,6 +259,8 @@ const ChatComposer = memo(function ChatComposer({
   queue,
   queueMessage,
   steerQueuedMessage,
+  startEditingQueued,
+  finishEditingQueued,
   stopGenerating,
   onConversationCreated,
   onSendStart,
@@ -453,6 +457,8 @@ const ChatComposer = memo(function ChatComposer({
                 queue={queue}
                 loading={loading}
                 onSteer={handleSteer}
+                onEditStart={startEditingQueued}
+                onEditEnd={finishEditingQueued}
               />
             }
           />
@@ -509,6 +515,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     sendMessage,
     queueMessage,
     steerQueuedMessage,
+    startEditingQueued,
+    finishEditingQueued,
     clearError,
     stopGenerating,
   } = useChat(conversationKey);
@@ -682,6 +690,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               queue={queue}
               queueMessage={queueMessage}
               steerQueuedMessage={steerQueuedMessage}
+              startEditingQueued={startEditingQueued}
+              finishEditingQueued={finishEditingQueued}
               stopGenerating={stopGenerating}
               onConversationCreated={onConversationCreated}
               onSendStart={handleSendStart}

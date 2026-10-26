@@ -7,7 +7,8 @@ import { createEmptyConversation, addMessagesToConversation } from '@/src/lib/ap
 import { generateConversationTitle, saveGeneratedTitle } from '@/src/services/title/titleService';
 import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
-import { createSSEStream } from '@/src/lib/api/chat/sse-helper';
+import { createSSEStream, type SSEStream } from '@/src/lib/api/chat/sse-helper';
+import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
 import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
@@ -141,7 +142,7 @@ export async function POST(request: NextRequest) {
       if (!owned) return jsonError('Conversation not found', 404);
     }
 
-    return createSSEStream(async ({ send, signal }) => {
+    const respond = async ({ send, signal }: SSEStream) => {
       send({ status: 'starting' });
 
       // A new chat is named in parallel with the answer, so the sidebar can
@@ -241,6 +242,16 @@ export async function POST(request: NextRequest) {
 
       // Usually finished long before the answer; bounded by the title timeout.
       await titleTask;
+    };
+
+    const turn = beginConversationTurn(conversationId);
+    return createSSEStream(async (stream) => {
+      try {
+        await turn.ready;
+        await respond(stream);
+      } finally {
+        turn.end();
+      }
     }, request.signal);
   } catch (error) {
     console.error('Error in chat:', error);

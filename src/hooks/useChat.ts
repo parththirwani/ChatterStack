@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useRef } from 'react';
 import { ApiService } from '../services/api';
 import { showConversation } from '../lib/navigation';
 import { cacheInvalidators } from '../services/apiOptimizer';
-import { useModelSelection } from '../context/ModelSelectionContext';
+import { useModelSelection, type SendSettings } from '../context/ModelSelectionContext';
 import type { DocumentAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
 import type { ChatState, QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
@@ -25,16 +25,9 @@ const STREAM_FLUSH_MS = 40;
 // away never cancels it; Stop cancels only the conversation you're viewing.
 const activeRequests = new Map<string, AbortController>();
 
-// Why the request for a conversation was aborted. Stop pauses the queue;
+// Passed to abort() so the request knows why it ended. Stop holds the queue;
 // Steer interrupts the reply so the steered message goes out right away.
-const abortReasons = new Map<string, 'stop' | 'steer'>();
-
-type ModelSelection = ReturnType<typeof useModelSelection>;
-
-// Queued messages are sent after the hook that queued them may have
-// unmounted (the user switched chats), so the latest model choice is kept
-// here rather than in a component.
-let latestModelSelection: ModelSelection | null = null;
+type AbortReason = 'stop' | 'steer';
 
 let localMessageCounter = 0;
 function nextLocalId(prefix: 'user' | 'assistant') {
@@ -45,21 +38,16 @@ function nextLocalId(prefix: 'user' | 'assistant') {
 async function sendToConversation(
   conversationKey: string,
   message: string,
-  selection: ModelSelection,
+  selection: SendSettings,
   onConversationCreated?: (conversationId: string) => void,
   attachments: DocumentAttachment[] = []
 ) {
   // Read the user fresh from the store: the render-time closure can be
   // stale right after an OAuth redirect.
-  const freshUser = useAppStore.getState().user;
   const { activeModelId, thinkingLevel, councilMembers, councilChair } = selection;
   const store = useAppStore.getState();
-  if (
-    (!message.trim() && attachments.length === 0) ||
-    !freshUser?.id ||
-    freshUser.id === 'guest' ||
-    store.chatState[conversationKey]?.loading
-  ) {
+  const freshUser = store.user;
+  if ((!message.trim() && attachments.length === 0) || !canSend(conversationKey) || !freshUser?.id) {
     return;
   }
 
@@ -106,6 +94,8 @@ async function sendToConversation(
 
   if (isNewConversation) {
     store.clearChatState('new');
+    // Messages left queued in the draft (its first send failed) follow it.
+    store.moveQueue('new', key);
     store.addConversation({
       id: key,
       userId: freshUser.id,
@@ -243,7 +233,7 @@ async function sendToConversation(
       abortController.signal
     );
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') {
+    if (abortController.signal.aborted) {
       outcome = 'aborted';
       // User stopped generation: keep whatever was streamed so far.
       flushNow();
@@ -265,9 +255,11 @@ async function sendToConversation(
         fresh.removeConversation(key);
         if (fresh.currentConversationId === undefined || fresh.currentConversationId === key) {
           fresh.moveChatState(key, 'new');
+          fresh.moveQueue(key, 'new');
           fresh.setCurrentConversationId(undefined);
         } else {
           fresh.clearChatState(key);
+          fresh.clearQueue(key);
         }
       }
     }
@@ -286,19 +278,31 @@ async function sendToConversation(
       fresh.updateConversation(key, { updatedAt: new Date().toISOString() });
     }
     if (activeRequests.get(key) === abortController) activeRequests.delete(key);
-    const abortReason = abortReasons.get(key);
-    abortReasons.delete(key);
-    // A finished (or steered) reply hands over to the next queued
-    // message. Stop and errors leave the queue paused.
-    if (created && (outcome === 'done' || abortReason === 'steer')) sendNextQueued(key);
+    const abortReason: AbortReason | undefined = outcome === 'aborted' ? abortController.signal.reason : undefined;
+    const queueKey = created ? key : 'new';
+    // A finished (or steered) reply hands over to the next queued message.
+    // Stop and errors hold the queue until the user picks a message to send.
+    // A steer before the server saved the chat can't follow up in it, so the
+    // steered message waits at the front instead.
+    if (outcome === 'error' || abortReason === 'stop' || (abortReason === 'steer' && !created)) {
+      if (fresh.queues[queueKey]?.length) fresh.setQueuePaused(queueKey, true);
+    } else if (created && !fresh.queuesPaused[key]) {
+      sendNextQueued(key);
+    }
   }
 }
 
+/** Signed in, and no reply already streaming in this conversation. */
+function canSend(conversationKey: string) {
+  const { user, chatState } = useAppStore.getState();
+  return Boolean(user?.id) && user?.id !== 'guest' && !chatState[conversationKey]?.loading;
+}
+
 function sendNextQueued(conversationKey: string) {
-  const selection = latestModelSelection;
-  if (!selection) return;
-  const next = useAppStore.getState().shiftQueuedMessage(conversationKey);
-  if (next) void sendToConversation(conversationKey, next.content, selection, undefined, next.attachments);
+  // Checked before taking the message, so one that can't go out stays queued.
+  if (!canSend(conversationKey)) return;
+  const next = useAppStore.getState().takeNextQueuedMessage(conversationKey);
+  if (next) void sendToConversation(conversationKey, next.content, next.settings, undefined, next.attachments);
 }
 
 /**
@@ -314,7 +318,6 @@ export const useChat = (conversationKey: string) => {
   const modelSelectionRef = useRef(modelSelection);
   useLayoutEffect(() => {
     modelSelectionRef.current = modelSelection;
-    latestModelSelection = modelSelection;
   });
 
   const chatState = useAppStore(
@@ -328,11 +331,10 @@ export const useChat = (conversationKey: string) => {
     useCallback((state) => state.queues[conversationKey] ?? EMPTY_QUEUE, [conversationKey])
   );
 
+  const queuePaused = useAppStore((state) => Boolean(state.queuesPaused[conversationKey]));
+
   const stopGenerating = useCallback(() => {
-    const request = activeRequests.get(conversationKey);
-    if (!request) return;
-    abortReasons.set(conversationKey, 'stop');
-    request.abort();
+    activeRequests.get(conversationKey)?.abort('stop' satisfies AbortReason);
   }, [conversationKey]);
 
   const sendMessage = useCallback(
@@ -344,31 +346,70 @@ export const useChat = (conversationKey: string) => {
     [conversationKey]
   );
 
-  /** Hold a message until the current reply finishes. */
+  /**
+   * Hold a message until the current reply finishes. It keeps the model and
+   * thinking chosen now, even if they change before it is sent.
+   */
   const queueMessage = useCallback(
     (content: string, attachments: DocumentAttachment[] = []) => {
       if (!content.trim() && attachments.length === 0) return;
-      useAppStore.getState().enqueueMessage(conversationKey, { id: crypto.randomUUID(), content, attachments });
+      const store = useAppStore.getState();
+      const { activeModelId, thinkingLevel, councilMembers, councilChair } = modelSelectionRef.current;
+      // A queue that had emptied starts fresh rather than on hold.
+      if (!store.queues[conversationKey]?.length) store.setQueuePaused(conversationKey, false);
+      store.enqueueMessage(conversationKey, {
+        id: crypto.randomUUID(),
+        content,
+        attachments,
+        settings: { activeModelId, thinkingLevel, councilMembers: [...councilMembers], councilChair },
+      });
     },
     [conversationKey]
   );
 
   /**
-   * Send a queued message now. A reply in progress is interrupted (what it
-   * streamed so far is kept) and the steered message goes out next.
+   * Send a queued message now and resume a held queue. A reply in progress
+   * is interrupted (what it streamed so far is kept) and the steered message
+   * goes out next.
    */
   const steerQueuedMessage = useCallback(
     (id: string) => {
       const store = useAppStore.getState();
       if (!store.queues[conversationKey]?.some((item) => item.id === id)) return;
+      store.updateQueuedMessage(conversationKey, id, { editing: false });
       store.moveQueuedMessage(conversationKey, id, 0);
+      store.setQueuePaused(conversationKey, false);
       const request = activeRequests.get(conversationKey);
       if (store.chatState[conversationKey]?.loading && request) {
-        abortReasons.set(conversationKey, 'steer');
-        request.abort();
+        request.abort('steer' satisfies AbortReason);
       } else {
         sendNextQueued(conversationKey);
       }
+    },
+    [conversationKey]
+  );
+
+  /** Open a queued message for editing; it won't be sent until it's closed. */
+  const startEditingQueued = useCallback(
+    (id: string) => useAppStore.getState().updateQueuedMessage(conversationKey, id, { editing: true }),
+    [conversationKey]
+  );
+
+  /**
+   * Close the editor, saving `content` if given (empty with no files removes
+   * the message). If the queue was waiting on this edit, it carries on.
+   */
+  const finishEditingQueued = useCallback(
+    (id: string, content?: string) => {
+      const store = useAppStore.getState();
+      const item = store.queues[conversationKey]?.find((entry) => entry.id === id);
+      if (!item) return;
+      if (content !== undefined && !content.trim() && !item.attachments.length) {
+        store.removeQueuedMessage(conversationKey, id);
+      } else {
+        store.updateQueuedMessage(conversationKey, id, { editing: false, ...(content !== undefined && { content }) });
+      }
+      if (!store.queuesPaused[conversationKey] && conversationKey !== 'new') sendNextQueued(conversationKey);
     },
     [conversationKey]
   );
@@ -390,8 +431,11 @@ export const useChat = (conversationKey: string) => {
     councilProgress: chatState.councilProgress ?? [],
     queue,
     sendMessage,
+    queuePaused,
     queueMessage,
     steerQueuedMessage,
+    startEditingQueued,
+    finishEditingQueued,
     startNewConversation,
     clearError,
     stopGenerating,
