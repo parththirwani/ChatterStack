@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 import { prisma } from '@/src/lib/prisma';
+import { listConversations } from '@/src/lib/server/conversations';
 
 export async function GET(request: NextRequest) {
   try {
@@ -13,49 +14,12 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '50');
     const offset = parseInt(searchParams.get('offset') || '0');
 
-    const conversations = await prisma.conversation.findMany({
-      where: {
-        userId: session.user.id,
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'asc' },
-          take: 1, // Only get first message for preview
-        },
-      },
-      orderBy: {
-        updatedAt: 'desc',
-      },
-      take: limit,
-      skip: offset,
-    });
+    const [conversations, total] = await Promise.all([
+      listConversations(session.user.id, { limit, offset }),
+      prisma.conversation.count({ where: { userId: session.user.id } }),
+    ]);
 
-    const total = await prisma.conversation.count({
-      where: {
-        userId: session.user.id,
-      },
-    });
-
-    return NextResponse.json({
-      conversations: conversations.map((c) => ({
-        id: c.id,
-        title: c.title,
-        userId: c.userId,
-        createdAt: c.createdAt,
-        updatedAt: c.updatedAt,
-        messages: c.messages.map((m) => ({
-          id: m.id,
-          role: m.role,
-          content: m.content,
-          modelId: m.modelId,
-          createdAt: m.createdAt,
-          updatedAt: m.updatedAt,
-        })),
-      })),
-      total,
-      limit,
-      offset,
-    });
+    return NextResponse.json({ conversations, total, limit, offset });
   } catch (error) {
     console.error('Error fetching conversations:', error);
     return NextResponse.json(

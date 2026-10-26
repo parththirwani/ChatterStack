@@ -8,6 +8,8 @@ import type { User } from '@/src/types/user.types';
 export interface UserSlice {
   user: User | null;
   userLoading: boolean;
+  /** True once the user has been resolved (SSR seed or client fetch). */
+  userHydrated: boolean;
   setUser: (user: User | null) => void;
   setUserLoading: (loading: boolean) => void;
   initializeUser: () => Promise<void>;
@@ -17,8 +19,9 @@ export interface UserSlice {
 export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
   user: null,
   userLoading: true,
+  userHydrated: false,
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => set({ user, userHydrated: true }),
   setUserLoading: (userLoading) => set({ userLoading }),
 
   initializeUser: async () => {

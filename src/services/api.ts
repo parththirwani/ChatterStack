@@ -1,16 +1,24 @@
 import { Conversation, User } from "../types";
-import { ChatRequest } from "../types/chat.types";
-import { apiOptimizer } from "./apiOptimizer";
+import type {
+  ChatRequest,
+  CouncilAnswer,
+  CouncilProgress,
+  CouncilRanking,
+  SSEData,
+} from "../types/chat.types";
+import { apiOptimizer, cacheInvalidators, HttpError } from "./apiOptimizer";
 
-interface CouncilChatRequest {
-  message: string;
-  conversationId?: string;
-}
-
-interface CouncilProgress {
-  stage: string;
-  model: string;
-  progress: number;
+export interface ChatStreamHandlers {
+  onChunk?: (chunk: string) => void;
+  onReasoning?: (chunk: string) => void;
+  onDone?: () => void;
+  onConversationId?: (id: string) => void;
+  /** The server has saved a new chat's row. */
+  onConversationCreated?: (id: string) => void;
+  onTitle?: (title: string) => void;
+  onProgress?: (progress: CouncilProgress) => void;
+  onCouncilAnswer?: (answer: CouncilAnswer) => void;
+  onCouncilRankings?: (rankings: CouncilRanking[]) => void;
 }
 
 interface UserProfileResponse {
@@ -110,18 +118,15 @@ export class ApiService {
   }
 
   static async logout(): Promise<void> {
-    // Just invalidate cache - NextAuth signOut handles the actual logout
-    apiOptimizer.invalidateCache('auth:session');
+    // NextAuth signOut ends the session; drop everything cached for this user.
+    cacheInvalidators.all();
   }
 
   // ============= CHAT (No caching - streaming) =============
 
   static async sendMessage(
     request: ChatRequest,
-    onChunk?: (chunk: string) => void,
-    onDone?: () => void,
-    onConversationId?: (id: string) => void,
-    onProgress?: (progress: CouncilProgress) => void,
+    handlers: ChatStreamHandlers = {},
     signal?: AbortSignal
   ): Promise<void> {
     const response = await fetch('/api/chat', {
@@ -146,76 +151,75 @@ export class ApiService {
       throw new Error('No response body');
     }
 
+    // Returns true once the stream signals completion.
+    const handleLine = (line: string): boolean => {
+      if (!line.startsWith('data: ')) return false;
+      const data = line.slice(6);
+
+      if (data === '[DONE]') {
+        handlers.onDone?.();
+        return true;
+      }
+
+      let parsed: SSEData;
+      try {
+        parsed = JSON.parse(data);
+      } catch {
+        return false;
+      }
+
+      if (parsed.error) {
+        throw new Error(parsed.error);
+      }
+      if (parsed.conversationId) {
+        handlers.onConversationId?.(parsed.conversationId);
+      }
+      if (parsed.conversationCreated) {
+        handlers.onConversationCreated?.(parsed.conversationCreated);
+      }
+      if (parsed.title) {
+        handlers.onTitle?.(parsed.title);
+      }
+      if (parsed.status === 'progress' && parsed.stage && parsed.model !== undefined) {
+        handlers.onProgress?.({
+          stage: parsed.stage,
+          model: parsed.model,
+          progress: parsed.progress ?? 0,
+        });
+      }
+      if (parsed.councilAnswer) {
+        handlers.onCouncilAnswer?.(parsed.councilAnswer);
+      }
+      if (parsed.councilRankings) {
+        handlers.onCouncilRankings?.(parsed.councilRankings);
+      }
+      if (parsed.reasoning) {
+        handlers.onReasoning?.(parsed.reasoning);
+      }
+      if (parsed.chunk) {
+        handlers.onChunk?.(parsed.chunk);
+      }
+      if (parsed.done) {
+        handlers.onDone?.();
+      }
+      return false;
+    };
+
+    let pending = '';
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value);
-      const lines = chunk.split('\n');
-
+      pending += decoder.decode(value, { stream: true });
+      const lines = pending.split('\n');
+      pending = lines.pop() || '';
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const data = line.slice(6);
-          
-          if (data === '[DONE]') {
-            onDone?.();
-            return;
-          }
-
-          try {
-            const parsed = JSON.parse(data);
-
-            if (parsed.error) {
-              throw new Error(parsed.error);
-            }
-            
-            if (parsed.conversationId) {
-              onConversationId?.(parsed.conversationId);
-            }
-            
-            if (parsed.status === 'progress' && parsed.stage && parsed.model !== undefined) {
-              onProgress?.({
-                stage: parsed.stage,
-                model: parsed.model,
-                progress: parsed.progress
-              });
-            }
-            
-            if (parsed.chunk) {
-              onChunk?.(parsed.chunk);
-            }
-            
-            if (parsed.done) {
-              onDone?.();
-            }
-          } catch {
-            // Ignore invalid JSON
-          }
-        }
+        if (handleLine(line)) return;
       }
     }
-  }
 
-  static async sendCouncilMessage(
-    request: CouncilChatRequest,
-    onChunk: (chunk: string) => void,
-    onProgress: (progress: CouncilProgress) => void,
-    onDone: () => void,
-    onConversationId: (id: string) => void,
-    signal?: AbortSignal
-  ): Promise<void> {
-    await this.sendMessage(
-      {
-        message: request.message,
-        conversationId: request.conversationId,
-        selectedModel: 'council',
-      },
-      onChunk,
-      onDone,
-      onConversationId,
-      onProgress,
-      signal
-    );
+    pending += decoder.decode();
+    if (pending) handleLine(pending);
   }
 
   // ============= CONVERSATIONS (Optimized) =============
@@ -227,25 +231,39 @@ export class ApiService {
     );
   }
 
+  /** `null` if the chat doesn't exist (or isn't yours); throws on other failures. */
   static async getConversation(id: string): Promise<{ conversation: Conversation } | null> {
     try {
       return await apiOptimizer.fetch<{ conversation: Conversation }>(
         `/api/conversations/${id}`,
         { credentials: 'include' }
       );
-    } catch {
-      return null;
+    } catch (error) {
+      if (error instanceof HttpError && error.status === 404) return null;
+      throw error;
     }
+  }
+
+  static async updateConversation(
+    id: string,
+    updates: { title?: string; pinned?: boolean }
+  ): Promise<Pick<Conversation, 'id' | 'title' | 'pinnedAt' | 'updatedAt'>> {
+    const response = await this.fetchWithCredentials(`/api/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(updates),
+    });
+    cacheInvalidators.conversationList();
+    cacheInvalidators.conversation(id);
+    const { conversation } = await response.json();
+    return conversation;
   }
 
   static async deleteConversation(id: string): Promise<void> {
     await this.fetchWithCredentials(`/api/conversations/${id}`, {
       method: 'DELETE',
     });
-    
-    // Invalidate related caches
-    apiOptimizer.invalidateCache(`conversation:${id}`);
-    apiOptimizer.invalidateCache('conversations');
+    cacheInvalidators.conversationList();
+    cacheInvalidators.conversation(id);
   }
 
   // ============= MODELS (Optimized) =============

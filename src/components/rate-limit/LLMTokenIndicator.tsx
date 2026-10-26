@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, memo } from 'react';
 import { Clock, AlertCircle, Brain } from 'lucide-react';
 import { useAppStore } from '@/src/store/rootStore';
 
@@ -171,4 +171,4 @@ const LLMTokenIndicator: React.FC<LLMTokenIndicatorProps> = ({
   );
 };
 
-export default LLMTokenIndicator;
+export default memo(LLMTokenIndicator);

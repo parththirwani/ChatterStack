@@ -166,6 +166,25 @@ class RedisStore {
     }
   }
 
+  /** Replace a conversation's cached history in one write (e.g. after a cache miss). */
+  async set(conversationId: string, messages: Message[]): Promise<void> {
+    try {
+      if (!this.client || !this.isConnected) {
+        await this.connect();
+      }
+
+      if (!this.client || !this.isConnected) {
+        return;
+      }
+
+      await this.client.set(`conversation:${conversationId}`, JSON.stringify(messages), {
+        EX: 60 * 60 * 24 * 7, // 7 days TTL
+      });
+    } catch (error) {
+      console.error('Redis set error:', error instanceof Error ? error.message : error);
+    }
+  }
+
   async delete(conversationId: string): Promise<void> {
     try {
       if (!this.client || !this.isConnected) {

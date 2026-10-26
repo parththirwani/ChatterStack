@@ -1,104 +1,182 @@
 "use client";
 
-import React, { useEffect, useLayoutEffect, useCallback, memo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  memo,
+} from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 
 import { useAppStore } from '@/src/store/rootStore';
-import { User } from '@/src/types/user.types';
+import { showConversation } from '@/src/lib/navigation';
+import type { User } from '@/src/types/user.types';
+import type { Conversation } from '@/src/types/conversation.types';
 import ChatInterface from '@/src/components/chat/interface/ChatInterface';
 import Sidebar from '@/src/components/sidebar/Sidebar';
 import LoginModal from '@/src/components/auth/AuthModal';
 import LogoutModal from '@/src/components/auth/LogoutModal';
 
-const ChatPage: React.FC = () => {
+export interface ChatPageProps {
+  initialUser: User | null;
+  initialConversations: Conversation[];
+  initialConversation: Conversation | null;
+  conversationId?: string;
+  conversationMissing: boolean;
+}
+
+function conversationIdFromPathname(pathname: string): string | undefined {
+  const [first] = pathname.split('/').filter(Boolean);
+  return first || undefined;
+}
+
+const ChatPage: React.FC<ChatPageProps> = ({
+  initialUser,
+  initialConversations,
+  initialConversation,
+  conversationId: serverConversationId,
+  conversationMissing,
+}) => {
   const pathname = usePathname();
   const router = useRouter();
-  
-  // Zustand selectors
-  const user = useAppStore((state) => state.user);
-  const userLoading = useAppStore((state) => state.userLoading);
-  const currentConversationId = useAppStore((state) => state.currentConversationId);
+  const [, startTransition] = useTransition();
+
+  const storeUser = useAppStore((state) => state.user);
+  const userHydrated = useAppStore((state) => state.userHydrated);
+  // Before the first effect runs, render the server-provided user so the
+  // sidebar and header are correct in the initial HTML.
+  const user = userHydrated ? storeUser : initialUser;
+
   const sidebarCollapsed = useAppStore((state) => state.sidebarCollapsed);
-  
-  // Actions
+  const storeCurrentId = useAppStore((state) => state.currentConversationId);
+  const setSidebarCollapsed = useAppStore((state) => state.setSidebarCollapsed);
   const initializeUser = useAppStore((state) => state.initializeUser);
   const loadConversations = useAppStore((state) => state.loadConversations);
-  const setCurrentConversationId = useAppStore((state) => state.setCurrentConversationId);
-  const setSidebarCollapsed = useAppStore((state) => state.setSidebarCollapsed);
   const logout = useAppStore((state) => state.logout);
-  const reset = useAppStore((state) => state.reset);
+
+  const urlConversationId = conversationIdFromPathname(pathname);
+  // The store's id is the single source of truth once it has been synced
+  // from the URL; until then (the server render and hydration) use the URL.
+  const [urlSynced, setUrlSynced] = useState(false);
+  const activeConversationId = urlSynced ? storeCurrentId : urlConversationId;
+  const fetchConversation = useAppStore((state) => state.fetchConversation);
+  const missingOnClient = useAppStore((state) =>
+    activeConversationId ? state.missingConversationIds[activeConversationId] === true : false
+  );
+  const activeConversationMissing =
+    missingOnClient || (conversationMissing && activeConversationId === serverConversationId);
+
+  // Freeze the first server payload. Later RSC payloads are handled by
+  // hydrateConversation and the client store; re-seeding the whole list on
+  // every navigation would clobber optimistic updates.
+  const firstServerPayload = useRef({ user: initialUser, conversations: initialConversations }).current;
 
   // Mobile sidebar state
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const menuWasOpenRef = useRef(false);
-  
+
   // Modal states - AT ROOT LEVEL
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
 
+  // Seed the client store once from the server render. This removes the
+  // "Loading…" spinner + follow-up /api/auth/session request that used to run
+  // on every page load.
+  useEffect(() => {
+    let cancelled = false;
+
+    const boot = async () => {
+      // Rehydrate the persisted UI preference after hydration instead of
+      // during render (which previously caused hydration mismatches).
+      try {
+        await useAppStore.persist.rehydrate();
+      } catch {
+        // storage unavailable
+      }
+      if (cancelled) return;
+
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const authSuccess = urlParams.get('auth') === 'success';
+        const errorCode = urlParams.get('error');
+        if (authSuccess || errorCode) {
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+        if (errorCode) {
+          setAuthError(errorCode);
+          setShowLoginModal(true);
+        }
+      } catch {
+        // non-browser environment - ignore
+      }
+
+      useAppStore.getState().hydrateSession(firstServerPayload);
+    };
+
+    void boot();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [firstServerPayload]);
+
+  // Seed each conversation the server hands us. The store wins if it already
+  // has messages, so an in-flight or already-visited chat is never replaced.
+  useEffect(() => {
+    if (initialConversation) {
+      useAppStore.getState().hydrateConversation(initialConversation);
+    }
+  }, [initialConversation]);
+
+  // The URL follows the store: switching chats only rewrites the URL with
+  // history.pushState (see `showConversation`), which Next.js mirrors into
+  // usePathname without a server round-trip or remounting this page. This
+  // effect covers the other direction (first load, back/forward), and runs
+  // before paint so the previous chat never shows for a frame.
+  useLayoutEffect(() => {
+    const state = useAppStore.getState();
+    if (state.currentConversationId !== urlConversationId) {
+      state.setCurrentConversationId(urlConversationId);
+    }
+    setUrlSynced(true);
+  }, [urlConversationId]);
+
+  // A chat that isn't in memory yet (not server-rendered, not visited, not
+  // prefetched on hover) loads from the API; a skeleton shows meanwhile.
+  useEffect(() => {
+    if (activeConversationId && activeConversationId !== serverConversationId) {
+      void fetchConversation(activeConversationId);
+    }
+  }, [activeConversationId, serverConversationId, fetchConversation]);
+
   // Close mobile menu when conversation changes
   useEffect(() => {
     setMobileMenuOpen(false);
-  }, [currentConversationId]);
+  }, [activeConversationId]);
 
-  // Initialize user on mount. This also covers the return from the
-  // full-page OAuth redirect (`/?auth=success`): all modal state is wiped
-  // by the navigation, so the AuthModal's own `auth=success` detector never
-  // runs. Handling it here guarantees the session is loaded and the flag
-  // is cleared even when no modal is open.
-  useEffect(() => {
-    try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const authSuccess = urlParams.get('auth') === 'success';
-      const errorCode = urlParams.get('error');
-      if (authSuccess || errorCode) {
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-      // The OAuth provider sends users back with ?error=... when sign-in
-      // fails. Reopen the dialog with a human-readable reason instead of
-      // leaving them on a page where it looks like nothing happened.
-      if (errorCode) {
-        setAuthError(errorCode);
-        setShowLoginModal(true);
-      }
-    } catch {
-      // non-browser environment - ignore
-    }
-    initializeUser();
-  }, [initializeUser]);
-
-  // Load conversations when user is authenticated
-  useEffect(() => {
-    if (user && user.id && user.id !== 'guest') {
-      loadConversations();
-    }
-  }, [user, loadConversations]);
-
-  // Sync URL to state
-  useEffect(() => {
-    const pathSegments = pathname.split('/').filter(Boolean);
-    const conversationId = pathSegments[0];
-    
-    const urlConversationId = conversationId && conversationId.length > 0 
-      ? conversationId 
-      : undefined;
-
-    if (urlConversationId !== currentConversationId) {
-      setCurrentConversationId(urlConversationId);
-    }
-  }, [pathname, currentConversationId, setCurrentConversationId]);
-
+  // Stable (reads the current value from the store) so toggling doesn't hand
+  // the sidebar a new prop and re-render it.
   const handleToggleSidebar = useCallback(() => {
-    if (window.matchMedia('(max-width: 1023px)').matches) setMobileMenuOpen((open) => !open);
-    else {
-      setSidebarCollapsed(!sidebarCollapsed);
-      window.setTimeout(() => {
-        document.querySelector<HTMLElement>(sidebarCollapsed ? '[aria-label="Close sidebar"]' : '[aria-label="Open sidebar"]')?.focus();
-      }, 0);
+    if (window.matchMedia('(max-width: 1023px)').matches) {
+      setMobileMenuOpen((open) => !open);
+      return;
     }
-  }, [sidebarCollapsed, setSidebarCollapsed]);
+    const wasCollapsed = useAppStore.getState().sidebarCollapsed;
+    setSidebarCollapsed(!wasCollapsed);
+    window.setTimeout(() => {
+      document
+        .querySelector<HTMLElement>(
+          wasCollapsed ? '[aria-label="Close sidebar"]' : '[aria-label="Open sidebar"]'
+        )
+        ?.focus();
+    }, 0);
+  }, [setSidebarCollapsed]);
 
   useEffect(() => {
     window.addEventListener('chatterstack:toggle-sidebar', handleToggleSidebar);
@@ -120,7 +198,11 @@ const ChatPage: React.FC = () => {
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') setMobileMenuOpen(false);
       if (event.key === 'Tab') {
-        const controls = Array.from(document.querySelectorAll<HTMLElement>('#chat-sidebar a, #chat-sidebar button, #chat-sidebar input')).filter((element) => element.getClientRects().length > 0);
+        const controls = Array.from(
+          document.querySelectorAll<HTMLElement>(
+            '#chat-sidebar a, #chat-sidebar button, #chat-sidebar input'
+          )
+        ).filter((element) => element.getClientRects().length > 0);
         const first = controls[0];
         const last = controls[controls.length - 1];
         if (event.shiftKey && document.activeElement === first) {
@@ -136,53 +218,28 @@ const ChatPage: React.FC = () => {
     return () => window.removeEventListener('keydown', closeOnEscape);
   }, [mobileMenuOpen]);
 
-  const handleUserChange = useCallback((newUser: User | null) => {
-    if (!newUser || newUser.id === 'guest') {
-      reset();
-      if (pathname !== '/') {
-        router.push('/');
-      }
-    }
-  }, [pathname, router, reset]);
-
   const handleConversationSelect = useCallback((conversationId: string) => {
-    
-    setCurrentConversationId(conversationId);
-    
-    const newUrl = `/${conversationId}`;
-    if (pathname !== newUrl) {
-      router.push(newUrl);
-    }
-    
+    const state = useAppStore.getState();
+    state.setCurrentConversationId(conversationId);
+    // No-op if loaded; retries a load that failed.
+    void state.fetchConversation(conversationId);
     setMobileMenuOpen(false);
-  }, [pathname, router, setCurrentConversationId]);
+    showConversation(conversationId);
+  }, []);
 
   const handleNewChat = useCallback(() => {
-    
-    setCurrentConversationId(undefined);
-    
-    if (pathname !== '/') {
-      router.push('/');
-    }
-    
+    const state = useAppStore.getState();
+    const draft = state.chatState.new;
+    if (!draft?.loading) state.clearChatState('new');
+    state.setCurrentConversationId(undefined);
     setMobileMenuOpen(false);
-  }, [pathname, router, setCurrentConversationId]);
+    showConversation(undefined);
+  }, []);
 
   useEffect(() => {
     window.addEventListener('chatterstack:new-chat', handleNewChat);
     return () => window.removeEventListener('chatterstack:new-chat', handleNewChat);
   }, [handleNewChat]);
-
-  const handleConversationCreated = useCallback((conversationId: string) => {
-    
-    setCurrentConversationId(conversationId);
-    loadConversations(true);
-    
-    const newUrl = `/${conversationId}`;
-    if (pathname !== newUrl) {
-      router.replace(newUrl);
-    }
-  }, [pathname, router, setCurrentConversationId, loadConversations]);
 
   const handleLoginClick = useCallback(() => {
     setAuthError(null);
@@ -193,48 +250,67 @@ const ChatPage: React.FC = () => {
     setShowLogoutModal(true);
   }, []);
 
-  // NEW: Handle login success
-  const handleLoginSuccess = useCallback(async (authenticatedUser: User | null) => {
+  const handleLoginSuccess = useCallback(async () => {
     setShowLoginModal(false);
     setAuthError(null);
-    
-    // Reinitialize user
+
+    // The OAuth flow usually does a full-page redirect (so SSR covers it).
+    // This path handles a modal session that resolved client-side.
     await initializeUser();
-    
-    // Reload conversations
-    if (authenticatedUser && authenticatedUser.id !== 'guest') {
-      loadConversations(true);
-    }
+    void loadConversations(true);
   }, [initializeUser, loadConversations]);
 
   const handleLogoutConfirm = useCallback(async () => {
     await logout();
-    handleUserChange(null);
     setShowLogoutModal(false);
-  }, [logout, handleUserChange]);
+    startTransition(() => {
+      router.push('/');
+      router.refresh();
+    });
+  }, [logout, router]);
 
-  // NEW: Handle modal close
+  const handleLogoutModalClose = useCallback(() => setShowLogoutModal(false), []);
+
   const handleLoginModalClose = useCallback(() => {
     setShowLoginModal(false);
     setAuthError(null);
   }, []);
 
-  // Show loading state
-  if (userLoading) {
-    return (
-      <div className="flex h-dvh items-center justify-center bg-[#191919]">
-        <div className="text-center">
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
-          <p className="text-[#aaa6a2]">Loading...</p>
-        </div>
-      </div>
-    );
-  }
+  const sidebarProps = useMemo(
+    () => ({
+      collapsed: false,
+      onToggleCollapse: handleToggleSidebar,
+      user,
+      onConversationSelect: handleConversationSelect,
+      onNewChat: handleNewChat,
+      currentConversationId: activeConversationId,
+      onLoginClick: handleLoginClick,
+      onLogoutClick: handleLogoutClick,
+      initialConversations: firstServerPayload.conversations,
+    }),
+    [
+      handleToggleSidebar,
+      user,
+      handleConversationSelect,
+      handleNewChat,
+      activeConversationId,
+      handleLoginClick,
+      handleLogoutClick,
+      firstServerPayload,
+    ]
+  );
 
   return (
     <>
       <div className="relative flex h-dvh overflow-hidden">
-        <a href="#chat-main" tabIndex={mobileMenuOpen ? -1 : 0} className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-[#2c2c2c] focus:px-4 focus:py-2 focus:text-white">Skip to chat</a>
+        <a
+          href="#chat-main"
+          tabIndex={mobileMenuOpen ? -1 : 0}
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:rounded-lg focus:bg-[#2c2c2c] focus:px-4 focus:py-2 focus:text-white"
+        >
+          Skip to chat
+        </a>
+
         {/* Backdrop */}
         {mobileMenuOpen && (
           <button
@@ -257,25 +333,26 @@ const ChatPage: React.FC = () => {
             ${mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full lg:visible'}
           `}
         >
-          <button ref={(node) => { if (node && mobileMenuOpen) node.focus(); }} type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white lg:hidden"><X className="h-4 w-4" /></button>
-          <MemoizedSidebar
-            collapsed={false}
-            onToggleCollapse={handleToggleSidebar}
-            user={user}
-            onUserChange={handleUserChange}
-            onConversationSelect={handleConversationSelect}
-            onNewChat={handleNewChat}
-            currentConversationId={currentConversationId}
-            onLoginClick={handleLoginClick}
-            onLogoutClick={handleLogoutClick}
-          />
+          <button
+            ref={(node) => {
+              if (node && mobileMenuOpen) node.focus();
+            }}
+            type="button"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Close navigation"
+            className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white lg:hidden"
+          >
+            <X className="h-4 w-4" />
+          </button>
+          <MemoizedSidebar {...sidebarProps} />
         </aside>
-        
+
         {/* Main Chat Area */}
         <main id="chat-main" inert={mobileMenuOpen} className="flex min-w-0 flex-1 flex-col overflow-hidden">
           <MemoizedChatInterface
-            selectedConversationId={currentConversationId}
-            onConversationCreated={handleConversationCreated}
+            selectedConversationId={activeConversationId}
+            initialConversation={initialConversation}
+            conversationMissing={activeConversationMissing}
             mobileMenuOpen={mobileMenuOpen}
             sidebarCollapsed={sidebarCollapsed}
           />
@@ -294,7 +371,7 @@ const ChatPage: React.FC = () => {
       {/* Logout Modal - AT ROOT LEVEL */}
       <LogoutModal
         isOpen={showLogoutModal}
-        onClose={() => setShowLogoutModal(false)}
+        onClose={handleLogoutModalClose}
         onConfirm={handleLogoutConfirm}
         userName={user?.name || undefined}
       />
@@ -303,16 +380,9 @@ const ChatPage: React.FC = () => {
 };
 
 const MemoizedChatInterface = memo(ChatInterface);
-
-const MemoizedSidebar = memo(Sidebar, (prev, next) => {
-  return (
-    prev.collapsed === next.collapsed &&
-    prev.user?.id === next.user?.id &&
-    prev.currentConversationId === next.currentConversationId
-  );
-});
+const MemoizedSidebar = memo(Sidebar);
 
 MemoizedChatInterface.displayName = 'MemoizedChatInterface';
 MemoizedSidebar.displayName = 'MemoizedSidebar';
 
-export default memo(ChatPage);
+export default ChatPage;

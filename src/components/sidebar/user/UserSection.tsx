@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { LogOut, User, LogIn } from 'lucide-react';
 import Image from 'next/image';
 import { User as UserType } from '@/src/types/user.types';
@@ -100,4 +100,4 @@ const UserSection: React.FC<UserSectionProps> = ({
   );
 };
 
-export default UserSection;
+export default memo(UserSection);

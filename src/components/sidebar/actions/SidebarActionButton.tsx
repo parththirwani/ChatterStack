@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import { Plus, Search, SquarePen, X } from 'lucide-react';
 
 interface SidebarActionButtonsProps {
@@ -107,4 +107,4 @@ const SidebarActionButtons: React.FC<SidebarActionButtonsProps> = ({
   );
 };
 
-export default SidebarActionButtons;
+export default memo(SidebarActionButtons);

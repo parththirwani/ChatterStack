@@ -2,6 +2,8 @@
 import React, { useEffect, useRef } from 'react';
 import { ArrowUp, Square } from 'lucide-react';
 import { ModelSelector } from './ModelSelector/ModelSelector';
+import { ThinkingSelector } from './ModelSelector/ThinkingSelector';
+import { CouncilToggle } from './CouncilToggle';
 import LLMTokenIndicator from '../../rate-limit/LLMTokenIndicator';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 
@@ -16,7 +18,7 @@ interface MessageInputProps {
 
 const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, onSendMessage, loading, onStopGenerating, placeholder = 'Ask anything' }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const { selectedModel } = useModelSelection();
+  const { councilMode } = useModelSelection();
 
   useEffect(() => {
     const el = textareaRef.current;
@@ -46,8 +48,13 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, o
           rows={1}
           className="block w-full min-h-[68px] max-h-[180px] resize-none bg-transparent px-5 pt-4 pb-2 text-[15px] leading-6 text-[#f2f0ed] placeholder:text-[#aaa6a3] focus:outline-none"
         />
-        <div className="flex min-h-12 items-center justify-end gap-2 px-3 pb-3 pl-4">
-          <ModelSelector />
+        <div className="flex min-h-12 items-center gap-2 px-3 pb-3">
+          <CouncilToggle />
+          <div className="flex-1" />
+          <div className="flex min-w-0 items-center gap-0.5">
+            <ModelSelector />
+            <ThinkingSelector />
+          </div>
           <button
             type="button"
             onClick={loading ? onStopGenerating : onSendMessage}
@@ -59,7 +66,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, o
           </button>
         </div>
       </div>
-      <LLMTokenIndicator isCouncilMode={selectedModel === 'council'} className="mt-2" />
+      <LLMTokenIndicator isCouncilMode={councilMode} className="mt-2" />
     </div>
   );
 };

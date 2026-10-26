@@ -1,11 +1,9 @@
 /**
- * Council Service - FIXED VERSION
- * 
- * Fixes:
- * 1. Proper error handling to prevent "error generating response"
- * 2. Streaming works correctly
- * 3. Better fallback when models fail
- * 4. Fixed unused conversationHistory warning
+ * Council Service
+ *
+ * Stage 1: each member answers independently.
+ * Stage 2: each member ranks the anonymized answers.
+ * Stage 3: the chair synthesizes a final answer from both.
  */
 
 import {
@@ -13,13 +11,13 @@ import {
   getCouncilStage2Prompt,
   getCouncilChairmanPrompt,
 } from '../prompt/promptService';
-import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS } from '@/src/config/models';
+import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/src/config/models';
+import { streamCompletion } from '@/src/lib/api/chat/openrouter';
+import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
 
-export const COUNCIL_MODELS = COUNCIL_MODEL_IDS;
+export const COUNCIL_MODELS: readonly string[] = COUNCIL_MODEL_IDS;
 
-export const CHAIRMAN_MODEL = COUNCIL_CHAIR_MODEL;
-
-export type CouncilModel = typeof COUNCIL_MODELS[number];
+export const CHAIRMAN_MODEL: string = COUNCIL_CHAIR_MODEL;
 
 interface Message {
   role: 'user' | 'assistant';
@@ -28,12 +26,12 @@ interface Message {
 }
 
 export interface Stage1Result {
-  model: CouncilModel;
+  model: string;
   response: string;
 }
 
 export interface Stage2Result {
-  model: CouncilModel;
+  model: string;
   rankingText: string;
   parsedRanking: string[];
 }
@@ -44,106 +42,53 @@ export interface AggregateRanking {
   rankingsCount: number;
 }
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+export interface CouncilOptions {
+  members?: readonly string[];
+  chair?: string;
+  thinkingLevel?: ThinkingLevel;
+  /** Stops the deliberation (the user stopped or disconnected). */
+  signal?: AbortSignal;
 }
 
-async function createCompletion(
-  messages: Array<{ role: string; content: string }>,
-  model: string,
-  onChunk?: (chunk: string) => void
-): Promise<string> {
-  if (!process.env.OPENROUTER_API_KEY) {
-    throw new Error('OPENROUTER_API_KEY is not set');
-  }
+export interface CouncilCallbacks {
+  onProgress?: (stage: string, model: string, progress: number) => void;
+  onChunk?: (chunk: string) => void;
+  onReasoning?: (chunk: string) => void;
+  onAnswer?: (answer: CouncilAnswer) => void;
+  onRankings?: (rankings: CouncilRanking[]) => void;
+}
 
-  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-      'X-Title': 'ChatterStack',
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: messages,
-      stream: !!onChunk,
-      max_tokens: 4000,
-    }),
+// Members start a second apart so a council doesn't burst the provider's rate limit.
+const MEMBER_STAGGER_MS = 1000;
+
+/** Resolves after `ms`, or right away once `signal` aborts. */
+function delay(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal?.aborted || ms <= 0) return resolve();
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      resolve();
+    }, { once: true });
   });
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`OpenRouter API error: ${response.status} - ${errorBody}`);
-  }
-
-  if (onChunk) {
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-
-    if (!reader) {
-      throw new Error('No response body');
-    }
-
-    let fullContent = '';
-    let pending = '';
-
-    const handleLine = (line: string): boolean => {
-      if (!line.startsWith('data:')) return false;
-      const data = line.slice(5).trim();
-      if (data === '[DONE]') return true;
-      if (!data) return false;
-
-      const parsed = JSON.parse(data);
-      if (parsed.error) {
-        throw new Error(parsed.error.message || 'OpenRouter stream error');
-      }
-      const content = parsed.choices?.[0]?.delta?.content;
-      if (typeof content === 'string' && content) {
-        fullContent += content;
-        onChunk(content);
-      }
-      return false;
-    };
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      pending += decoder.decode(value, { stream: true });
-      const lines = pending.split(/\r?\n/);
-      pending = lines.pop() || '';
-      for (const line of lines) {
-        if (handleLine(line)) return fullContent;
-      }
-    }
-
-    pending += decoder.decode();
-    if (pending && handleLine(pending)) return fullContent;
-
-    return fullContent;
-  } else {
-    const data = await response.json();
-    return data.choices[0].message.content;
-  }
 }
 
 async function stage1_collect_responses(
   userQuery: string,
-  conversationHistory: Message[] = [],
-  onProgress?: (stage: string, model: string, progress: number) => void
+  conversationHistory: Message[],
+  members: readonly string[],
+  thinkingLevel: ThinkingLevel,
+  signal: AbortSignal | undefined,
+  { onProgress, onAnswer }: CouncilCallbacks
 ): Promise<Stage1Result[]> {
 
   const systemPrompt = getCouncilStage1Prompt();
 
-  const promises = COUNCIL_MODELS.map(async (model, index) => {
+  const promises = members.map(async (model, index) => {
     try {
-      await delay(index * 1000);
-      
-      if (onProgress) {
-        onProgress('stage1', model, 0);
-      }
+      await delay(index * MEMBER_STAGGER_MS, signal);
+      if (signal?.aborted) return null;
+      onProgress?.('stage1', model, 0);
 
       const messages = [
         { role: 'system', content: systemPrompt },
@@ -154,28 +99,23 @@ async function stage1_collect_responses(
         { role: 'user', content: userQuery },
       ];
 
-      let response = '';
-      await createCompletion(messages, model, (chunk: string) => {
-        response += chunk;
-      });
+      const response = await streamCompletion(messages, model, { thinkingLevel, signal });
+      if (signal?.aborted) return null;
+      if (!response.trim()) throw new Error('Empty response');
 
-      if (onProgress) {
-        onProgress('stage1', model, 100);
-      }
+      onProgress?.('stage1', model, 100);
+      onAnswer?.({ model, response });
 
       return { model, response } as Stage1Result;
     } catch (error) {
       console.error(`Stage 1: ${model} failed:`, error);
+      onProgress?.('stage1', model, -1);
       return null;
     }
   });
 
   const results = await Promise.all(promises);
-  const validResults = results.filter(
-    (r): r is Stage1Result => r !== null && r.response.trim().length > 0
-  );
-
-  return validResults;
+  return results.filter((r): r is Stage1Result => r !== null);
 }
 
 function parse_ranking_from_text(text: string): string[] {
@@ -214,6 +154,8 @@ function parse_ranking_from_text(text: string): string[] {
 async function stage2_collect_rankings(
   userQuery: string,
   stage1Results: Stage1Result[],
+  thinkingLevel: ThinkingLevel,
+  signal: AbortSignal | undefined,
   onProgress?: (stage: string, model: string, progress: number) => void
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
 
@@ -230,46 +172,32 @@ async function stage2_collect_rankings(
 
   const rankingPrompt = getCouncilStage2Prompt(userQuery, anonymizedResponses);
 
-  const stage2Results: Stage2Result[] = [];
-  
-  for (let i = 0; i < COUNCIL_MODELS.length; i++) {
-    const model = COUNCIL_MODELS[i];
-    
-    try {
-      if (i > 0) {
-        await delay(2000);
+  // Only members that produced an answer take part in peer review. They rank
+  // in parallel (staggered like stage 1): with reasoning on, each ranking can
+  // take tens of seconds, so running them one after another added minutes.
+  const results = await Promise.all(
+    stage1Results.map(async ({ model }, index): Promise<Stage2Result | null> => {
+      await delay(index * MEMBER_STAGGER_MS, signal);
+      if (signal?.aborted) return null;
+      try {
+        onProgress?.('stage2', model, 0);
+        const rankingText = await streamCompletion(
+          [{ role: 'user', content: rankingPrompt }],
+          model,
+          { thinkingLevel, signal }
+        );
+        if (signal?.aborted) return null;
+        onProgress?.('stage2', model, 100);
+        return { model, rankingText, parsedRanking: parse_ranking_from_text(rankingText) };
+      } catch (error) {
+        console.error(`Stage 2: ${model} failed:`, error);
+        onProgress?.('stage2', model, -1);
+        return null;
       }
-      
-      if (onProgress) {
-        onProgress('stage2', model, 0);
-      }
+    })
+  );
 
-      let rankingText = '';
-      await createCompletion(
-        [{ role: 'user', content: rankingPrompt }],
-        model,
-        (chunk: string) => {
-          rankingText += chunk;
-        }
-      );
-
-      if (onProgress) {
-        onProgress('stage2', model, 100);
-      }
-
-      const parsedRanking = parse_ranking_from_text(rankingText);
-
-      stage2Results.push({
-        model,
-        rankingText,
-        parsedRanking,
-      });
-    } catch (error) {
-      console.error(`Stage 2: ${model} failed:`, error);
-    }
-  }
-
-  return { stage2Results, labelToModel };
+  return { stage2Results: results.filter((r): r is Stage2Result => r !== null), labelToModel };
 }
 
 function calculate_aggregate_rankings(
@@ -311,13 +239,13 @@ function calculate_aggregate_rankings(
 async function stage3_synthesize_final(
   userQuery: string,
   stage1Results: Stage1Result[],
-  stage2Results: Stage2Result[],
-  labelToModel: Map<string, string>,
-  conversationHistory: Message[] = [],
-  onChunk?: (chunk: string) => void
+  aggregateRankings: AggregateRanking[],
+  conversationHistory: Message[],
+  chair: string,
+  thinkingLevel: ThinkingLevel,
+  signal: AbortSignal | undefined,
+  { onProgress, onChunk, onReasoning }: CouncilCallbacks
 ): Promise<string> {
-
-  const aggregateRankings = calculate_aggregate_rankings(stage2Results, labelToModel);
 
   const chairmanPrompt = getCouncilChairmanPrompt(
     userQuery,
@@ -335,72 +263,72 @@ async function stage3_synthesize_final(
     { role: 'user', content: userQuery },
   ];
 
-  let finalResponse = '';
-  
   try {
-    await createCompletion(chairmanMessages, CHAIRMAN_MODEL, (chunk: string) => {
-      finalResponse += chunk;
-      if (onChunk) {
-        onChunk(chunk);
-      }
+    onProgress?.('stage3', chair, 0);
+    const finalResponse = await streamCompletion(chairmanMessages, chair, {
+      thinkingLevel,
+      onChunk,
+      onReasoning,
+      signal,
     });
-
+    onProgress?.('stage3', chair, 100);
     return finalResponse;
   } catch (error) {
     console.error('Stage 3 failed:', error);
+    onProgress?.('stage3', chair, -1);
     throw new Error('Failed to synthesize final response');
   }
 }
 
+/**
+ * Runs the three council stages and returns the chair's answer. Throws if no
+ * member could answer or the chair fails; returns what the chair wrote so far
+ * (possibly '') if `signal` aborts.
+ */
 export async function runCouncilProcess(
   userQuery: string,
   conversationHistory: Message[] = [],
-  onProgress?: (stage: string, model: string, progress: number) => void,
-  onChunk?: (chunk: string) => void 
+  { members = COUNCIL_MODELS, chair = CHAIRMAN_MODEL, thinkingLevel = 'off', signal }: CouncilOptions = {},
+  callbacks: CouncilCallbacks = {}
 ): Promise<string> {
+  const { onProgress, onRankings } = callbacks;
 
-  try {
-    const stage1Results = await stage1_collect_responses(
-      userQuery,
-      conversationHistory,
-      onProgress
-    );
-
-    if (stage1Results.length === 0) {
-      const errorMsg = 'Unable to get responses from council members. Please try again.';
-      if (onChunk) {
-        onChunk(errorMsg);
-      }
-      return errorMsg;
-    }
-
-    // Stage 2 doesn't need conversationHistory - removed to fix warning
-    const { stage2Results, labelToModel } = await stage2_collect_rankings(
-      userQuery,
-      stage1Results,
-      onProgress
-    );
-
-    if (stage2Results.length === 0) {
-      console.warn('No rankings collected, proceeding with basic synthesis');
-    }
-
-    const finalResponse = await stage3_synthesize_final(
-      userQuery,
-      stage1Results,
-      stage2Results,
-      labelToModel,
-      conversationHistory,
-      onChunk 
-    );
-
-    return finalResponse;
-  } catch (error) {
-    console.error('Council process error:', error);
-    const errorMsg = 'An error occurred during council deliberation. Please try again.';
-    if (onChunk) {
-      onChunk(errorMsg);
-    }
-    return errorMsg;
+  const stage1Results = await stage1_collect_responses(
+    userQuery,
+    conversationHistory,
+    members,
+    thinkingLevel,
+    signal,
+    callbacks
+  );
+  if (signal?.aborted) return '';
+  if (stage1Results.length === 0) {
+    throw new Error('No council member could answer. Please try again.');
   }
+
+  const { stage2Results, labelToModel } = await stage2_collect_rankings(
+    userQuery,
+    stage1Results,
+    thinkingLevel,
+    signal,
+    onProgress
+  );
+  if (signal?.aborted) return '';
+  if (stage2Results.length === 0) {
+    console.warn('No rankings collected, proceeding with basic synthesis');
+  }
+
+  const aggregateRankings = calculate_aggregate_rankings(stage2Results, labelToModel);
+  onRankings?.(aggregateRankings.map(({ model, averageRank }) => ({ model, averageRank })));
+
+  return stage3_synthesize_final(
+    userQuery,
+    stage1Results,
+    aggregateRankings,
+    conversationHistory,
+    chair,
+    thinkingLevel,
+    signal,
+    callbacks
+  );
 }

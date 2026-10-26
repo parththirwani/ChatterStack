@@ -1,75 +1,33 @@
 "use client";
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { memo } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { ModelDropdown } from './ModelDropDown';
+import { usePopover } from './usePopover';
 
-export const ModelSelector = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [placement, setPlacement] = useState<'down' | 'up'>('down');
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const { selectedModel, setSelectedModel, getModelInfo } = useModelSelection();
-  const currentModel = getModelInfo(selectedModel);
+// Memoized: the composer re-renders on every keystroke.
+export const ModelSelector = memo(function ModelSelector() {
+  const { isOpen, placement, close, returnFocus, triggerProps, rootProps } = usePopover(
+    '[role="option"][aria-selected="true"], [role="checkbox"]'
+  );
+  const { selectedModel, getModelInfo, councilMode } = useModelSelection();
+  const label = councilMode ? 'Members' : getModelInfo(selectedModel)?.name || 'Select model';
 
-  useEffect(() => {
-    if (!isOpen) return;
-    const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setIsOpen(false);
-    };
-    document.addEventListener('pointerdown', closeOnOutsidePress);
-    return () => document.removeEventListener('pointerdown', closeOnOutsidePress);
-  }, [isOpen]);
-
-  useLayoutEffect(() => {
-    if (isOpen) rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')?.focus();
-  }, [isOpen]);
-
-  const openMenu = () => {
-    const bottom = triggerRef.current?.getBoundingClientRect().bottom ?? 0;
-    setPlacement(window.innerHeight - bottom >= 365 ? 'down' : 'up');
-    setIsOpen(true);
-  };
-  
   return (
-    <div ref={rootRef} className="relative" onBlur={(event) => {
-      if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false);
-    }}>
-      <button 
-        ref={triggerRef}
-        onClick={() => isOpen ? setIsOpen(false) : openMenu()}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            openMenu();
-          }
-          if (event.key === 'Escape' && isOpen) {
-            event.preventDefault();
-            setIsOpen(false);
-          }
-        }}
-        aria-label={`Model: ${currentModel?.name || 'Select model'}`}
-        aria-expanded={isOpen}
-        aria-haspopup="listbox"
-        aria-controls="chat-model-listbox"
-        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-[#cfcbc5] transition-colors hover:bg-white/[0.06] hover:text-white"
+    <div {...rootProps} className="relative min-w-0">
+      <button
+        type="button"
+        {...triggerProps}
+        aria-label={councilMode ? 'Council settings' : `Model: ${label}`}
+        aria-haspopup="dialog"
+        aria-controls="chat-model-menu"
+        className="flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-[#cfcbc5] transition-colors hover:bg-white/[0.06] hover:text-white"
       >
-        {/* Model Name */}
-        <span className="font-medium">
-          {currentModel?.name || 'Select Model'}
-        </span>
-        
-        {/* Chevron */}
-        <ChevronDown className={`w-3 h-3 text-[#aaa6a2] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="min-w-0 truncate font-medium">{label}</span>
+        <ChevronDown className={`h-3 w-3 shrink-0 text-[#aaa6a2] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
-      
-      {isOpen && <ModelDropdown
-        placement={placement}
-        selectedModel={selectedModel}
-        onSelect={setSelectedModel}
-        onClose={() => setIsOpen(false)}
-        onReturnFocus={() => triggerRef.current?.focus()}
-      />}
+
+      {isOpen && <ModelDropdown placement={placement} onClose={close} onReturnFocus={returnFocus} />}
     </div>
   );
-};
+});

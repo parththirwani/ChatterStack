@@ -84,3 +84,10 @@ docker-compose.override.yml
 .vercel
 .env*
 .cora-cli/
+
+# ==============================
+# Tests
+# ==============================
+/test-results/
+/playwright-report/
+tests/e2e/.auth/

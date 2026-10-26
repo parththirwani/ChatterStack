@@ -7,7 +7,14 @@
     "build": "next build --turbopack && node scripts/prepare-standalone.mjs",
     "start": "node .next/standalone/server.js",
     "lint": "eslint",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "typecheck": "tsc --noEmit",
+    "test:static": "tsc --noEmit && eslint",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration --project components",
+    "test:vitest": "vitest run",
+    "test:e2e": "playwright test",
+    "test": "npm run test:static && vitest run && playwright test"
   },
   "engines": {
     "node": "24.x"
@@ -39,22 +46,30 @@
     "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
     "remark-math": "^6.0.0",
+    "thinking-orbs": "^0.3.2",
     "uuid": "^14.0.3",
     "zod": "^4.3.6",
     "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/postcss": "^4",
     "@tailwindcss/typography": "^0.5.20",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
+    "@testing-library/user-event": "^14.6.8",
     "@types/node": "^20",
     "@types/pg": "^8.16.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^6.1.2",
     "eslint": "^9",
     "eslint-config-next": "15.5.0",
+    "jsdom": "^30.1.3",
     "prisma": "^7.4.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

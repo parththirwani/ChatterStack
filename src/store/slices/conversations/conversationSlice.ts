@@ -3,7 +3,6 @@ import { ApiService } from '../../../services/api';
 import type { Conversation } from '../../../types/conversation.types';
 import type { Message } from '../../../types/chat.types';
 import type { ChatState } from '../chat/chatSlice';
-import { OptimisticChat, optimisticChatManager } from '@/src/lib/api/chat/optimistic-chat-manager';
 
 
 const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
@@ -14,38 +13,46 @@ const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
   });
 };
 
+/** Pinned chats first (most recently pinned on top), then most recent activity. */
+export function sortConversations(conversations: Conversation[]): Conversation[] {
+  const time = (value?: string | null) => (value ? new Date(value).getTime() : 0);
+  return [...conversations].sort(
+    (a, b) => time(b.pinnedAt) - time(a.pinnedAt) || time(b.updatedAt) - time(a.updatedAt)
+  );
+}
+
 export interface ConversationsSlice {
   conversations: Conversation[];
   conversationsLoading: boolean;
+  /** True once the list has been seeded from SSR or loaded from the API. */
+  conversationsHydrated: boolean;
   currentConversationId?: string;
-  optimisticChats: OptimisticChat[];
 
   setConversations: (conversations: Conversation[]) => void;
   setConversationsLoading: (loading: boolean) => void;
   setCurrentConversationId: (id: string | undefined) => void;
+  hydrateConversation: (conversation: Conversation) => void;
 
   addConversation: (conversation: Conversation) => void;
   updateConversation: (id: string, updates: Partial<Conversation>) => void;
   removeConversation: (id: string) => void;
 
-  createOptimisticChat: (userId: string, firstMessage: string) => string;
-  linkOptimisticChatId: (tempId: string, realId: string) => void;
-  finalizeOptimisticChat: (chatId: string, realConversation: Conversation) => void;
-  updateOptimisticChatStatus: (
-    chatId: string,
-    status: OptimisticChat['status'],
-    error?: string
-  ) => void;
-  removeOptimisticChat: (chatId: string) => void;
-  refreshOptimisticChats: () => void;
+  renameConversation: (id: string, title: string) => Promise<void>;
+  setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
 
   loadConversations: (force?: boolean) => Promise<void>;
-  loadConversation: (conversationId: string) => Promise<void>;
+  /**
+   * Load a conversation's messages once, for client-side switches and hover
+   * prefetch. Never replaces messages already in memory.
+   */
+  fetchConversation: (conversationId: string) => Promise<void>;
+  /** Conversations the API said don't exist (or aren't the user's). */
+  missingConversationIds: Record<string, true>;
   deleteConversation: (conversationId: string) => Promise<void>;
-  
-  // NEW: Get merged list of real + optimistic chats
-  getAllChatsForSidebar: () => (Conversation | OptimisticChat)[];
 }
+
+// In-flight conversation loads, so a hover prefetch and the click share one request.
+const conversationRequests = new Map<string, Promise<void>>();
 
 // Helper type for accessing other slices
 interface StoreWithChat {
@@ -65,12 +72,38 @@ export const createConversationsSlice: StateCreator<
 > = (set, get) => ({
   conversations: [],
   conversationsLoading: false,
+  conversationsHydrated: false,
   currentConversationId: undefined,
-  optimisticChats: [],
+  missingConversationIds: {},
 
-  setConversations: (conversations) => set({ conversations }),
+  setConversations: (conversations) =>
+    set({ conversations, conversationsHydrated: true }),
   setConversationsLoading: (conversationsLoading) => set({ conversationsLoading }),
-  setCurrentConversationId: (currentConversationId) => set({ currentConversationId }),
+  setCurrentConversationId: (currentConversationId) => {
+    if (get().currentConversationId === currentConversationId) return;
+    set({ currentConversationId });
+  },
+
+  hydrateConversation: (conversation) => {
+    const state = get() as unknown as ConversationsSlice & StoreWithChat;
+    const existing = state.chatState[conversation.id];
+
+    if (!existing?.messages.length) {
+      state.setChatState(conversation.id, {
+        messages: conversation.messages ?? [],
+        loading: false,
+        error: undefined,
+        councilProgress: [],
+      });
+    }
+
+    const hasConversation = state.conversations.some((item) => item.id === conversation.id);
+    set({
+      conversations: hasConversation
+        ? state.conversations
+        : [conversation, ...state.conversations],
+    });
+  },
 
   addConversation: (conversation) =>
     set((state) => ({
@@ -91,86 +124,30 @@ export const createConversationsSlice: StateCreator<
         state.currentConversationId === id ? undefined : state.currentConversationId,
     })),
 
-  // NEW: Optimistic chat methods
-  createOptimisticChat: (userId: string, firstMessage: string) => {
-    const optimisticChat = optimisticChatManager.createOptimisticChat({
-      userId,
-      firstMessage,
-    });
-    
-    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
-    return optimisticChat.tempId;
-  },
-
-  linkOptimisticChatId: (tempId: string, realId: string) => {
-    optimisticChatManager.linkRealId(tempId, realId);
-    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
-  },
-
-  finalizeOptimisticChat: (chatId: string, realConversation: Conversation) => {
-    optimisticChatManager.finalizeChat(chatId, realConversation);
-    
-    // Add to real conversations if not already there
-    const state = get();
-    const exists = state.conversations.some((c) => c.id === realConversation.id);
-    if (!exists) {
-      set((s) => ({
-        conversations: [realConversation, ...s.conversations],
-      }));
+  renameConversation: async (id, title) => {
+    const previous = get().conversations.find((conv) => conv.id === id);
+    if (!previous || previous.title === title) return;
+    get().updateConversation(id, { title });
+    try {
+      await ApiService.updateConversation(id, { title });
+    } catch (error) {
+      get().updateConversation(id, { title: previous.title });
+      throw error;
     }
-    
-    // Cleanup completed optimistic chats
-    setTimeout(() => {
-      optimisticChatManager.cleanupCompleted();
-      set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
-    }, 1000); // Delay cleanup to ensure smooth UI transition
   },
 
-  updateOptimisticChatStatus: (
-    chatId: string,
-    status: OptimisticChat['status'],
-    error?: string
-  ) => {
-    optimisticChatManager.updateStreamingStatus(chatId, status, error);
-    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
-  },
-
-  removeOptimisticChat: (chatId: string) => {
-    optimisticChatManager.removeChat(chatId);
-    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
-  },
-
-  refreshOptimisticChats: () => {
-    set({ optimisticChats: optimisticChatManager.getAllOptimisticChats() });
-  },
-
-  // NEW: Merged list for sidebar
-  getAllChatsForSidebar: () => {
-    const state = get();
-    const merged: (Conversation | OptimisticChat)[] = [];
-    const seenRealIds = new Set<string>();
-    
-    // Add optimistic chats first (they're more recent)
-    for (const optimistic of state.optimisticChats) {
-      merged.push(optimistic);
-      // Track real ID to avoid duplicates
-      if (optimistic.realId) {
-        seenRealIds.add(optimistic.realId);
-      }
+  setConversationPinned: async (id, pinned) => {
+    const previous = get().conversations.find((conv) => conv.id === id);
+    if (!previous) return;
+    get().updateConversation(id, { pinnedAt: pinned ? new Date().toISOString() : null });
+    try {
+      const saved = await ApiService.updateConversation(id, { pinned });
+      // Use the server's timestamp so ordering matches after a reload.
+      get().updateConversation(id, { pinnedAt: saved.pinnedAt });
+    } catch (error) {
+      get().updateConversation(id, { pinnedAt: previous.pinnedAt ?? null });
+      throw error;
     }
-    
-    // Add real conversations that aren't already represented by optimistic chats
-    for (const conversation of state.conversations) {
-      if (!seenRealIds.has(conversation.id)) {
-        merged.push(conversation);
-      }
-    }
-    
-    // Sort by updatedAt descending
-    return merged.sort(
-      (a, b) =>
-        new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-    );
   },
 
   loadConversations: async (force = false) => {
@@ -183,73 +160,53 @@ export const createConversationsSlice: StateCreator<
     try {
       set({ conversationsLoading: true });
       const result = await ApiService.getConversations();
-      const convos = result.conversations || [];
-      const sortedConvos = convos.sort(
-        (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
-      );
-      set({ conversations: sortedConvos });
+      set({ conversations: sortConversations(result.conversations || []), conversationsHydrated: true });
     } catch (error) {
       console.error('Failed to load conversations:', error);
-      set({ conversations: [] });
+      set({ conversations: [], conversationsHydrated: true });
     } finally {
       set({ conversationsLoading: false });
     }
   },
 
-  loadConversation: async (conversationId: string) => {
-    const state = get() as unknown as StoreWithChat;
-    const { setChatState } = state;
-
-
-    // Check if this is a temp ID
-    if (conversationId.startsWith('temp_')) {
-      // Don't try to load from API - optimistic chat is already in state
-      return;
+  fetchConversation: (conversationId: string) => {
+    // Already in memory (SSR seed, a previous visit, or a chat streaming now).
+    if ((get() as unknown as StoreWithChat).chatState[conversationId]?.messages.length) {
+      return Promise.resolve();
     }
-
-    try {
-      setChatState(conversationId, { loading: true, error: undefined });
-
-      const result = await ApiService.getConversation(conversationId);
-
-      if (result && result.conversation) {
-        const conversation = result.conversation;
-        const messagesArray = Array.isArray(conversation.messages) ? conversation.messages : [];
-
-        const messages = sortMessagesByCreatedAt(
-          messagesArray.map((msg) => ({
-            id: msg.id,
-            role: msg.role as 'user' | 'assistant',
-            content: msg.content || '',
-            modelId: msg.modelId,
-            createdAt: msg.createdAt,
-            updatedAt: msg.updatedAt,
-          }))
-        );
-
-
-        setChatState(conversationId, {
-          messages,
-          loading: false,
-          error: undefined,
-          councilProgress: [],
-        });
-
-        set({ currentConversationId: conversationId });
-      } else {
-        throw new Error('Conversation not found or invalid data received');
-      }
-    } catch (error) {
-      console.error('[Store] Error loading conversation:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load conversation.';
-      const state = get() as unknown as StoreWithChat;
-      state.setChatState(conversationId, {
-        loading: false,
-        error: errorMessage,
-        messages: [],
-        councilProgress: [],
+    const inFlight = conversationRequests.get(conversationId);
+    if (inFlight) return inFlight;
+    // A retry (e.g. after a network error) gets another chance.
+    if (get().missingConversationIds[conversationId]) {
+      set((state) => {
+        const missingConversationIds = { ...state.missingConversationIds };
+        delete missingConversationIds[conversationId];
+        return { missingConversationIds };
       });
     }
+
+    const request = ApiService.getConversation(conversationId)
+      .then((result) => {
+        if (result?.conversation) {
+          get().hydrateConversation({
+            ...result.conversation,
+            messages: sortMessagesByCreatedAt(result.conversation.messages ?? []),
+          });
+        } else {
+          set((state) => ({ missingConversationIds: { ...state.missingConversationIds, [conversationId]: true } }));
+        }
+      })
+      .catch((error) => {
+        // A network or server failure isn't "missing": show a retryable
+        // error (clicking the chat again retries).
+        console.error('[Store] Failed to load conversation:', error);
+        (get() as unknown as StoreWithChat).setChatState(conversationId, {
+          error: "Couldn't load this conversation. Check your connection and try again.",
+        });
+      })
+      .finally(() => conversationRequests.delete(conversationId));
+    conversationRequests.set(conversationId, request);
+    return request;
   },
 
   deleteConversation: async (conversationId: string) => {
@@ -267,8 +224,9 @@ export const createConversationsSlice: StateCreator<
             : currentState.currentConversationId,
       }));
       
-      // Clear chat state
+      // Clear chat state and any unsent draft
       state.clearChatState(conversationId);
+      (get() as unknown as { setDraft: (key: string, text: string) => void }).setDraft(conversationId, '');
     } catch (error) {
       console.error('Failed to delete conversation:', error);
       throw error;

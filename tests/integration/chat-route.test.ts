@@ -1,0 +1,318 @@
+/**
+ * Integration test for POST /api/chat: the real route, persistence, title
+ * service, OpenRouter client and council service run together. Only the edges
+ * (auth, Redis, RAG, rate limiting, Prisma and the network) are faked.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { NextRequest } from 'next/server';
+import { delta, readEvents, sseResponse } from '../helpers/sse';
+
+const log: string[] = [];
+const auth = vi.fn();
+const OTHER_USERS_CHAT = '9f1c2d3e-0000-4000-8000-000000000000';
+
+const db = {
+  conversation: {
+    create: vi.fn(async ({ data }: { data: { id: string } }) => {
+      log.push(`db:create:${data.id}`);
+      return { ...data, title: null };
+    }),
+    updateMany: vi.fn(async ({ data }: { data: { title?: string } }) => {
+      log.push(`db:title:${data.title}`);
+      return { count: 1 };
+    }),
+    update: vi.fn(async () => ({})),
+    findFirst: vi.fn(async ({ where }: { where: { id: string } }) => (where.id === OTHER_USERS_CHAT ? null : { id: where.id })),
+  },
+  message: {
+    findMany: vi.fn(async (): Promise<Array<{ role: string; content: string; modelId: string | null }>> => []),
+    createMany: vi.fn(async ({ data }: { data: Array<{ role: string; content: string }> }) => {
+      log.push(`db:messages:${data.map((m) => `${m.role}=${m.content}`).join('|')}`);
+      return { count: data.length };
+    }),
+  },
+  $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+};
+
+vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
+vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
+const redis = { get: vi.fn(async (): Promise<unknown[]> => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}) };
+vi.mock('@/src/lib/redis', () => ({ redisStore: redis }));
+const recordLLMTokens = vi.fn<(user: string, tokens: number, council: boolean) => Promise<void>>(async () => {});
+vi.mock('@/src/lib/api/chat/rag-integration', () => ({
+  retrieveRAGContext: vi.fn(async () => ''),
+  ingestConversationData: vi.fn(async () => {}),
+}));
+vi.mock('@/src/middleware/llmTokenRateLimit', () => ({
+  withLLMTokenLimit: vi.fn(async () => null),
+  recordLLMTokens: (user: string, tokens: number, council: boolean) => recordLLMTokens(user, tokens, council),
+  countTokens: (text: string) => text.length,
+}));
+
+const { POST } = await import('@/src/app/api/chat/route');
+
+const fetchMock = vi.fn();
+const NEW_ID = '0e7ba32e-05b0-477d-8e30-2bf0a849649e';
+const openRouterBodies = () =>
+  fetchMock.mock.calls.map(([, init]) => JSON.parse((init as RequestInit).body as string));
+
+function post(body: object, signal?: AbortSignal) {
+  return POST(
+    new Request('http://localhost/api/chat', { method: 'POST', body: JSON.stringify(body), signal }) as unknown as NextRequest
+  );
+}
+
+beforeEach(() => {
+  log.length = 0;
+  vi.stubEnv('OPENROUTER_API_KEY', 'test-key');
+  vi.stubGlobal('fetch', fetchMock);
+  auth.mockResolvedValue({ user: { id: 'user-1' } });
+  Object.values(db.conversation).forEach((fn) => fn.mockClear());
+  db.message.createMany.mockClear();
+  db.message.findMany.mockClear();
+  redis.get.mockClear();
+  redis.set.mockClear();
+  recordLLMTokens.mockClear();
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  vi.spyOn(console, 'error').mockImplementation(() => {});
+  vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+  fetchMock.mockReset();
+  fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+    const body = JSON.parse(init.body as string);
+    if (body.model === 'openai/gpt-5.6-luna') {
+      log.push('openrouter:title');
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'TCP Congestion Control' } }] }));
+    }
+    log.push(`openrouter:${body.model}`);
+    return sseResponse([delta({ reasoning: 'Thinking it over' }), delta({ content: 'Slow start ' }), delta({ content: 'doubles cwnd.' }), '[DONE]']);
+  });
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('POST /api/chat, new conversation', () => {
+  it('saves the chat and tells the client before the answer starts', async () => {
+    const events = await readEvents(
+      await post({ message: 'Explain TCP congestion control', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true })
+    );
+
+    const createdAt = events.findIndex((e) => e !== '[DONE]' && e.conversationCreated === NEW_ID);
+    const firstChunk = events.findIndex((e) => e !== '[DONE]' && 'chunk' in e);
+    expect(createdAt).toBeGreaterThan(-1);
+    expect(createdAt).toBeLessThan(firstChunk);
+
+    // The row exists before the model is even called.
+    expect(log.indexOf(`db:create:${NEW_ID}`)).toBeLessThan(log.indexOf('openrouter:openai/gpt-6.1-sol'));
+    expect(db.conversation.create).toHaveBeenCalledWith({ data: { id: NEW_ID, userId: 'user-1' } });
+  });
+
+  it('names the chat with GPT-5.6 Luna, saves it only if untitled, and streams the title', async () => {
+    const events = await readEvents(
+      await post({ message: 'Explain TCP congestion control', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true })
+    );
+
+    expect(events).toContainEqual({ title: 'TCP Congestion Control' });
+    expect(db.conversation.updateMany).toHaveBeenCalledWith({
+      where: { id: NEW_ID, title: null },
+      data: { title: 'TCP Congestion Control' },
+    });
+    // The title is not just a copy of the first message.
+    expect(events).not.toContainEqual({ title: 'Explain TCP congestion control' });
+  });
+
+  it('does not stream a title if the user renamed the chat first', async () => {
+    db.conversation.updateMany.mockResolvedValueOnce({ count: 0 });
+    const events = await readEvents(
+      await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true })
+    );
+    expect(events.some((e) => e !== '[DONE]' && 'title' in e)).toBe(false);
+  });
+
+  it('streams reasoning separately from the answer and persists only the answer', async () => {
+    const events = await readEvents(
+      await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true, thinkingLevel: 'high' })
+    );
+    expect(events).toContainEqual({ reasoning: 'Thinking it over' });
+    expect(events.filter((e) => e !== '[DONE]' && 'chunk' in e).map((e) => (e as { chunk: string }).chunk).join('')).toBe('Slow start doubles cwnd.');
+    expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start doubles cwnd.');
+    expect(events.at(-1)).toBe('[DONE]');
+  });
+});
+
+describe('POST /api/chat, existing conversation', () => {
+  it('does not create a new row or a new title', async () => {
+    const events = await readEvents(
+      await post({ message: 'And fast recovery?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID })
+    );
+    expect(db.conversation.create).not.toHaveBeenCalled();
+    expect(log).not.toContain('openrouter:title');
+    expect(events.some((e) => e !== '[DONE]' && 'conversationCreated' in e)).toBe(false);
+    expect(log.some((entry) => entry.startsWith('db:messages:user=And fast recovery?'))).toBe(true);
+  });
+});
+
+describe('POST /api/chat, thinking level', () => {
+  it.each([
+    ['anthropic/claude-sonnet-5.5', 'max', 'max'],
+    ['google/gemini-4-argon', 'max', 'high'],
+    ['deepseek/deepseek-v4.1-flash-1017', 'off', 'none'],
+  ])('sends %s the closest supported effort for %s', async (model, thinkingLevel, effort) => {
+    await readEvents(await post({ message: 'hi', selectedModel: model, conversationId: NEW_ID, thinkingLevel }));
+    expect(openRouterBodies().find((body) => body.model === model)?.reasoning).toEqual({ effort });
+  });
+
+  it('defaults to Medium when the client sends no level', async () => {
+    await readEvents(await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+    expect(openRouterBodies()[0].reasoning).toEqual({ effort: 'medium' });
+  });
+});
+
+describe('POST /api/chat, council mode', () => {
+  it('uses the chosen members, chair and thinking level and streams council events', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const response = await post({
+        message: 'Compare REST and gRPC',
+        selectedModel: 'council',
+        conversationId: NEW_ID,
+        thinkingLevel: 'xhigh',
+        council: { members: ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5'], chair: 'anthropic/claude-sonnet-5.5' },
+      });
+      const eventsPromise = readEvents(response);
+      await vi.runAllTimersAsync();
+      const events = await eventsPromise;
+
+      const models = openRouterBodies().map((body) => body.model);
+      expect(models).not.toContain('google/gemini-4-argon');
+      expect(models).not.toContain('deepseek/deepseek-v4.1-flash-1017');
+      expect(models.filter((m) => m === 'anthropic/claude-sonnet-5.5').length).toBe(3); // answer, review, chair
+      expect(openRouterBodies().every((body) => body.reasoning.effort === 'xhigh')).toBe(true);
+
+      const answers = events.filter((e) => e !== '[DONE]' && 'councilAnswer' in e);
+      expect(answers).toHaveLength(2);
+      expect(events.some((e) => e !== '[DONE]' && 'councilRankings' in e)).toBe(true);
+      expect(events).toContainEqual({ status: 'progress', stage: 'stage3', model: 'anthropic/claude-sonnet-5.5', progress: 0 });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('POST /api/chat, validation', () => {
+  it('rejects signed-out requests', async () => {
+    auth.mockResolvedValue(null);
+    expect((await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol' })).status).toBe(401);
+  });
+
+  it('rejects an invalid thinking level or council', async () => {
+    expect((await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', thinkingLevel: 'ultra' })).status).toBe(400);
+    expect(
+      (await post({ message: 'hi', selectedModel: 'council', council: { members: ['openai/gpt-6.1-sol'], chair: 'openai/gpt-6.1-sol' } })).status
+    ).toBe(400);
+  });
+});
+
+describe('POST /api/chat, ownership', () => {
+  it("refuses someone else's conversation before calling the model", async () => {
+    const response = await post({ message: 'Show me', selectedModel: 'openai/gpt-6.1-sol', conversationId: OTHER_USERS_CHAT });
+    expect(response.status).toBe(404);
+    expect(db.conversation.findFirst).toHaveBeenCalledWith({ where: { id: OTHER_USERS_CHAT, userId: 'user-1' }, select: { id: true } });
+    expect(redis.get).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.message.createMany).not.toHaveBeenCalled();
+  });
+
+  it('refuses to claim an id that is already taken', async () => {
+    db.conversation.create.mockRejectedValueOnce(Object.assign(new Error('Unique constraint'), { code: 'P2002' }));
+    const response = await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', conversationId: OTHER_USERS_CHAT, newConversation: true });
+    expect(response.status).toBe(409);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('POST /api/chat, when the answer fails', () => {
+  it('saves only the question, never a fake "error" answer', async () => {
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      if (body.model === 'openai/gpt-5.6-luna') return new Response(JSON.stringify({ choices: [{ message: { content: 'T' } }] }));
+      return new Response('upstream down', { status: 500 });
+    });
+    const events = await readEvents(await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+
+    expect(events.some((e) => e !== '[DONE]' && 'error' in e)).toBe(true);
+    expect(log).toContain('db:messages:user=Explain TCP');
+    expect(log.join()).not.toContain('Error generating response');
+    // The prompt was still sent, so it still counts toward the limit.
+    expect(recordLLMTokens).toHaveBeenCalledTimes(1);
+  });
+
+  it('a council where nobody answers is an error, not a saved answer', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      fetchMock.mockImplementation(async () => new Response('down', { status: 503 }));
+      const response = await post({
+        message: 'Compare', selectedModel: 'council', conversationId: NEW_ID,
+        council: { members: ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5'], chair: 'anthropic/claude-sonnet-5.5' },
+      });
+      const eventsPromise = readEvents(response);
+      await vi.runAllTimersAsync();
+      const events = await eventsPromise;
+      expect(events).toContainEqual({ error: 'No council member could answer. Please try again.' });
+      expect(events.some((e) => e !== '[DONE]' && 'chunk' in e)).toBe(false);
+      expect(log).toContain('db:messages:user=Compare');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('POST /api/chat, when the user stops', () => {
+  it('cancels the model call, then saves what was written and counts the tokens', async () => {
+    const stop = new AbortController();
+    let upstreamSignal: AbortSignal | undefined;
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      upstreamSignal = init.signal ?? undefined;
+      const encoder = new TextEncoder();
+      return new Response(new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ delta: { content: 'Slow start ' } }] })}\n\n`));
+          init.signal?.addEventListener('abort', () => controller.error(new DOMException('Aborted', 'AbortError')));
+          // The user presses Stop once the first words are on screen.
+          setTimeout(() => stop.abort(), 10);
+        },
+      }));
+    });
+
+    const response = await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }, stop.signal);
+    await readEvents(response);
+
+    expect(upstreamSignal?.aborted).toBe(true);
+    expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start ');
+    expect(recordLLMTokens).toHaveBeenCalledTimes(1);
+    expect(recordLLMTokens.mock.calls[0][1]).toBeGreaterThan('Explain TCP'.length);
+  });
+});
+
+describe('POST /api/chat, history cache', () => {
+  it('refills an empty cache from the database in one write, and saves the turn in one more', async () => {
+    db.message.findMany.mockResolvedValueOnce([
+      { role: 'user', content: 'Earlier question', modelId: null },
+      { role: 'assistant', content: 'Earlier answer', modelId: 'openai/gpt-6.1-sol' },
+    ]);
+    await readEvents(await post({ message: 'And now?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+
+    expect(redis.set).toHaveBeenCalledTimes(2);
+    const [, final] = redis.set.mock.calls[1];
+    expect((final as Array<{ content: string }>).map((m) => m.content)).toEqual([
+      'Earlier question', 'Earlier answer', 'And now?', 'Slow start doubles cwnd.',
+    ]);
+    // The model saw the history.
+    const sent = openRouterBodies().find((b) => b.model === 'openai/gpt-6.1-sol').messages.map((m: { content: string }) => m.content);
+    expect(sent).toEqual(expect.arrayContaining(['Earlier question', 'Earlier answer']));
+  });
+});

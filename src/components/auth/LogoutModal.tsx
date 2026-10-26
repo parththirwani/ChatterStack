@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, memo } from 'react';
 import { X, LogOut, AlertTriangle } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
@@ -102,4 +102,4 @@ const LogoutModal: React.FC<LogoutModalProps> = ({
   );
 };
 
-export default LogoutModal;
+export default memo(LogoutModal);

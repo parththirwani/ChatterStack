@@ -1,186 +1,126 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Brain, CheckCircle, Loader2 } from 'lucide-react';
+"use client";
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
+import { Check } from 'lucide-react';
 import { getModelMeta } from '@/src/lib/models';
-
-interface CouncilProgress {
-  stage: string;
-  model: string;
-  progress: number;
-}
+import { Orb } from '@/src/components/ui/orb/Orb';
+import type { CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
 
 interface CouncilProgressIndicatorProps {
   progress: CouncilProgress[];
-  isActive: boolean;
+  details: CouncilDetails;
 }
 
-const stageInfo: Record<string, { name: string; description: string }> = {
-  initialization: { name: 'Initializing', description: 'Preparing council' },
-  stage1: { name: 'Analysis', description: 'Expert models analyzing' },
-  stage2: { name: 'Review', description: 'Peer reviewing responses' },
-  stage3: { name: 'Synthesis', description: 'Generating final answer' },
+const STEPS = [
+  { stage: 'stage1', name: 'Independent answers' },
+  { stage: 'stage2', name: 'Peer review' },
+  { stage: 'stage3', name: 'Final answer' },
+] as const;
+
+type MemberStatus = 'queued' | 'working' | 'done' | 'skipped';
+
+function memberStatus(progress: CouncilProgress[], stage: string, model: string): MemberStatus {
+  const entry = progress.find((p) => p.stage === stage && p.model === model);
+  if (!entry) return 'queued';
+  if (entry.progress < 0) return 'skipped';
+  return entry.progress >= 100 ? 'done' : 'working';
+}
+
+// Isolated so the once-a-second tick only re-renders the clock text, not the
+// step list around it.
+const Clock: React.FC = () => {
+  const [startedAt] = useState(() => Date.now());
+  const [now, setNow] = useState(startedAt);
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const seconds = Math.floor((now - startedAt) / 1000);
+  return <span className="tabular-nums">{`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`}</span>;
 };
 
-const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
-  progress,
-  isActive,
-}) => {
-  if (!isActive || progress.length === 0) {
-    return null;
-  }
+const ModelName: React.FC<{ id: string }> = ({ id }) => {
+  const model = getModelMeta(id);
+  return (
+    <>
+      {model && <Image src={model.logo} alt="" width={14} height={14} className={`h-3.5 w-3.5 shrink-0 ${model.invert ? 'invert brightness-0' : ''}`} />}
+      <span className="min-w-0 flex-1 truncate">{model?.name ?? id}</span>
+    </>
+  );
+};
 
-  const currentStage = progress[progress.length - 1]?.stage || 'initialization';
-  const currentStageInfo = stageInfo[currentStage] || stageInfo.initialization;
-  
-  // Get models working on current stage
-  const currentStageProgress = progress.filter(p => p.stage === currentStage);
-  const completedModels = currentStageProgress.filter(p => p.progress === 100).length;
-  const totalModels = currentStageProgress.length;
-  
-  // Calculate stage completion
-  const stageOrder = ['initialization', 'stage1', 'stage2', 'stage3'];
-  const currentStageIndex = stageOrder.indexOf(currentStage);
-  const isStageComplete = completedModels === totalModels && totalModels > 0;
+const StatusMark: React.FC<{ status: MemberStatus }> = ({ status }) => {
+  if (status === 'done') return <><Check className="h-3.5 w-3.5 shrink-0 text-[#e6e3de]" strokeWidth={2.2} aria-hidden="true" /><span className="sr-only">Done</span></>;
+  if (status === 'working') return <><Orb state="searching" /><span className="sr-only">Working</span></>;
+  return <span className="shrink-0 text-[#a9a5a0]">{status === 'skipped' ? 'Skipped' : 'Queued'}</span>;
+};
+
+const StepMarker: React.FC<{ state: 'done' | 'active' | 'pending'; stage: string }> = ({ state, stage }) => {
+  if (state === 'active') return <Orb state={stage === 'stage1' ? 'searching' : 'composing'} />;
+  if (state === 'done') {
+    return <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white/10 text-[#f0eeeb]"><Check className="h-3 w-3" strokeWidth={2.6} aria-hidden="true" /></span>;
+  }
+  return <span className="h-5 w-5 shrink-0 rounded-full border-[1.5px] border-white/20" aria-hidden="true" />;
+};
+
+const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({ progress, details }) => {
+  const currentIndex = Math.max(0, ...STEPS.map((step, index) => (progress.some((p) => p.stage === step.stage) ? index : 0)));
+  const current = STEPS[currentIndex];
+  const chairName = getModelMeta(details.chair)?.name ?? details.chair;
+
+  const answered = details.members.filter((id) => memberStatus(progress, 'stage1', id) === 'done');
+  const skipped = details.members.filter((id) => memberStatus(progress, 'stage1', id) === 'skipped');
+  const reviewers = answered.filter((id) => memberStatus(progress, 'stage2', id) === 'done');
+
+  const participants = (stage: string) => (stage === 'stage1' ? details.members : answered);
+
+  const summary = (stage: string): string => {
+    if (stage === 'stage1') {
+      return `${answered.length} of ${details.members.length} members answered${skipped.length ? ` · ${skipped.length} skipped` : ''}`;
+    }
+    if (stage === 'stage2') return `Rankings from ${reviewers.length} of ${answered.length} members`;
+    return `Chair · ${chairName}`;
+  };
 
   return (
-    <div aria-live="polite" className="mx-auto w-full max-w-3xl py-4">
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: -20 }}
-        className="relative"
-      >
-        {/* Main Card */}
-        <div className="rounded-xl border border-white/10 bg-[#242424] p-4">
-          {/* Header */}
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06]">
-                  <Brain className="h-4 w-4 text-[#d8d4ce]" />
-                </div>
-                <motion.div
-                  className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#d8d4ce]"
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                />
-              </div>
-              
-              <div>
-                <h3 className="text-sm font-semibold text-white">
-                  AI Council
-                </h3>
-                <p className="text-xs text-[#aaa6a2]">
-                  {currentStageInfo.description}
-                </p>
-              </div>
-            </div>
+    <div className="not-prose mb-4 rounded-xl border border-white/10 bg-[#222222] p-4">
+      <div className="mb-3 flex items-center gap-3">
+        <Orb size={32} />
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-[#f0eeeb]">Council is deliberating</h3>
+          <p className="text-[12px] text-[#a9a5a0]">
+            Step {currentIndex + 1} of {STEPS.length} · {current.name} · <Clock />
+          </p>
+        </div>
+        <span className="sr-only" aria-live="polite">Step {currentIndex + 1} of {STEPS.length}: {current.name}</span>
+      </div>
 
-            {/* Stage indicator */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[#aaa6a2]">
-                Step {currentStageIndex + 1}/4
-              </span>
-            </div>
-          </div>
-
-          {/* Progress Bar */}
-          <div className="mb-4">
-            <div className="h-1 overflow-hidden rounded-full bg-white/10">
-              <motion.div
-                className="h-full bg-[#d8d4ce]"
-                initial={{ width: 0 }}
-                animate={{ 
-                  width: `${((currentStageIndex + (isStageComplete ? 1 : 0.5)) / 4) * 100}%` 
-                }}
-                transition={{ duration: 0.5, ease: "easeOut" }}
-              />
-            </div>
-          </div>
-
-          {/* Current Stage Details */}
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={currentStage}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-              className="space-y-3"
-            >
-              {/* Stage Name */}
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-white">
-                  {currentStageInfo.name}
-                </span>
-                {totalModels > 0 && (
-                  <span className="text-xs text-[#aaa6a2]">
-                    {completedModels}/{totalModels} models
-                  </span>
+      <ol className="space-y-1">
+        {STEPS.map((step, index) => {
+          const state = index < currentIndex ? 'done' : index === currentIndex ? 'active' : 'pending';
+          return (
+            <li key={step.stage} className="flex items-start gap-2.5 py-1.5 text-[13px]">
+              <StepMarker state={state} stage={step.stage} />
+              <div className="min-w-0 flex-1">
+                <div className={state === 'pending' ? 'text-[#a9a5a0]' : 'text-[#f0eeeb]'}>{step.name}</div>
+                {(state === 'done' || step.stage === 'stage3') && (
+                  <div className="text-[12px] text-[#a9a5a0]">{summary(step.stage)}</div>
+                )}
+                {state === 'active' && step.stage !== 'stage3' && (
+                  <ul className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+                    {participants(step.stage).map((id) => (
+                      <li key={id} className="flex h-9 items-center gap-2 rounded-lg border border-white/[0.07] bg-white/[0.04] px-2.5 text-[12px] text-[#e6e3de]">
+                        <ModelName id={id} />
+                        <StatusMark status={memberStatus(progress, step.stage, id)} />
+                      </li>
+                    ))}
+                  </ul>
                 )}
               </div>
-
-              {/* Models Grid */}
-              {totalModels > 0 && (
-                <div className="grid grid-cols-2 gap-2">
-                  {currentStageProgress.map((p) => {
-                    const model = getModelMeta(p.model);
-                    const isComplete = p.progress === 100;
-                    const isProcessing = p.progress > 0 && p.progress < 100;
-
-                    return (
-                      <motion.div
-                        key={p.model}
-                        initial={{ opacity: 0, scale: 0.9 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        className={`
-                          flex items-center gap-2 p-2 rounded-lg transition-colors
-                          ${isComplete 
-                            ? 'bg-white/[0.05] border border-white/10'
-                            : isProcessing
-                            ? 'bg-white/[0.05] border border-white/10'
-                            : 'bg-white/[0.025] border border-white/[0.06]'
-                          }
-                        `}
-                      >
-                        {/* Model Icon */}
-                        <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center">
-                          {model ? (
-                            <Image
-                              src={model.logo}
-                              alt={model.name}
-                              width={14}
-                              height={14}
-                              className={model.invert ? 'invert brightness-0' : ''}
-                            />
-                          ) : (
-                            <Brain className="w-3 h-3 text-gray-500" />
-                          )}
-                        </div>
-
-                        {/* Model Name */}
-                        <span className="text-xs font-medium text-white flex-1 truncate">
-                          {model?.name || 'Model'}
-                        </span>
-
-                        {/* Status Icon */}
-                        <div className="w-4 h-4 flex-shrink-0">
-                          {isComplete ? (
-                            <CheckCircle className="w-4 h-4 text-green-400" />
-                          ) : isProcessing ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-[#d8d4ce]" />
-                          ) : null}
-                        </div>
-                      </motion.div>
-                    );
-                  })}
-                </div>
-              )}
-            </motion.div>
-          </AnimatePresence>
-        </div>
-      </motion.div>
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 };

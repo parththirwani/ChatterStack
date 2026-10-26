@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, memo } from 'react';
 import { X } from 'lucide-react';
 import Image from 'next/image';
 import { signIn } from 'next-auth/react';
@@ -186,4 +186,4 @@ const LoginModal: React.FC<LoginModalProps> = ({
   );
 };
 
-export default LoginModal;
+export default memo(LoginModal);

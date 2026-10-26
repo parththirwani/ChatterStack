@@ -2,12 +2,13 @@
  * Title Generation Service
  * Generates concise, descriptive titles for conversations based on the first user message
  */
-import { DEFAULT_MODEL_ID } from '@/src/config/models';
+import { TITLE_MODEL } from '@/src/config/models';
 
 interface TitleGenerationParams {
   userMessage: string;
-  modelId?: string;
 }
+
+const TITLE_TIMEOUT_MS = 8000;
 
 /**
  * Generate a title using OpenRouter API
@@ -26,8 +27,11 @@ async function generateTitleWithAI(userMessage: string): Promise<string> {
         'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
         'X-Title': 'ChatterStack',
       },
+      signal: AbortSignal.timeout(TITLE_TIMEOUT_MS),
       body: JSON.stringify({
-        model: DEFAULT_MODEL_ID,
+        model: TITLE_MODEL,
+        // A title doesn't need reasoning; skipping it keeps this fast and cheap.
+        reasoning: { effort: 'none' },
         messages: [
           {
             role: 'system',
@@ -35,11 +39,11 @@ async function generateTitleWithAI(userMessage: string): Promise<string> {
           },
           {
             role: 'user',
-            content: `Generate a title for this message: "${userMessage}"`,
+            content: `Generate a title for this message: "${userMessage.slice(0, 2000)}"`,
           },
         ],
-        temperature: 0.7,
-        max_tokens: 50,
+        temperature: 0.3,
+        max_tokens: 30,
       }),
     });
 
@@ -105,32 +109,23 @@ export async function generateConversationTitle(
     return 'New Chat';
   }
 
-  // If message is very short, just use it as the title
-  if (userMessage.trim().length <= 40) {
-    return cleanTitle(userMessage.trim());
-  }
-
   // Generate title with AI
   return generateTitleWithAI(userMessage);
 }
 
 /**
- * Update conversation title in database
+ * Save a generated title unless the conversation already has one, so a
+ * rename the user made while the title was generating is never overwritten.
+ * Returns true when the title was saved.
  */
-export async function updateConversationTitle(
+export async function saveGeneratedTitle(
   conversationId: string,
   title: string
-): Promise<void> {
-  try {
-    const { prisma } = await import('@/src/lib/prisma');
-    
-    await prisma.conversation.update({
-      where: { id: conversationId },
-      data: { title },
-    });
-
-  } catch (error) {
-    console.error('Failed to update conversation title:', error);
-    throw error;
-  }
+): Promise<boolean> {
+  const { prisma } = await import('@/src/lib/prisma');
+  const result = await prisma.conversation.updateMany({
+    where: { id: conversationId, title: null },
+    data: { title },
+  });
+  return result.count > 0;
 }

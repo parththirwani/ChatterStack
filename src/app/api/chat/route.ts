@@ -3,13 +3,16 @@ import { auth } from '@/src/lib/auth';
 import { redisStore } from '@/src/lib/redis';
 import crypto from 'crypto';
 import { runCouncilProcess } from '@/src/services/council/councilService';
-import { createNewConversation, generateAndUpdateTitle, addMessagesToConversation } from '@/src/lib/api/chat/conversation-persistance';
+import { createEmptyConversation, addMessagesToConversation } from '@/src/lib/api/chat/conversation-persistance';
+import { generateConversationTitle, saveGeneratedTitle } from '@/src/services/title/titleService';
 import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
-import { createSSEStream, sseData } from '@/src/lib/api/chat/sse-helper';
+import { createSSEStream } from '@/src/lib/api/chat/sse-helper';
+import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
 import { ChatRequestSchema } from '@/src/types/chat.types';
+import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
 
 interface RedisMessage {
   role: 'user' | 'assistant';
@@ -17,14 +20,40 @@ interface RedisMessage {
   modelId?: string;
 }
 
+function jsonError(error: string, status: number) {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+const isUniqueViolation = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
+
+/** Cached history, falling back to the database (and refilling the cache in one write). */
+async function loadHistory(conversationId: string): Promise<RedisMessage[]> {
+  const cached = await redisStore.get(conversationId);
+  if (cached.length > 0) return cached;
+
+  const rows = await prisma.message.findMany({
+    where: { conversationId },
+    orderBy: { createdAt: 'asc' },
+    select: { role: true, content: true, modelId: true },
+  });
+  const history: RedisMessage[] = rows.map((m) => ({
+    role: m.role === 'user' ? 'user' : 'assistant',
+    content: m.content,
+    modelId: m.modelId ?? undefined,
+  }));
+  if (history.length > 0) await redisStore.set(conversationId, history);
+  return history;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
-        status: 401,
-        headers: { 'Content-Type': 'application/json' },
-      });
+      return jsonError('Unauthorized', 401);
     }
 
     const userId = session.user.id;
@@ -45,9 +74,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // New chats normally arrive with a client-generated id so the client can
+    // show and route to them before the first answer finishes.
+    const isNewConversation = data.newConversation === true || !data.conversationId;
     const conversationId = data.conversationId ?? crypto.randomUUID();
     const selectedModel = data.selectedModel;
     const isCouncilMode = selectedModel === 'council';
+    const thinkingLevel = data.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
 
     const rateLimitCheck = await withLLMTokenLimit(
       userId,
@@ -59,41 +92,41 @@ export async function POST(request: NextRequest) {
     }
     // End rate limiting check
 
-    // Create SSE stream
-    return createSSEStream(async (controller) => {
-      sseData(controller, { status: 'starting' });
+    // Check (or claim) the conversation before streaming anything: the id
+    // comes from the client, so it must belong to this user.
+    if (isNewConversation) {
+      try {
+        await createEmptyConversation(conversationId, userId);
+      } catch (error) {
+        if (isUniqueViolation(error)) return jsonError('Conversation already exists', 409);
+        throw error;
+      }
+    } else {
+      const owned = await prisma.conversation.findFirst({
+        where: { id: conversationId, userId },
+        select: { id: true },
+      });
+      if (!owned) return jsonError('Conversation not found', 404);
+    }
 
-      // Load conversation history
-      let conversationHistory: RedisMessage[] = await redisStore.get(conversationId);
+    return createSSEStream(async ({ send, signal }) => {
+      send({ status: 'starting' });
 
-      if (conversationHistory.length === 0 && data.conversationId) {
-        const { prisma } = await import('@/src/lib/prisma');
-        const conversation = await prisma.conversation.findUnique({
-          where: { id: conversationId, userId },
-          include: { messages: { orderBy: { createdAt: 'asc' } } },
-        });
-
-        if (conversation) {
-          // FIX: Add explicit type annotation for 'm' parameter
-          conversationHistory = conversation.messages.map((m: { role: string; content: string; modelId: string | null }) => ({
-            role: m.role === 'user' ? 'user' : 'assistant',
-            content: m.content,
-            modelId: m.modelId ?? undefined,
-          }));
-
-          for (const msg of conversationHistory) {
-            await redisStore.add(conversationId, msg);
-          }
-        }
+      // A new chat is named in parallel with the answer, so the sidebar can
+      // show its real title while it streams.
+      let titleTask: Promise<void> = Promise.resolve();
+      if (isNewConversation) {
+        send({ conversationCreated: conversationId });
+        titleTask = generateConversationTitle({ userMessage: data.message })
+          .then(async (title) => {
+            // Saved even if the client has gone; only sent if it's still there.
+            if (await saveGeneratedTitle(conversationId, title)) send({ title });
+          })
+          .catch((err) => console.error('Title generation failed:', err));
       }
 
-      // Add user message
-      await redisStore.add(conversationId, {
-        role: 'user' as const,
-        content: data.message,
-      });
+      const conversationHistory = isNewConversation ? [] : await loadHistory(conversationId);
 
-      // RAG Context Retrieval
       const ragContext = await retrieveRAGContext(
         userId,
         data.message,
@@ -101,7 +134,6 @@ export async function POST(request: NextRequest) {
         conversationHistory
       );
 
-      // Prepare messages for AI
       const messagesForAI = [
         ...conversationHistory,
         { role: 'user' as const, content: data.message },
@@ -110,120 +142,66 @@ export async function POST(request: NextRequest) {
         content: m.content,
       }));
 
-      // Inject RAG context if available
-      if (ragContext && messagesForAI.length > 0) {
+      if (ragContext) {
         const lastMessage = messagesForAI[messagesForAI.length - 1];
-        if (lastMessage && lastMessage.role === 'user') {
-          lastMessage.content = `Context from past conversations:\n\n${ragContext}\n\n---\n\nCurrent question: ${lastMessage.content}`;
-        }
+        lastMessage.content = `Context from past conversations:\n\n${ragContext}\n\n---\n\nCurrent question: ${lastMessage.content}`;
       }
 
+      // On Stop/disconnect the model call is cancelled and resolves with the
+      // text written so far, which is still saved and counted below.
       let fullContent = '';
-
-      // Council mode vs Regular mode
-      if (selectedModel === 'council') {
-        try {
-          fullContent = await runCouncilProcess(
-            data.message,
-            conversationHistory,
-            (stage: string, model: string, progress: number) => {
-              sseData(controller, {
-                status: 'progress',
-                stage,
-                model,
-                progress,
-              });
-            },
-            (chunk: string) => {
-              sseData(controller, { chunk });
-            }
-          );
-
-          sseData(controller, { done: true });
-        } catch (error) {
-          sseData(controller, {
-            error: error instanceof Error ? error.message : 'Council process failed',
-          });
-        }
-      } else {
-        try {
-          fullContent = await createCompletion(
-            messagesForAI,
-            selectedModel,
-            (chunk: string) => {
-              sseData(controller, { chunk });
-            }
-          );
-
-          sseData(controller, { done: true });
-        } catch (error) {
-          sseData(controller, {
-            error:
-              error instanceof Error ? error.message : 'Failed to generate response',
+      try {
+        fullContent = isCouncilMode
+          ? await runCouncilProcess(
+              data.message,
+              conversationHistory,
+              { members: data.council?.members, chair: data.council?.chair, thinkingLevel, signal },
+              {
+                onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
+                onChunk: (chunk) => send({ chunk }),
+                onReasoning: (reasoning) => send({ reasoning }),
+                onAnswer: (councilAnswer) => send({ councilAnswer }),
+                onRankings: (councilRankings) => send({ councilRankings }),
+              }
+            )
+          : await createCompletion(messagesForAI, selectedModel, {
+              thinkingLevel,
+              signal,
+              onChunk: (chunk) => send({ chunk }),
+              onReasoning: (reasoning) => send({ reasoning }),
+            });
+        send({ done: true });
+      } catch (error) {
+        if (!signal.aborted) {
+          console.error('Model call failed:', error);
+          send({
+            error: error instanceof Error ? error.message : 'Failed to generate response',
           });
         }
       }
 
+      // Count every call, including stopped and failed ones: the prompt was
+      // still sent, and skipping this would let Stop bypass the rate limit.
+      try {
+        const inputTokens = countTokens(messagesForAI.map((m) => m.content).join('\n'));
+        await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
+      } catch (error) {
+        console.error('Failed to record tokens:', error);
+      }
+
+      const exchange: RedisMessage[] = [
+        { role: 'user', content: data.message },
+        ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
+      ];
+      await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+      await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel);
       if (fullContent) {
-        try {
-          // Count input tokens (user message + context)
-          const inputText = messagesForAI.map((m) => m.content).join('\n');
-          const inputTokens = countTokens(inputText);
-          
-          // Count output tokens (AI response)
-          const outputTokens = countTokens(fullContent);
-          
-          // Total tokens used
-          const totalTokens = inputTokens + outputTokens;
-          
-          // Record for rate limiting
-          await recordLLMTokens(userId, totalTokens, isCouncilMode);
-          
-          console.log(`[RateLimit] User ${userId}: ${totalTokens} tokens (${inputTokens} in + ${outputTokens} out)`);
-        } catch (error) {
-          console.error('Failed to record tokens:', error);
-          // Don't fail the request if token recording fails
-        }
+        await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);
       }
 
-      if (fullContent) {
-        await redisStore.add(conversationId, {
-          role: 'assistant' as const,
-          content: fullContent,
-          modelId: selectedModel,
-        });
-      }
-      await ingestConversationData(
-        userId,
-        conversationId,
-        data.message,
-        fullContent,
-        selectedModel
-      );
-
-      // Persist to database
-      if (!data.conversationId) {
-        const conversation = await createNewConversation(
-          conversationId,
-          userId,
-          data.message,
-          fullContent,
-          selectedModel
-        );
-
-        sseData(controller, { conversationId: conversation.id });
-
-        // Generate title asynchronously
-        generateAndUpdateTitle(conversationId, data.message, selectedModel);
-      } else {
-        await addMessagesToConversation(
-          conversationId,
-          data.message,
-          fullContent,
-          selectedModel
-        );
-      }
-    });
+      // Usually finished long before the answer; bounded by the title timeout.
+      await titleTask;
+    }, request.signal);
   } catch (error) {
     console.error('Error in chat:', error);
     return new Response(
