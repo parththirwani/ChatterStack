@@ -94,6 +94,13 @@ describe('streamCompletion parsing', () => {
     await expect(streamCompletion([], 'openai/gpt-6.1-sol')).rejects.toThrow(/ran out of tokens/);
   });
 
+  it('does not treat Stop before any text as a failure', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    fetchMock.mockResolvedValue(sseResponse([delta({}, 'stop'), '[DONE]']));
+    await expect(streamCompletion([], 'openai/gpt-6.1-sol', { signal: controller.signal })).resolves.toBe('');
+  });
+
   it('fails when the stream ends with no answer for another reason', async () => {
     fetchMock.mockResolvedValue(sseResponse([delta({}, 'stop'), '[DONE]']));
     await expect(streamCompletion([], 'openai/gpt-6.1-sol')).rejects.toThrow(/no answer \(stop\)/);
