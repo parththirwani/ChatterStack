@@ -1856,7 +1856,7 @@
 }
 
 /* Council round 4 */
-.landing-self-host p {
+.landing-self-host-inner > div > p {
   color: #4a4640;
 }
 .landing-self-host .landing-section-index {
@@ -1879,7 +1879,7 @@
   font-size: 12px;
   letter-spacing: 0.02em;
 }
-.landing-self-host p {
+.landing-self-host-inner > div > p {
   color: #4a4640;
 }
 .landing-approach-title p {
@@ -1912,5 +1912,41 @@
     padding: 0;
     border: 1px solid rgba(255, 255, 255, 0.24);
     border-radius: 7px;
+  }
+}
+
+/* Council round 5 */
+.landing-self-host .landing-terminal p {
+  color: #b7b1a8;
+}
+.landing-window-top-right,
+.landing-window-input,
+.landing-window-note,
+.landing-hero-caption,
+.landing-story-bottom,
+.landing-approach-caption {
+  color: #b3ada4;
+}
+.landing-approach-demo > span:nth-last-child(1) {
+  color: #cdb47f;
+}
+.landing-window-content {
+  padding-top: 40px;
+  min-height: 313px;
+}
+@media (max-width: 767px) {
+  .landing-story-synthesis {
+    margin-top: 10px;
+  }
+  .landing-story-model {
+    padding: 10px 12px;
+  }
+}
+@media (max-width: 767px) {
+  .landing-approach h2 {
+    margin-bottom: 0;
+  }
+  .landing-approach-title p {
+    margin: 18px 0 34px;
   }
 }
