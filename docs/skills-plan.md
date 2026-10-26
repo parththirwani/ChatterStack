@@ -85,3 +85,33 @@ Choose a `.md` file (for example a `SKILL.md`) or paste its text. The text is pa
 - Zip skill bundles with extra files (scripts, references). Only the `SKILL.md` text is imported. Files referenced from it are not.
 - Importing from a URL (this needs SSRF protection and is a separate change).
 - Shared or public skill libraries, and automatic skill selection by the model.
+
+## Revision 2: match claude.ai one-to-one
+
+After reviewing claude.ai (Customize → Skills) side by side, the UI is rebuilt to follow it.
+
+### Navigation
+- The sidebar uses vertical rows instead of tabs: **New chat**, **Search**, **Resources**, **Customize**, then the **Pinned** and **Recents** chat sections ("Chats" becomes "Recents").
+- Resources and Customize open pages in the main area (`/resources`, `/customize/skills/...`), like Projects and Artifacts in Claude.
+
+### Customize → Skills
+- The page has a **Customize** header, a **Skills** tab, a **Yours / Discover** switch, search, and an **Add skill** menu with **Upload skill**, **Create a skill**, and **Create with AI**.
+- **Yours** has two sections, "Created by you" and "From ChatterStack" (skills added from Discover). Rows show the icon, name, categories (+n), "by you · description", the date, a **Turn on/off** toggle, and a ⋯ menu: Try in chat, Edit with AI, Replace, Duplicate, Download, Remove.
+- **Discover** suggests built-in skills (catalog in code) in cards with **Try** and **+ Add**, and can filter by category.
+- **Skill page** (`/customize/skills/<id>`): a "Your skills" breadcrumb, "by you · v{n} · updated {date}", an on/off switch, and the ⋯ menu. The **Overview** tab shows the description, categories, and creator. The **Contents** tab shows a file list, the rendered SKILL.md with its frontmatter, and **Edit**.
+- **Create a skill** (dialog): name, description, and a file tree with SKILL.md plus **Add file** (`path/to/file.md`). There is an editor per file, and **Cancel**/**Create**.
+- **Upload skill** (page): drag and drop or browse, several files at once. Accepts `.md` (YAML frontmatter with name and description), and `.zip` or `.skill` (must contain a SKILL.md, either at the root or in one top folder). Checks run on upload: SKILL.md present and valid, safe relative paths, size and file-count limits, text files only (binaries are skipped and reported), and a warning that scripts are stored but never executed.
+- **Create with AI**: opens a new chat with the composer prefilled with "Let's create a skill together using /skill-creator. First ask me what the skill should do." The built-in skill-creator is added automatically. When an answer contains a SKILL.md code block, it gets a **Save as skill** button that opens the create dialog prefilled.
+- **Download** returns `<name>.zip` (`<name>/SKILL.md` plus files), which Claude's upload accepts.
+
+### Chat
+- `/` opens one menu that combines **Add files** with the user's **enabled** skills. Picking a skill inserts an inline, highlighted `/name` token into the message text (no chip row). Up to three skill tokens in a message apply. Sent messages highlight their skill tokens.
+
+### Data
+- `Skill` gains `enabled`, `categories`, `files` (text files `[{ path, content }]`), `metadata` (other frontmatter keys, kept on export), `version`, and `catalogId`. Source values are created, generated, uploaded, and catalog.
+- Only the SKILL.md body is sent to the model. Bundled files are listed by path, because ChatterStack models can't read files on demand or run scripts.
+
+### Not matched (deliberate)
+- Claude can invoke skills automatically from their descriptions. ChatterStack has no tool calling, so skills run only when tagged with `/`.
+- The Connectors and Plugins tabs, the Filter and Sort menus, and install counts.
+- Claude's server-side security scan. ChatterStack runs the structural checks listed above.
