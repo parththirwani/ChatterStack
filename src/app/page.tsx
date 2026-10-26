@@ -189,6 +189,10 @@ export default function LandingPage() {
             <div className="landing-approach-title">
               <span className="landing-section-index">A space to work</span>
               <h2 id="approach-title">Keep the thread.</h2>
+              <p>
+                Pick the depth for each question, then find the conversation
+                again when you need it.
+              </p>
             </div>
             <div className="landing-approach-grid">
               <div>
