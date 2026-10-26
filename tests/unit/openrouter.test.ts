@@ -89,6 +89,23 @@ describe('streamCompletion parsing', () => {
     await expect(streamCompletion([], 'openai/gpt-6.1-sol')).rejects.toThrow('model overloaded');
   });
 
+  it('fails instead of returning an empty answer when the model only thought', async () => {
+    fetchMock.mockResolvedValue(sseResponse([delta({ reasoning: 'hmm' }), delta({}, 'length'), '[DONE]']));
+    await expect(streamCompletion([], 'openai/gpt-6.1-sol')).rejects.toThrow(/ran out of tokens/);
+  });
+
+  it('does not treat Stop before any text as a failure', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    fetchMock.mockResolvedValue(sseResponse([delta({}, 'stop'), '[DONE]']));
+    await expect(streamCompletion([], 'openai/gpt-6.1-sol', { signal: controller.signal })).resolves.toBe('');
+  });
+
+  it('fails when the stream ends with no answer for another reason', async () => {
+    fetchMock.mockResolvedValue(sseResponse([delta({}, 'stop'), '[DONE]']));
+    await expect(streamCompletion([], 'openai/gpt-6.1-sol')).rejects.toThrow(/no answer \(stop\)/);
+  });
+
   it('refuses to run without an API key', async () => {
     vi.stubEnv('OPENROUTER_API_KEY', '');
     await expect(streamCompletion([], 'openai/gpt-6.1-sol')).rejects.toThrow(/OPENROUTER_API_KEY/);
