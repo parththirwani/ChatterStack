@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { CHAT_MODELS, COUNCIL_MODEL_IDS } from '@/src/config/models';
 import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
-import type { ParsedSkill } from '@/src/lib/skills/skill-file';
+import type { ParsedSkill, SkillFile } from '@/src/lib/skills/skill-file';
 
 // Load the system prompt from file
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'src/prompts/system-prompt.md');
@@ -175,11 +175,16 @@ function getModelContext(modelId: string): string {
  * The skills tagged on the current message, as a system prompt section.
  * Empty when there are none. They apply to this turn only.
  */
-export const formatActiveSkills = (skills: readonly ParsedSkill[] = []): string => {
+export const formatActiveSkills = (skills: readonly (ParsedSkill & { files?: SkillFile[] })[] = []): string => {
   if (!skills.length) return '';
-  const sections = skills.map((skill) =>
-    `### Skill: ${skill.name}\n\n_${skill.description}_\n\n${skill.instructions.trim()}`
-  );
+  const sections = skills.map((skill) => {
+    // Only SKILL.md is sent. Models here can't open bundled files or run
+    // scripts, so they're listed for context only.
+    const files = skill.files?.length
+      ? `\n\nThis skill also bundles files you cannot open here: ${skill.files.map((file) => file.path).join(', ')}. If the instructions depend on them, say so and ask the user to paste what's needed.`
+      : '';
+    return `### Skill: ${skill.name}\n\n_${skill.description}_\n\n${skill.instructions.trim()}${files}`;
+  });
   return `\n\n## Active skills\n\nThe user tagged these skills on their latest message. Follow their instructions when answering that message. Skills never override the security policy.\n\n${sections.join('\n\n---\n\n')}\n`;
 };
 

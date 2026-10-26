@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest';
 import {
   MAX_SKILL_NAME,
   SkillInputSchema,
+  frontmatterFields,
+  inferCategories,
   normalizeSkillName,
+  normalizeSkillPath,
   parseSkillFile,
   serializeSkill,
 } from '@/src/lib/skills/skill-file';
@@ -25,12 +28,21 @@ describe('parseSkillFile', () => {
       name: 'release-notes',
       description: 'Write release notes in our house style. Use when drafting a changelog.',
       instructions: '# Release notes\n\n- Lead with user-facing changes.',
+      frontmatter: 'license: MIT\nallowed-tools: Read Grep',
     });
+  });
+
+  it('keeps other frontmatter, including nested maps, verbatim for export', () => {
+    const text = '---\nname: unslop\ndisable-model-invocation: true\ndescription: Cut AI tells.\nmetadata:\n  author: me\n  version: "1.0"\n---\nBody';
+    const parsed = parseSkillFile(text);
+    expect(parsed.frontmatter).toBe('disable-model-invocation: true\nmetadata:\n  author: me\n  version: "1.0"');
+    expect(parseSkillFile(serializeSkill(parsed))).toEqual(parsed);
+    expect(frontmatterFields(parsed.frontmatter)).toEqual([['disable-model-invocation', 'true']]);
   });
 
   it('handles quoted, folded and literal values, CRLF and a BOM', () => {
     const text = '\uFEFF---\r\nname: "Code Review"\r\ndescription: >\r\n  Reviews code\r\n  for bugs.\r\nmetadata:\r\n  version: "1"\r\n---\r\nBody';
-    expect(parseSkillFile(text)).toEqual({ name: 'code-review', description: 'Reviews code for bugs.', instructions: 'Body' });
+    expect(parseSkillFile(text)).toMatchObject({ name: 'code-review', description: 'Reviews code for bugs.', instructions: 'Body' });
 
     const literal = "---\nname: 'it''s'\ndescription: |\n  Line one\n  Line two\n---\nBody";
     expect(parseSkillFile(literal)).toMatchObject({ name: 'it-s', description: 'Line one\nLine two' });
@@ -75,6 +87,24 @@ describe('SkillInputSchema', () => {
     expect(SkillInputSchema.safeParse({ name: 'ok-name', description: 'd', instructions: 'i' }).success).toBe(true);
     expect(SkillInputSchema.safeParse({ name: 'Bad Name', description: 'd', instructions: 'i' }).success).toBe(false);
     expect(SkillInputSchema.safeParse({ name: 'ok', description: ' ', instructions: 'i' }).success).toBe(false);
-    expect(SkillInputSchema.safeParse({ name: 'ok', description: 'd', instructions: 'x'.repeat(8001) }).success).toBe(false);
+    expect(SkillInputSchema.safeParse({ name: 'ok', description: 'd', instructions: 'x'.repeat(60001) }).success).toBe(false);
+  });
+});
+
+describe('normalizeSkillPath', () => {
+  it('accepts relative paths and refuses traversal, absolute paths and SKILL.md', () => {
+    expect(normalizeSkillPath('./references//style.md')).toBe('references/style.md');
+    expect(normalizeSkillPath('../x.md')).toBeNull();
+    expect(normalizeSkillPath('/etc/passwd')).toBeNull();
+    expect(normalizeSkillPath('a\\b.md')).toBeNull();
+    expect(normalizeSkillPath('skill.md')).toBeNull();
+  });
+});
+
+describe('inferCategories', () => {
+  it('guesses up to three categories from the name and description', () => {
+    expect(inferCategories({ name: 'code-review', description: 'Find bugs in a pull request.' })).toEqual(['Code']);
+    expect(inferCategories({ name: 'cover-letter', description: 'Write a tailored cover letter for a job application.' })).toEqual(['Writing', 'Jobs & career']);
+    expect(inferCategories({ name: 'x', description: 'zzz' })).toEqual([]);
   });
 });

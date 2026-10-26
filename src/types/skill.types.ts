@@ -1,4 +1,4 @@
-import type { SkillSource } from '@/src/lib/skills/skill-file';
+import type { SkillFile, SkillSource } from '@/src/lib/skills/skill-file';
 
 export interface Skill {
   id: string;
@@ -6,6 +6,13 @@ export interface Skill {
   description: string;
   instructions: string;
   source: SkillSource;
+  enabled: boolean;
+  categories: string[];
+  files: SkillFile[];
+  /** Frontmatter lines other than name and description. */
+  frontmatter?: string;
+  version: number;
+  catalogId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -16,4 +23,13 @@ export interface SkillTag {
   name: string;
   /** The skill has since been deleted. */
   removed?: boolean;
+}
+
+/** Result for one file in an upload. */
+export interface SkillUploadResult {
+  fileName: string;
+  skill?: Skill;
+  error?: string;
+  checks: string[];
+  warnings: string[];
 }

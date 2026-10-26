@@ -131,9 +131,21 @@ model Skill {
   // Kebab-case slug; what the user types after "/" in the composer.
   name         String
   description  String
+  // The SKILL.md body (without frontmatter).
   instructions String   @db.Text
-  // created | generated (skill creator) | imported
+  // created | generated (from a chat) | uploaded | catalog (added from Discover)
   source       String   @default("created")
+  // Turned-off skills stay saved but are not offered in chat.
+  enabled      Boolean  @default(true)
+  categories   String[] @default([])
+  // Other text files in the skill: [{ path, content }].
+  files        Json?
+  // Frontmatter keys other than name and description, kept for export.
+  metadata     Json?
+  // Bumped on every content change.
+  version      Int      @default(1)
+  // Discover catalog entry this skill was added from.
+  catalogId    String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 

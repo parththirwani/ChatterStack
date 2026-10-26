@@ -13,7 +13,7 @@ const OTHER_USERS_CHAT = '9f1c2d3e-0000-4000-8000-000000000000';
 const PLAN_ID = '64c8ca0b-82db-41a4-a62d-a2a920a5bb62';
 const PDF_ID = 'a36e8a04-5967-43dd-aa7a-cab1497813ee';
 const SKILL_ID = '5b1f6c2a-7d3e-4f1a-9c2b-1e2d3c4b5a69';
-const skillRows = new Map<string, { id: string; userId: string; name: string; description: string; instructions: string; source: string; createdAt: Date; updatedAt: Date }>();
+const skillRows = new Map<string, { id: string; userId: string; name: string; description: string; instructions: string; source: string; enabled: boolean; categories: string[]; files: unknown; metadata: unknown; version: number; catalogId: string | null; createdAt: Date; updatedAt: Date }>();
 const documentRows = new Map<string, { id: string; userId: string; name: string; mimeType: string; size: number; storageKey: string }>();
 
 const db = {
@@ -316,9 +316,10 @@ describe('POST /api/chat, council mode', () => {
 });
 
 describe('POST /api/chat, skills', () => {
-  const addSkill = (userId = 'user-1') => skillRows.set(SKILL_ID, {
+  const addSkill = (userId = 'user-1', extra: { enabled?: boolean; files?: unknown } = {}) => skillRows.set(SKILL_ID, {
     id: SKILL_ID, userId, name: 'pirate-voice', description: 'Talk like a pirate.',
-    instructions: 'Answer in pirate speak.', source: 'created', createdAt: new Date(), updatedAt: new Date(),
+    instructions: 'Answer in pirate speak.', source: 'created', enabled: true, categories: [], files: [], metadata: {},
+    version: 1, catalogId: null, createdAt: new Date(), updatedAt: new Date(), ...extra,
   });
 
   it('puts tagged skills in the system prompt, counts them, and saves the tags', async () => {
@@ -350,6 +351,20 @@ describe('POST /api/chat, skills', () => {
     expect((await response.json()).error).toMatch(/no longer exists/);
     expect(fetchMock).not.toHaveBeenCalled();
     expect(db.conversation.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses a skill that is turned off', async () => {
+    addSkill('user-1', { enabled: false });
+    const response = await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, skills: [SKILL_ID] });
+    expect(response.status).toBe(400);
+    expect((await response.json()).error).toMatch(/turned off/);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('lists bundled files it cannot send', async () => {
+    addSkill('user-1', { files: [{ path: 'references/ports.md', content: 'x' }] });
+    await readEvents(await post({ message: 'Ahoy', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, skills: [SKILL_ID] }));
+    expect(openRouterBodies()[0].messages[0].content).toContain('bundles files you cannot open here: references/ports.md');
   });
 
   it('rejects more than three or duplicate skills', async () => {
