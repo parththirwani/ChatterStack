@@ -112,7 +112,7 @@ export const ChatRequestSchema = z.object({
     name: z.string().min(1).max(180),
     mimeType: z.string().min(1).max(100),
     size: z.number().int().positive().max(5 * 1024 * 1024),
-  })).max(4).optional(),
+  }).strict()).max(4).optional(),
   selectedModel: z.string().refine(
     (id) => id === 'council' || isChatModelId(id),
     'Unsupported model'

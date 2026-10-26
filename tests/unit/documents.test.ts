@@ -1,0 +1,126 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import crypto from 'node:crypto';
+
+const records = new Map<string, Record<string, unknown>>();
+const db = {
+  document: {
+    findUnique: vi.fn(async ({ where }: { where: { userId_sha256: { userId: string; sha256: string } } }) =>
+      [...records.values()].find((row) => row.userId === where.userId_sha256.userId && row.sha256 === where.userId_sha256.sha256) ?? null),
+    findMany: vi.fn(async ({ where }: { where: { id?: { in: string[] }; userId?: string } }) =>
+      [...records.values()].filter((row) => (!where.userId || row.userId === where.userId) && (!where.id || where.id.in.includes(String(row.id))))),
+    findFirst: vi.fn(async ({ where }: { where: { id: string; userId: string } }) =>
+      [...records.values()].find((row) => row.id === where.id && row.userId === where.userId) ?? null),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      const row = { id: crypto.randomUUID(), ...data, createdAt: new Date(), favoritedAt: null, lastUsedAt: null };
+      records.set(String(row.id), row);
+      return row;
+    }),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+    delete: vi.fn(async ({ where }: { where: { id: string } }) => { records.delete(where.id); }),
+  },
+};
+const storage = {
+  stat: vi.fn(),
+  read: vi.fn(),
+  save: vi.fn(),
+  delete: vi.fn(),
+};
+vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
+vi.mock('@/src/lib/server/document-storage', () => ({ documentStorage: storage }));
+const { confirmUpload, cleanupUnusedDocuments, newStorageKey, resolveDocuments, validStorageKey } =
+  await import('@/src/lib/server/documents');
+
+const userId = 'user-1';
+const bytes = Buffer.from('# Notes');
+const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
+const meta = { name: 'notes.md', mimeType: 'text/markdown', size: bytes.length, sha256 };
+const key = 'users/user-1/0e7ba32e-05b0-477d-8e30-2bf0a849649e/notes.md';
+
+beforeEach(() => {
+  records.clear();
+  vi.clearAllMocks();
+  storage.stat.mockResolvedValue({ size: bytes.length, contentType: meta.mimeType });
+  storage.read.mockResolvedValue(bytes);
+  storage.save.mockResolvedValue({});
+  storage.delete.mockResolvedValue(undefined);
+});
+
+describe('document storage rules', () => {
+  it('creates a user scoped path with a safe filename', () => {
+    const generated = newStorageKey(userId, '../strange name.md');
+    expect(validStorageKey(userId, generated)).toBe(true);
+    expect(validStorageKey('user-2', generated)).toBe(false);
+    expect(generated).not.toContain('..');
+  });
+
+  it('verifies stored bytes, size and type before creating metadata', async () => {
+    const result = await confirmUpload(userId, { ...meta, storageKey: key });
+    expect(result.storageKey).toBe(key);
+    expect(db.document.create).toHaveBeenCalledOnce();
+    expect(storage.read).toHaveBeenCalledWith(key);
+  });
+
+  it('reuses the same content per user without reading or uploading it again', async () => {
+    const first = await confirmUpload(userId, { ...meta, storageKey: key });
+    vi.clearAllMocks();
+    const again = await confirmUpload(userId, { ...meta, storageKey: newStorageKey(userId, meta.name) });
+    expect(again.id).toBe(first.id);
+    expect(storage.stat).not.toHaveBeenCalled();
+    expect(storage.read).not.toHaveBeenCalled();
+    expect(db.document.create).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['different user path', { ...meta, storageKey: key.replace('user-1', 'user-2') }],
+    ['unsupported type', { ...meta, mimeType: 'text/html', storageKey: key }],
+    ['wrong hash', { ...meta, sha256: '0'.repeat(64), storageKey: key }],
+  ])('rejects %s', async (_label, input) => {
+    await expect(confirmUpload(userId, input)).rejects.toThrow();
+    expect(db.document.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects metadata that disagrees with the stored object', async () => {
+    storage.stat.mockResolvedValue({ size: 2, contentType: meta.mimeType });
+    await expect(confirmUpload(userId, { ...meta, storageKey: key })).rejects.toThrow('does not match');
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it('does not resolve another user’s document', async () => {
+    records.set('other', { id: 'other', userId: 'user-2', name: 'secret.md', mimeType: 'text/markdown', size: 1, storageKey: 'other' });
+    await expect(resolveDocuments(userId, [{ documentId: 'other', name: 'secret.md', mimeType: 'text/markdown', size: 1 }])).rejects.toThrow('Document not found');
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it('uses saved sizes to enforce the aggregate limit, even if the request lies', async () => {
+    for (let index = 0; index < 3; index++) records.set(String(index), {
+      id: String(index), userId, name: 'large.pdf', mimeType: 'application/pdf', size: 4 * 1024 * 1024, storageKey: String(index),
+    });
+    const files = Array.from({ length: 3 }, (_, index) => ({ documentId: String(index), name: 'large.pdf', mimeType: 'application/pdf', size: 1 }));
+    await expect(resolveDocuments(userId, files)).rejects.toThrow('10 MB');
+    expect(storage.read).not.toHaveBeenCalled();
+  });
+
+  it('turns missing historical files into no bytes', async () => {
+    expect(await resolveDocuments(userId, [{ documentId: 'gone', name: 'old.md', mimeType: 'text/markdown', size: 2 }], true)).toEqual([]);
+  });
+
+  it('deletes only old unfavourited documents', async () => {
+    const old = new Date('2026-08-01T00:00:00Z');
+    records.set('stale', { id: 'stale', userId, name: 'stale.md', storageKey: 'stale', createdAt: old, lastUsedAt: old, favoritedAt: null });
+    records.set('favorite', { id: 'favorite', userId, name: 'favorite.md', storageKey: 'favorite', createdAt: old, lastUsedAt: old, favoritedAt: old });
+    db.document.findMany.mockImplementationOnce(async () => [records.get('stale')!]);
+    expect(await cleanupUnusedDocuments(new Date('2026-10-27T00:00:00Z'))).toBe(1);
+    expect(db.document.findMany).toHaveBeenCalledWith({
+      where: {
+        favoritedAt: null,
+        createdAt: { lt: new Date('2026-09-27T00:00:00.000Z') },
+        OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: new Date('2026-09-27T00:00:00.000Z') } }],
+      },
+      select: { id: true, userId: true },
+      take: 100,
+    });
+    expect(storage.delete).toHaveBeenCalledWith('stale');
+    expect(records.has('stale')).toBe(false);
+    expect(records.has('favorite')).toBe(true);
+  });
+});

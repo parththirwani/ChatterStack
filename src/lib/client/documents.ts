@@ -25,7 +25,7 @@ export async function uploadDocument(file: File, userId: string): Promise<Docume
     const { id, name, mimeType: type, size } = checked.document;
     return { documentId: id, name, mimeType: type, size };
   }
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '_').slice(0, 180);
   const storageKey = `users/${userId}/${crypto.randomUUID()}/${safeName}`;
   const blob = await upload(storageKey, file, {
     access: 'private', handleUploadUrl: '/api/documents/upload', contentType: mimeType,

@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { FileText, Plus, Star, Trash2 } from 'lucide-react';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 
@@ -57,9 +57,12 @@ export default function Resources() {
   };
 
   const addToChat = (document: DocumentRow) => {
-    window.dispatchEvent(new CustomEvent<DocumentAttachment>('chatterstack:add-document', {
+    const added = window.dispatchEvent(new CustomEvent<DocumentAttachment>('chatterstack:add-document', {
       detail: { documentId: document.id, name: document.name, mimeType: document.mimeType, size: document.size },
+      cancelable: true,
     }));
+    if (!added) setError('This chat already has that file or has reached its attachment limit.');
+    else setError('');
   };
 
   return (

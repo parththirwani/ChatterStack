@@ -10,8 +10,16 @@ import { delta, readEvents, sseResponse } from '../helpers/sse';
 const log: string[] = [];
 const auth = vi.fn();
 const OTHER_USERS_CHAT = '9f1c2d3e-0000-4000-8000-000000000000';
+const PLAN_ID = '64c8ca0b-82db-41a4-a62d-a2a920a5bb62';
+const PDF_ID = 'a36e8a04-5967-43dd-aa7a-cab1497813ee';
+const documentRows = new Map<string, { id: string; userId: string; name: string; mimeType: string; size: number; storageKey: string }>();
 
 const db = {
+  document: {
+    findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; userId: string } }) =>
+      [...documentRows.values()].filter((row) => row.userId === where.userId && where.id.in.includes(row.id))),
+    updateMany: vi.fn(async () => ({ count: 1 })),
+  },
   conversation: {
     create: vi.fn(async ({ data }: { data: { id: string } }) => {
       log.push(`db:create:${data.id}`);
@@ -36,6 +44,8 @@ const db = {
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
 vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
+const storage = { read: vi.fn(async (key: string) => key.endsWith('plan') ? Buffer.from('# Project plan') : Buffer.from('%PDF-1.7\nexample')) };
+vi.mock('@/src/lib/server/document-storage', () => ({ documentStorage: storage }));
 const redis = { get: vi.fn(async (): Promise<unknown[]> => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}), delete: vi.fn(async () => {}) };
 vi.mock('@/src/lib/redis', () => ({ redisStore: redis }));
 const recordLLMTokens = vi.fn<(user: string, tokens: number, council: boolean) => Promise<void>>(async () => {});
@@ -64,6 +74,10 @@ function post(body: object, signal?: AbortSignal) {
 
 beforeEach(() => {
   log.length = 0;
+  documentRows.clear();
+  storage.read.mockClear();
+  db.document.findMany.mockClear();
+  db.document.updateMany.mockClear();
   vi.stubEnv('OPENROUTER_API_KEY', 'test-key');
   vi.stubGlobal('fetch', fetchMock);
   auth.mockResolvedValue({ user: { id: 'user-1' } });
@@ -156,12 +170,14 @@ describe('POST /api/chat, existing conversation', () => {
     expect(log.some((entry) => entry.startsWith('db:messages:user=And fast recovery?'))).toBe(true);
   });
 
-  it('passes files to the model and stores their payload with the user message', async () => {
+  it('reads owned documents for the model and stores references without payload bytes', async () => {
     const markdown = Buffer.from('# Project plan').toString('base64');
     const pdf = Buffer.from('%PDF-1.7\nexample').toString('base64');
+    documentRows.set(PLAN_ID, { id: PLAN_ID, userId: 'user-1', name: 'plan.md', mimeType: 'text/markdown', size: 14, storageKey: 'users/user-1/plan' });
+    documentRows.set(PDF_ID, { id: PDF_ID, userId: 'user-1', name: 'brief.pdf', mimeType: 'application/pdf', size: 16, storageKey: 'users/user-1/pdf' });
     const attachments = [
-      { name: 'plan.md', mimeType: 'text/markdown', size: 14, data: markdown },
-      { name: 'brief.pdf', mimeType: 'application/pdf', size: 16, data: pdf },
+      { documentId: PLAN_ID, name: 'plan.md', mimeType: 'text/markdown', size: 14 },
+      { documentId: PDF_ID, name: 'brief.pdf', mimeType: 'application/pdf', size: 16 },
     ];
     await readEvents(await post({ message: 'Summarize', selectedModel: 'deepseek/deepseek-v4.1-flash-1017', conversationId: NEW_ID, attachments }));
 
@@ -172,6 +188,8 @@ describe('POST /api/chat, existing conversation', () => {
       { type: 'file', file: { filename: 'brief.pdf', file_data: `data:application/pdf;base64,${pdf}` } },
     ]);
     expect(db.message.createMany.mock.calls[0][0].data[0].attachments).toEqual(attachments);
+    expect(JSON.stringify(db.message.createMany.mock.calls[0][0])).not.toContain(markdown);
+    expect(db.document.updateMany).toHaveBeenCalledOnce();
     expect(redis.set).not.toHaveBeenCalled();
     expect(redis.delete).toHaveBeenCalledWith(NEW_ID);
   });
@@ -188,6 +206,29 @@ describe('POST /api/chat, existing conversation', () => {
       { type: 'text', text: 'Read this' },
       { type: 'text', text: 'File: earlier.md\n\n# Earlier notes' },
     ]);
+  });
+
+  it('explains when a historical document was deleted', async () => {
+    redis.get.mockResolvedValueOnce([{
+      role: 'user', content: 'Read this', attachments: [{
+        documentId: PLAN_ID, name: 'old.md', mimeType: 'text/markdown', size: 20,
+      }],
+    }]);
+    await readEvents(await post({ message: 'What did I attach?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+    expect(openRouterBodies()[0].messages.at(-2).content).toEqual([
+      { type: 'text', text: 'Read this' },
+      { type: 'text', text: 'Previously attached file "old.md" was removed.' },
+    ]);
+  });
+
+  it('refuses a document belonging to a different user before model work', async () => {
+    documentRows.set(PLAN_ID, { id: PLAN_ID, userId: 'user-2', name: 'secret.md', mimeType: 'text/markdown', size: 3, storageKey: 'other' });
+    const response = await post({ message: 'Read', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID,
+      attachments: [{ documentId: PLAN_ID, name: 'secret.md', mimeType: 'text/markdown', size: 3 }],
+    });
+    expect(response.status).toBe(400);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(db.message.createMany).not.toHaveBeenCalled();
   });
 });
 

@@ -3,14 +3,13 @@ import { prisma } from '@/src/lib/prisma';
 import { documentStorage } from './document-storage';
 import { fileMimeType, validateAttachment } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment, DocumentAttachment } from '@/src/types/chat.types';
-import type { Prisma } from '@prisma/client';
 
 export const MAX_FILE_SIZE = 5 * 1024 * 1024;
 export const MAX_MESSAGE_SIZE = 10 * 1024 * 1024;
 export const RETENTION_DAYS = 30;
 
 export function safeFileName(name: string) {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 180);
+  return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '_').slice(0, 180);
 }
 
 export function newStorageKey(userId: string, name: string) {
@@ -19,7 +18,7 @@ export function newStorageKey(userId: string, name: string) {
 
 export function validStorageKey(userId: string, key: string) {
   return key.startsWith(`users/${userId}/`) &&
-    /^users\/[^/]+\/[0-9a-f-]{36}\/[a-zA-Z0-9._-]{1,180}$/.test(key);
+    /^users\/[^/]+\/[0-9a-f-]{36}\/[a-zA-Z0-9._-]{1,180}$/.test(key) && !key.includes('..');
 }
 
 export function documentMeta(document: {
@@ -40,10 +39,7 @@ export async function confirmUpload(userId: string, input: {
     fileMimeType(input.name) !== input.mimeType || input.size < 1 || input.size > MAX_FILE_SIZE ||
     !/^[a-f0-9]{64}$/.test(input.sha256)) throw new Error('Invalid file details');
   const existing = await prisma.document.findUnique({ where: { userId_sha256: { userId, sha256: input.sha256 } } });
-  if (existing) {
-    if (existing.storageKey !== input.storageKey) await documentStorage.delete(input.storageKey);
-    return existing;
-  }
+  if (existing) return existing;
   const stat = await documentStorage.stat(input.storageKey);
   if (stat.size !== input.size || stat.contentType !== input.mimeType) throw new Error('Uploaded file does not match');
   const bytes = await documentStorage.read(input.storageKey);
@@ -61,9 +57,13 @@ export async function confirmUpload(userId: string, input: {
 }
 
 export async function resolveDocuments(userId: string, files: DocumentAttachment[], missingAsNote = false): Promise<ChatAttachment[]> {
+  if (!files.length) return [];
   const ids = files.map((file) => file.documentId);
   const documents = await prisma.document.findMany({ where: { id: { in: ids }, userId } });
   const byId = new Map(documents.map((document) => [document.id, document]));
+  if (files.reduce((size, file) => size + (byId.get(file.documentId)?.size ?? 0), 0) > MAX_MESSAGE_SIZE) {
+    throw new Error('Files exceed 10 MB in total');
+  }
   const resolved: ChatAttachment[] = [];
   for (const file of files) {
     const document = byId.get(file.documentId);
@@ -86,24 +86,6 @@ export async function markDocumentsUsed(userId: string, files: DocumentAttachmen
   await prisma.document.updateMany({ where: { userId, id: { in: files.map((file) => file.documentId) } }, data: { lastUsedAt: new Date() } });
 }
 
-export async function storeLegacyAttachment(userId: string, file: ChatAttachment) {
-  const bytes = validateAttachment(file);
-  const sha256 = crypto.createHash('sha256').update(bytes).digest('hex');
-  const existing = await prisma.document.findUnique({ where: { userId_sha256: { userId, sha256 } } });
-  if (existing) return existing;
-  const storageKey = newStorageKey(userId, file.name);
-  await documentStorage.save(storageKey, bytes, file.mimeType);
-  try {
-    return await prisma.document.create({ data: { userId, name: file.name, mimeType: file.mimeType, size: file.size, sha256, storageKey, lastUsedAt: new Date() } });
-  } catch (error) {
-    await documentStorage.delete(storageKey);
-    if ((error as { code?: string }).code !== 'P2002') throw error;
-    const duplicate = await prisma.document.findUnique({ where: { userId_sha256: { userId, sha256 } } });
-    if (!duplicate) throw error;
-    return duplicate;
-  }
-}
-
 export async function removeDocument(userId: string, id: string) {
   const document = await prisma.document.findFirst({ where: { id, userId } });
   if (!document) return false;
@@ -124,8 +106,4 @@ export async function cleanupUnusedDocuments(now = new Date()) {
     if (await removeDocument(document.userId, document.id)) removed += 1;
   }
   return removed;
-}
-
-export function attachmentReferences(files: DocumentAttachment[]): Prisma.InputJsonValue {
-  return files.map(({ documentId, name, mimeType, size }) => ({ documentId, name, mimeType, size }));
 }
