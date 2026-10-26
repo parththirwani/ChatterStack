@@ -1,6 +1,6 @@
 import { prisma } from '@/src/lib/prisma';
 import { Role } from '@/src/types/chat.types';
-import type { ChatAttachment } from '@/src/types/chat.types';
+import type { DocumentAttachment } from '@/src/types/chat.types';
 import type { Prisma } from '@prisma/client';
 
 
@@ -25,7 +25,7 @@ export async function addMessagesToConversation(
   userMessage: string,
   aiResponse: string,
   selectedModel: string,
-  attachments: ChatAttachment[] = []
+  attachments: DocumentAttachment[] = []
 ) {
   const userMessageTime = new Date();
   const aiMessageTime = new Date(userMessageTime.getTime() + 1);

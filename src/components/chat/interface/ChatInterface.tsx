@@ -5,7 +5,7 @@ import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import { useChat } from '@/src/hooks/useChat';
 import { useComposerDraft } from '@/src/hooks/useComposerDraft';
-import type { ChatAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
+import type { DocumentAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
 import TurnNavigator from '../navigation/TurnNavigator';
 import { buildTurns } from '../navigation/turns';
@@ -237,7 +237,7 @@ interface ChatComposerProps {
   loading: boolean;
   isCouncilMode: boolean;
   isFirstMessage: boolean;
-  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: ChatAttachment[]) => Promise<void>;
+  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: DocumentAttachment[]) => Promise<void>;
   stopGenerating: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onSendStart: () => void;
@@ -256,13 +256,30 @@ const ChatComposer = memo(function ChatComposer({
   const { message, setMessage, clearDraft } = useComposerDraft(conversationKey);
   const [pendingMessage, setPendingMessage] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
+  const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
   const initializeUser = useAppStore((state) => state.initializeUser);
 
   useEffect(() => setAttachments([]), [conversationKey]);
 
+  useEffect(() => {
+    const add = (event: Event) => {
+      const file = (event as CustomEvent<DocumentAttachment>).detail;
+      if (!file?.documentId) return;
+      if (attachments.some((item) => item.documentId === file.documentId) ||
+        attachments.length >= 4 ||
+        attachments.reduce((sum, item) => sum + item.size, file.size) > 10 * 1024 * 1024) {
+        event.preventDefault();
+        return;
+      }
+      setAttachments([...attachments, file]);
+      document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus();
+    };
+    window.addEventListener('chatterstack:add-document', add);
+    return () => window.removeEventListener('chatterstack:add-document', add);
+  }, [attachments]);
+
   const sendNow = useCallback(
-    async (text: string, files: ChatAttachment[] = []) => {
+    async (text: string, files: DocumentAttachment[] = []) => {
       onSendStart();
       await sendMessage(text, onConversationCreated, files);
     },

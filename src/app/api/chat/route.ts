@@ -15,12 +15,14 @@ import { ChatRequestSchema } from '@/src/types/chat.types';
 import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment } from '@/src/types/chat.types';
+import type { DocumentAttachment } from '@/src/types/chat.types';
+import { markDocumentsUsed, resolveDocuments } from '@/src/lib/server/documents';
 
 interface RedisMessage {
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
-  attachments?: ChatAttachment[];
+  attachments?: Array<ChatAttachment | DocumentAttachment>;
 }
 
 function jsonError(error: string, status: number) {
@@ -47,7 +49,7 @@ async function loadHistory(conversationId: string): Promise<RedisMessage[]> {
     role: m.role === 'user' ? 'user' : 'assistant',
     content: m.content,
     modelId: m.modelId ?? undefined,
-    attachments: Array.isArray(m.attachments) ? m.attachments as unknown as ChatAttachment[] : undefined,
+    attachments: Array.isArray(m.attachments) ? m.attachments as unknown as Array<ChatAttachment | DocumentAttachment> : undefined,
   }));
   // Binary payloads can be several MB each. Keep those conversations in Postgres,
   // rather than copying the entire history into Redis on every turn.
@@ -55,6 +57,20 @@ async function loadHistory(conversationId: string): Promise<RedisMessage[]> {
     await redisStore.set(conversationId, history);
   }
   return history;
+}
+
+async function historyAttachmentParts(userId: string, files: Array<ChatAttachment | DocumentAttachment>) {
+  const parts = [];
+  for (const file of files) {
+    if ('data' in file && typeof file.data === 'string') {
+      parts.push(...await attachmentParts([file]));
+    } else if ('documentId' in file && file.documentId) {
+      const resolved = await resolveDocuments(userId, [file as DocumentAttachment], true);
+      if (resolved.length) parts.push(...await attachmentParts(resolved));
+      else parts.push({ type: 'text' as const, text: `Previously attached file "${file.name}" was removed.` });
+    }
+  }
+  return parts;
 }
 
 export async function POST(request: NextRequest) {
@@ -92,7 +108,8 @@ export async function POST(request: NextRequest) {
     const attachments = data.attachments ?? [];
     let currentParts;
     try {
-      currentParts = await attachmentParts(attachments);
+      const resolved = await resolveDocuments(userId, attachments);
+      currentParts = await attachmentParts(resolved);
     } catch (error) {
       return jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400);
     }
@@ -154,7 +171,7 @@ export async function POST(request: NextRequest) {
         { role: 'user' as const, content: data.message, attachments },
       ].map(async (m, index) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
-        content: messageContent(m.content, index === conversationHistory.length ? currentParts : await attachmentParts(m.attachments ?? [])),
+        content: messageContent(m.content, index === conversationHistory.length ? currentParts : await historyAttachmentParts(userId, m.attachments ?? [])),
       })));
 
       if (ragContext) {
@@ -217,6 +234,7 @@ export async function POST(request: NextRequest) {
         await redisStore.delete(conversationId);
       }
       await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
+      await markDocumentsUsed(userId, attachments);
       if (fullContent) {
         await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);
       }

@@ -27,3 +27,29 @@ npm run dev
 ```
 
 `npm run build` checks the production build and prepares its standalone assets; `npm run start` serves that build. The app uses NextAuth with Google and GitHub sign-in. The optional retrieval flow is controlled by `RAG_ENABLED`.
+
+## Resources and document storage
+
+Chat attachments are stored in a **private Vercel Blob store**. PostgreSQL keeps
+only document metadata and object keys. A browser upload goes directly to Blob;
+the chat request contains document IDs, so files do not count against Vercel's
+function request body limit.
+
+1. Create a private Blob store in the Vercel project's Storage tab and connect
+   it to Production, Preview, and Development. The project needs
+   `BLOB_READ_WRITE_TOKEN` for client upload tokens. For local development,
+   pull the project environment with `vercel env pull`.
+2. Set a random `CRON_SECRET` (at least 16 characters) in Vercel. The daily
+   cron in `vercel.json` removes unfavourited files unused for 30 days and
+   unfinished uploads after 24 hours.
+3. Apply the Prisma schema with `npx prisma db push` before deploying this
+   version. The Docker `schema` service runs that command automatically.
+4. Run `node scripts/migrate-attachments.mjs` once against the database used
+   by the old version, with `DATABASE_URL` and Blob credentials in the
+   environment. It is resumable: it skips messages already converted to
+   document references. Keep a database backup until the migration finishes.
+
+The Docker app can use the same Blob store when its `.env.local` contains
+`BLOB_READ_WRITE_TOKEN`. For a Docker-only deployment, invoke
+`GET /api/cron/cleanup-documents` daily with
+`Authorization: Bearer <CRON_SECRET>`.

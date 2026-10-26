@@ -3,7 +3,7 @@ import { ApiService } from '../services/api';
 import { showConversation } from '../lib/navigation';
 import { cacheInvalidators } from '../services/apiOptimizer';
 import { useModelSelection } from '../context/ModelSelectionContext';
-import type { ChatAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
+import type { DocumentAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
 import type { ChatState } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
 
@@ -59,7 +59,7 @@ export const useChat = (conversationKey: string) => {
     async (
       message: string,
       onConversationCreated?: (conversationId: string) => void,
-      attachments: ChatAttachment[] = []
+      attachments: DocumentAttachment[] = []
     ) => {
       // Read the user fresh from the store: the render-time closure can be
       // stale right after an OAuth redirect.
@@ -90,7 +90,7 @@ export const useChat = (conversationKey: string) => {
         id: nextLocalId('user'),
         role: 'user',
         content: message,
-        attachments: attachments.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
+        attachments: attachments.map(({ documentId, name, mimeType, size }) => ({ documentId, name, mimeType, size })),
         createdAt: now,
       };
       const aiMessage: Message = {
