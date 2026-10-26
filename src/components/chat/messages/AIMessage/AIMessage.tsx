@@ -81,7 +81,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
 
             {/* Actions - Responsive positioning */}
             {!loading && content && (
-              <div className="mt-2 sm:mt-3">
+              <div className="mt-1.5">
                 <MessageActions
                   content={content}
                   filename={filename}

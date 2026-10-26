@@ -1,7 +1,8 @@
 import { formatMessagesWithSystemContext } from '@/src/services/prompt/promptService';
 import { effectiveThinkingLevel, type ThinkingLevel } from '@/src/config/models';
+import type { OpenRouterPart } from './attachments';
 
-type ChatMessage = { role: string; content: string };
+type ChatMessage = { role: string; content: string | OpenRouterPart[] };
 
 export interface StreamOptions {
   thinkingLevel?: ThinkingLevel;

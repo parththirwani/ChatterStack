@@ -3,7 +3,7 @@ import { ApiService } from '../services/api';
 import { showConversation } from '../lib/navigation';
 import { cacheInvalidators } from '../services/apiOptimizer';
 import { useModelSelection } from '../context/ModelSelectionContext';
-import type { CouncilProgress, Message } from '@/src/types/chat.types';
+import type { ChatAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
 import type { ChatState } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
 
@@ -58,7 +58,8 @@ export const useChat = (conversationKey: string) => {
   const sendMessage = useCallback(
     async (
       message: string,
-      onConversationCreated?: (conversationId: string) => void
+      onConversationCreated?: (conversationId: string) => void,
+      attachments: ChatAttachment[] = []
     ) => {
       // Read the user fresh from the store: the render-time closure can be
       // stale right after an OAuth redirect.
@@ -66,7 +67,7 @@ export const useChat = (conversationKey: string) => {
       const { activeModelId, thinkingLevel, councilMembers, councilChair } = modelSelectionRef.current;
       const store = useAppStore.getState();
       if (
-        !message.trim() ||
+        (!message.trim() && attachments.length === 0) ||
         !freshUser?.id ||
         freshUser.id === 'guest' ||
         store.chatState[conversationKey]?.loading
@@ -89,6 +90,7 @@ export const useChat = (conversationKey: string) => {
         id: nextLocalId('user'),
         role: 'user',
         content: message,
+        attachments: attachments.map(({ name, mimeType, size }) => ({ name, mimeType, size })),
         createdAt: now,
       };
       const aiMessage: Message = {
@@ -212,6 +214,7 @@ export const useChat = (conversationKey: string) => {
         await ApiService.sendMessage(
           {
             message,
+            attachments,
             conversationId: key,
             newConversation: isNewConversation || undefined,
             selectedModel: activeModelId,

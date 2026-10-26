@@ -141,7 +141,8 @@ export class ApiService {
     });
 
     if (!response.ok) {
-      throw new Error(`Chat API error: ${response.status}`);
+      const error = await response.json().catch(() => ({}));
+      throw new Error(typeof error.error === 'string' ? error.error : `Chat API error: ${response.status}`);
     }
 
     const reader = response.body?.getReader();

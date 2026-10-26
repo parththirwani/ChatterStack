@@ -1,5 +1,7 @@
 import { prisma } from '@/src/lib/prisma';
 import { Role } from '@/src/types/chat.types';
+import type { ChatAttachment } from '@/src/types/chat.types';
+import type { Prisma } from '@prisma/client';
 
 
 /**
@@ -22,12 +24,13 @@ export async function addMessagesToConversation(
   conversationId: string,
   userMessage: string,
   aiResponse: string,
-  selectedModel: string
+  selectedModel: string,
+  attachments: ChatAttachment[] = []
 ) {
   const userMessageTime = new Date();
   const aiMessageTime = new Date(userMessageTime.getTime() + 1);
   const messages = [
-    { conversationId, content: userMessage, role: Role.User, createdAt: userMessageTime },
+    { conversationId, content: userMessage, role: Role.User, attachments: attachments as unknown as Prisma.InputJsonValue, createdAt: userMessageTime },
     ...(aiResponse
       ? [{ conversationId, content: aiResponse, role: Role.Assistant, modelId: selectedModel, createdAt: aiMessageTime }]
       : []),

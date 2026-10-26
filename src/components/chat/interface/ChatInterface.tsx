@@ -5,7 +5,7 @@ import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import { useChat } from '@/src/hooks/useChat';
 import { useComposerDraft } from '@/src/hooks/useComposerDraft';
-import type { ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
+import type { ChatAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
@@ -106,7 +106,7 @@ const MessageList = memo(function MessageList({
         const key = msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
 
         if (msg.role === 'user') {
-          return <UserMessage key={key} content={msg.content} />;
+          return <UserMessage key={key} content={msg.content} attachments={msg.attachments} />;
         }
 
         return (
@@ -159,7 +159,7 @@ interface ChatComposerProps {
   loading: boolean;
   isCouncilMode: boolean;
   isFirstMessage: boolean;
-  sendMessage: (message: string, onConversationCreated?: (id: string) => void) => Promise<void>;
+  sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: ChatAttachment[]) => Promise<void>;
   stopGenerating: () => void;
   onConversationCreated?: (conversationId: string) => void;
   onSendStart: () => void;
@@ -178,18 +178,21 @@ const ChatComposer = memo(function ChatComposer({
   const { message, setMessage, clearDraft } = useComposerDraft(conversationKey);
   const [pendingMessage, setPendingMessage] = useState('');
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const initializeUser = useAppStore((state) => state.initializeUser);
 
+  useEffect(() => setAttachments([]), [conversationKey]);
+
   const sendNow = useCallback(
-    async (text: string) => {
+    async (text: string, files: ChatAttachment[] = []) => {
       onSendStart();
-      await sendMessage(text, onConversationCreated);
+      await sendMessage(text, onConversationCreated, files);
     },
     [onSendStart, sendMessage, onConversationCreated]
   );
 
   const handleSendMessage = useCallback(async () => {
-    if (!message.trim() || loading) return;
+    if ((!message.trim() && attachments.length === 0) || loading) return;
 
     // Re-read auth state fresh: the render-time `user` can be stale right
     // after an OAuth redirect, which previously re-opened the login modal
@@ -211,9 +214,11 @@ const ChatComposer = memo(function ChatComposer({
     }
 
     const messageToSend = message;
+    const filesToSend = attachments;
     clearDraft();
-    await sendNow(messageToSend);
-  }, [message, loading, sendNow, clearDraft]);
+    setAttachments([]);
+    await sendNow(messageToSend, filesToSend);
+  }, [message, attachments, loading, sendNow, clearDraft]);
 
   // Restore a pending message that was saved before the full-page OAuth
   // redirect. After returning to `/?auth=success` React state is empty, so
@@ -264,19 +269,23 @@ const ChatComposer = memo(function ChatComposer({
         }
       }
 
-      if (textToSend && isValid) {
+      // Files stay in the composer while the modal is open, so send them
+      // with the text (or on their own).
+      if ((textToSend || attachments.length > 0) && isValid) {
         try {
           sessionStorage.removeItem('pendingChatMessage');
         } catch {
           // ignore
         }
 
+        const filesToSend = attachments;
         clearDraft();
-        await sendNow(textToSend);
+        setAttachments([]);
+        await sendNow(textToSend, filesToSend);
         setPendingMessage('');
       }
     },
-    [pendingMessage, initializeUser, sendNow, clearDraft]
+    [pendingMessage, attachments, initializeUser, sendNow, clearDraft]
   );
 
   const handleLoginModalClose = useCallback(() => {
@@ -315,6 +324,8 @@ const ChatComposer = memo(function ChatComposer({
         <div className="mx-auto max-w-[720px]">
           <MessageInput
             message={message}
+            attachments={attachments}
+            onAttachmentsChange={setAttachments}
             onMessageChange={setMessage}
             onSendMessage={handleSendMessage}
             onStopGenerating={stopGenerating}
