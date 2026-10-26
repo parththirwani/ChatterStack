@@ -1810,7 +1810,8 @@
 }
 .landing-model img[src*="gemini"],
 .landing-story-model img[src*="gemini"] {
-  transform: scale(0.86);
+  transform: scale(0.94);
+  filter: grayscale(1) brightness(1.7);
 }
 .landing-approach-outcome {
   padding: 14px 16px;
@@ -1852,4 +1853,17 @@
   .landing-nav a:first-child {
     display: none;
   }
+}
+
+/* Council round 4 */
+.landing-self-host p {
+  color: #4a4640;
+}
+.landing-self-host .landing-section-index {
+  color: #5a4318;
+}
+.landing-answer-status,
+.landing-story-live {
+  font-size: 12px;
+  color: #c9c0ac;
 }
