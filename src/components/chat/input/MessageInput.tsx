@@ -35,7 +35,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, o
 
   return (
     <div className="w-full">
-      <div className="rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-[#e8b775] focus-within:ring-2 focus-within:ring-[#e8b775]/30">
+      <div className="rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.28] focus-within:ring-1 focus-within:ring-white/[0.08]">
         <textarea
           ref={textareaRef}
           aria-label="Message"
@@ -46,7 +46,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, o
           rows={1}
           className="block w-full min-h-[68px] max-h-[180px] resize-none bg-transparent px-5 pt-4 pb-2 text-[15px] leading-6 text-[#f2f0ed] placeholder:text-[#aaa6a3] focus:outline-none"
         />
-        <div className="flex min-h-12 items-center justify-between gap-3 px-3 pb-3 pl-4">
+        <div className="flex min-h-12 items-center justify-end gap-2 px-3 pb-3 pl-4">
           <ModelSelector />
           <button
             type="button"

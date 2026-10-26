@@ -98,7 +98,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   return (
     <div
       className={`
-        ${collapsed ? 'w-16' : isAuthenticated ? 'w-72' : 'w-60'}
+        ${collapsed ? 'w-16' : 'w-72'}
         h-dvh 
         shrink-0 
         transition-all duration-300 ease-in-out 

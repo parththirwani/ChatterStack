@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
-import { AlertCircle, ArrowDown, Code2, GitCompareArrows, Mail, Menu, Plus } from 'lucide-react';
+import { AlertCircle, ArrowDown, Code2, GitCompareArrows, Mail, PanelLeft, Plus } from 'lucide-react';
 import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../../council/progress/ProgressIndicator';
@@ -16,6 +16,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   selectedConversationId,
   onConversationCreated,
   mobileMenuOpen = false,
+  sidebarCollapsed = false,
 }) => {
   const [message, setMessage] = useState('');
   const [pendingMessage, setPendingMessage] = useState('');
@@ -294,7 +295,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     <div className={`relative flex h-full min-h-0 flex-col bg-[#191919] text-[#efeeec] ${isFirstMessage ? 'chat-empty-shell justify-center' : ''}`}>
       <header className={`z-20 flex h-14 shrink-0 items-center justify-between px-4 md:px-6 ${isFirstMessage ? 'absolute inset-x-0 top-0' : ''}`}>
         <div className="flex items-center gap-3">
-          <button id="chat-sidebar-toggle" type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Toggle sidebar" aria-controls="chat-sidebar" aria-expanded={mobileMenuOpen} className="flex h-11 w-11 items-center justify-center rounded-lg text-[#aaa7a3] hover:bg-white/5 hover:text-white md:hidden"><Menu className="h-5 w-5" /></button>
+          <button id="chat-sidebar-toggle" type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Open navigation" aria-controls="chat-sidebar" aria-expanded={mobileMenuOpen} className="flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white md:hidden"><PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} /></button>
+          {sidebarCollapsed && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Open sidebar" aria-controls="chat-sidebar" aria-expanded="false" className="hidden h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white md:flex"><PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} /></button>}
           <span className="max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4]">{isFirstMessage ? 'New chat' : displayTitle}</span>
         </div>
         {!isFirstMessage && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:new-chat'))} aria-label="New chat" className="flex h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] hover:bg-white/5 hover:text-white"><Plus className="h-4 w-4" /></button>}

@@ -36,6 +36,7 @@ export interface ChatInterfaceProps {
   onConversationCreated?: (conversationId: string) => void;
   onNewChatStarted?: () => void;
   mobileMenuOpen?: boolean;
+  sidebarCollapsed?: boolean;
 }
 
 import { z } from 'zod';

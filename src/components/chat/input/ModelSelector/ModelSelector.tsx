@@ -1,31 +1,47 @@
 "use client";
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
-import Image from 'next/image';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { ModelDropdown } from './ModelDropDown';
 
 export const ModelSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
+  const [placement, setPlacement] = useState<'down' | 'up'>('down');
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const { selectedModel, setSelectedModel, getModelInfo } = useModelSelection();
   const currentModel = getModelInfo(selectedModel);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setIsOpen(false);
+    };
+    document.addEventListener('pointerdown', closeOnOutsidePress);
+    return () => document.removeEventListener('pointerdown', closeOnOutsidePress);
+  }, [isOpen]);
+
+  useLayoutEffect(() => {
+    if (isOpen) rootRef.current?.querySelector<HTMLElement>('[role="option"][aria-selected="true"]')?.focus();
+  }, [isOpen]);
+
+  const openMenu = () => {
+    const bottom = triggerRef.current?.getBoundingClientRect().bottom ?? 0;
+    setPlacement(window.innerHeight - bottom >= 365 ? 'down' : 'up');
+    setIsOpen(true);
+  };
   
   return (
-    <div className="relative" onBlur={(event) => {
+    <div ref={rootRef} className="relative" onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false);
     }}>
       <button 
         ref={triggerRef}
-        onClick={() => {
-          setIsOpen((open) => !open);
-          if (!isOpen) requestAnimationFrame(() => document.querySelector<HTMLElement>('#chat-model-listbox [aria-selected="true"]')?.focus());
-        }}
+        onClick={() => isOpen ? setIsOpen(false) : openMenu()}
         onKeyDown={(event) => {
           if (event.key === 'ArrowDown') {
             event.preventDefault();
-            setIsOpen(true);
-            requestAnimationFrame(() => document.querySelector<HTMLElement>('#chat-model-listbox [aria-selected="true"]')?.focus());
+            openMenu();
           }
           if (event.key === 'Escape' && isOpen) {
             event.preventDefault();
@@ -38,19 +54,6 @@ export const ModelSelector = () => {
         aria-controls="chat-model-listbox"
         className="flex h-9 items-center gap-2 rounded-lg px-2 text-[13px] text-[#d1ccc6] transition-colors hover:bg-white/[0.07] hover:text-white"
       >
-        {/* Model Icon */}
-        {currentModel && (
-          <div className="w-4 h-4 flex items-center justify-center">
-            <Image
-              src={currentModel.logo}
-              alt=""
-              width={14}
-              height={14}
-              className={currentModel.company === 'OpenAI' ? 'invert brightness-0' : ''}
-            />
-          </div>
-        )}
-        
         {/* Model Name */}
         <span className="font-medium">
           {currentModel?.name || 'Select Model'}
@@ -60,23 +63,13 @@ export const ModelSelector = () => {
         <ChevronDown className={`w-3 h-3 text-[#aaa6a2] transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       
-      {isOpen && (
-        <>
-          {/* Backdrop to close dropdown */}
-          <div 
-            className="fixed inset-0 z-40 bg-black/55 md:bg-transparent"
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="relative z-50">
-            <ModelDropdown
-              selectedModel={selectedModel}
-              onSelect={setSelectedModel}
-              onClose={() => setIsOpen(false)}
-              onReturnFocus={() => triggerRef.current?.focus()}
-            />
-          </div>
-        </>
-      )}
+      {isOpen && <ModelDropdown
+        placement={placement}
+        selectedModel={selectedModel}
+        onSelect={setSelectedModel}
+        onClose={() => setIsOpen(false)}
+        onReturnFocus={() => triggerRef.current?.focus()}
+      />}
     </div>
   );
 };

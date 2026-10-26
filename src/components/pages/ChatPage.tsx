@@ -82,7 +82,12 @@ const ChatPage: React.FC = () => {
 
   const handleToggleSidebar = useCallback(() => {
     if (window.matchMedia('(max-width: 767px)').matches) setMobileMenuOpen((open) => !open);
-    else setSidebarCollapsed(!sidebarCollapsed);
+    else {
+      setSidebarCollapsed(!sidebarCollapsed);
+      window.setTimeout(() => {
+        document.querySelector<HTMLElement>(sidebarCollapsed ? '[aria-label="Close sidebar"]' : '[aria-label="Open sidebar"]')?.focus();
+      }, 0);
+    }
   }, [sidebarCollapsed, setSidebarCollapsed]);
 
   useEffect(() => {
@@ -232,14 +237,16 @@ const ChatPage: React.FC = () => {
         <aside
           id="chat-sidebar"
           aria-label="Chat navigation"
+          inert={sidebarCollapsed && !mobileMenuOpen}
           className={`
-            fixed inset-y-0 left-0 z-40 w-72 transition-transform duration-300 ease-in-out md:relative md:z-auto md:w-auto md:translate-x-0
+            fixed inset-y-0 left-0 z-40 w-72 transition-[transform,width] duration-200 ease-out md:relative md:z-auto md:overflow-hidden md:translate-x-0
+            ${sidebarCollapsed ? 'md:w-0' : 'md:w-72'}
             ${mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full md:visible'}
           `}
         >
           <button ref={(node) => { if (node && mobileMenuOpen) node.focus(); }} type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-[#aaa6a2] hover:bg-white/[0.07] md:hidden"><X className="h-4 w-4" /></button>
           <MemoizedSidebar
-            collapsed={sidebarCollapsed}
+            collapsed={false}
             onToggleCollapse={handleToggleSidebar}
             user={user}
             onUserChange={handleUserChange}
@@ -257,6 +264,7 @@ const ChatPage: React.FC = () => {
             selectedConversationId={currentConversationId}
             onConversationCreated={handleConversationCreated}
             mobileMenuOpen={mobileMenuOpen}
+            sidebarCollapsed={sidebarCollapsed}
           />
         </main>
       </div>

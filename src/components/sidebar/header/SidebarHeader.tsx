@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { PanelLeftClose } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 
@@ -32,7 +32,7 @@ const SidebarHeader: React.FC<SidebarHeaderProps> = ({
             className="p-1 rounded-md hover:bg-gray-800/50 transition-colors duration-200 text-gray-500 hover:text-gray-300"
             aria-label="Expand sidebar"
           >
-            <ChevronRight className="w-3.5 h-3.5" />
+            <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.7} />
           </button>
         </div>
       ) : (
@@ -58,10 +58,12 @@ const SidebarHeader: React.FC<SidebarHeaderProps> = ({
           </Link>
           <button
             onClick={onToggleCollapse}
-            className="hidden p-1.5 rounded-lg text-gray-400 transition-colors duration-200 hover:bg-gray-800/50 hover:text-gray-200 md:block"
-            aria-label="Collapse sidebar"
+            className="hidden h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white md:flex"
+            aria-label="Close sidebar"
+            aria-controls="chat-sidebar"
+            aria-expanded="true"
           >
-            <ChevronLeft className="w-4 h-4" />
+            <PanelLeftClose className="h-[18px] w-[18px]" strokeWidth={1.7} />
           </button>
         </>
       )}
