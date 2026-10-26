@@ -35,7 +35,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, o
 
   return (
     <div className="w-full">
-      <div className="rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.28] focus-within:ring-1 focus-within:ring-white/[0.08]">
+      <div className="rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.38] focus-within:ring-1 focus-within:ring-white/[0.12]">
         <textarea
           ref={textareaRef}
           aria-label="Message"
@@ -53,7 +53,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, o
             onClick={loading ? onStopGenerating : onSendMessage}
             disabled={!loading && !message.trim()}
             aria-label={loading ? 'Stop generating' : 'Send message'}
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#e8b775] text-[#24201d] transition-colors hover:bg-[#f2c58b] disabled:bg-white/10 disabled:text-white/40 disabled:cursor-not-allowed"
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f0eeeb] text-[#1c1b19] transition-colors hover:bg-white disabled:bg-white/10 disabled:text-white/35 disabled:cursor-not-allowed"
           >
             {loading ? <Square className="h-3.5 w-3.5 fill-current" /> : <ArrowUp className="h-5 w-5" />}
           </button>

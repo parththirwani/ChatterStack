@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, memo, useCallback } from 'react';
-import { AlertCircle, ArrowDown, Code2, GitCompareArrows, Mail, PanelLeft, Plus } from 'lucide-react';
+import { AlertCircle, ArrowDown, Code2, GitCompareArrows, ListTodo, Mail, PanelLeft, Plus } from 'lucide-react';
 import MessageInput from '../input/MessageInput';
 import UserMessage from '../messages/UserMessage/UserMessage';
 import CouncilProgressIndicator from '../../council/progress/ProgressIndicator';
@@ -293,27 +293,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
 
   return (
     <div className={`relative flex h-full min-h-0 flex-col bg-[#191919] text-[#efeeec] ${isFirstMessage ? 'chat-empty-shell justify-center' : ''}`}>
-      <header className={`z-20 flex h-14 shrink-0 items-center justify-between px-4 md:px-6 ${isFirstMessage ? 'absolute inset-x-0 top-0' : ''}`}>
+      <header className={`z-20 flex h-14 shrink-0 items-center justify-between px-4 lg:px-6 ${isFirstMessage ? 'absolute inset-x-0 top-0' : ''}`}>
         <div className="flex items-center gap-3">
-          <button id="chat-sidebar-toggle" type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Open navigation" aria-controls="chat-sidebar" aria-expanded={mobileMenuOpen} className="flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white md:hidden"><PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} /></button>
-          {sidebarCollapsed && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Open sidebar" aria-controls="chat-sidebar" aria-expanded="false" className="hidden h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white md:flex"><PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} /></button>}
-          <span className="max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4]">{isFirstMessage ? 'New chat' : displayTitle}</span>
+          <button id="chat-sidebar-toggle" type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Open navigation" aria-controls="chat-sidebar" aria-expanded={mobileMenuOpen} className="flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white lg:hidden"><PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} /></button>
+          {sidebarCollapsed && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:toggle-sidebar'))} aria-label="Open sidebar" aria-controls="chat-sidebar" aria-expanded="false" className="hidden h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white lg:flex"><PanelLeft className="h-[18px] w-[18px]" strokeWidth={1.7} /></button>}
+          <span className={`max-w-[55vw] truncate text-sm font-medium text-[#c9c7c4] ${isFirstMessage ? 'lg:hidden' : ''}`}>{isFirstMessage ? 'ChatterStack' : displayTitle}</span>
         </div>
-        {!isFirstMessage && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:new-chat'))} aria-label="New chat" className="flex h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] hover:bg-white/5 hover:text-white"><Plus className="h-4 w-4" /></button>}
+        {!isFirstMessage && <button type="button" onClick={() => window.dispatchEvent(new Event('chatterstack:new-chat'))} aria-label="New chat" className="flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.06] hover:text-white"><Plus className="h-4 w-4" /></button>}
       </header>
 
       {error && (
-        <div role="alert" className="mx-auto flex w-full max-w-[760px] items-center gap-2 px-5 py-3 text-sm text-red-300">
-          <AlertCircle className="h-4 w-4 shrink-0" />
-          <span className="flex-1">{error}</span>
-          <button onClick={clearError} className="rounded-md px-2 py-1 hover:bg-white/5">Dismiss</button>
+        <div role="alert" className="mx-4 mt-2 flex w-auto items-start gap-2.5 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-3.5 py-2.5 text-[13px] text-red-200 sm:mx-auto sm:w-full sm:max-w-[720px]">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
+          <span className="min-w-0 flex-1">{error}</span>
+          <button onClick={clearError} className="shrink-0 rounded-md px-2 py-0.5 text-[12px] font-medium text-red-300/80 transition-colors hover:bg-red-500/10 hover:text-red-200">Dismiss</button>
         </div>
       )}
 
       <div ref={messagesContainerRef} onScroll={handleScroll} className={`relative z-10 min-h-0 overflow-y-auto overscroll-contain ${isFirstMessage ? 'shrink-0' : 'flex-1'}`}>
         {isFirstMessage ? (
           <div className="flex flex-col items-center justify-center px-5 pb-3 text-center">
-            <h1 className="max-w-[620px] font-serif text-[30px] font-normal leading-[1.18] tracking-[-0.025em] text-[#f1efec] sm:text-[44px]">
+            <h1 className="max-w-[620px] text-balance font-serif text-[30px] font-normal leading-[1.18] tracking-[-0.025em] text-[#f1efec] sm:text-[44px]">
               {isCouncilMode ? 'Bring the council together' : 'What can I help you work on?'}
             </h1>
             <p className="chat-empty-subtitle mt-3 max-w-[520px] text-sm leading-6 text-[#a7a39e] sm:text-[15px]">
@@ -321,7 +321,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             </p>
           </div>
         ) : (
-          <div className="mx-auto w-full max-w-[800px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
+          <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
             {messages.map((msg, index) => {
               const isLastMessage = index === messages.length - 1;
               if (msg.role === 'user') return <MemoizedUserMessage key={`user-${index}-${msg.createdAt}`} content={msg.content} />;
@@ -334,16 +334,16 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
       </div>
 
       <div className="relative z-20 shrink-0 bg-gradient-to-t from-[#191919] via-[#191919] to-[#191919]/90 px-4 pb-[max(16px,env(safe-area-inset-bottom))] pt-3 sm:px-6">
-        {showJumpToLatest && !isFirstMessage && <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTop = el.scrollHeight; autoScrollEnabledRef.current = true; userHasScrolledRef.current = false; setShowJumpToLatest(false); }} className="mx-auto mb-3 flex min-h-10 items-center gap-2 rounded-full border border-white/15 bg-[#292929] px-4 text-xs text-white shadow-lg"><ArrowDown className="h-3.5 w-3.5" /> Jump to latest</button>}
+        {showJumpToLatest && !isFirstMessage && <button type="button" onClick={() => { const el = messagesContainerRef.current; if (el) el.scrollTop = el.scrollHeight; autoScrollEnabledRef.current = true; userHasScrolledRef.current = false; setShowJumpToLatest(false); }} className="absolute -top-12 left-1/2 z-30 flex min-h-10 -translate-x-1/2 items-center gap-2 rounded-full border border-white/15 bg-[#292929] px-4 text-xs text-white shadow-lg"><ArrowDown className="h-3.5 w-3.5" /> Jump to latest</button>}
         <div className="mx-auto max-w-[720px]">
           <MessageInput message={message} onMessageChange={setMessage} onSendMessage={handleSendMessage} onStopGenerating={stopGenerating} loading={loading} placeholder={isCouncilMode ? 'Ask the council anything' : 'Ask anything'} />
-          {isFirstMessage && !isCouncilMode && <div className="mx-auto mt-4 grid w-full max-w-[620px] grid-cols-2 gap-2 text-left">
+          {isFirstMessage && !isCouncilMode && <div className="mx-auto mt-4 grid w-full max-w-[720px] grid-cols-2 gap-2 text-left">
             {[
               { label: 'Explain code', prompt: 'Explain this code: ', Icon: Code2 },
               { label: 'Draft an email', prompt: 'Help me draft an email about ', Icon: Mail },
               { label: 'Compare ideas', prompt: 'Compare these ideas: ', Icon: GitCompareArrows },
-              { label: 'Plan a project', prompt: 'Help me plan a project for ', Icon: Plus },
-            ].map(({ label, prompt, Icon }) => <button key={label} type="button" onClick={() => { setMessage((current) => current || prompt); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(), 0); }} className="flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.025] px-3 text-[13px] text-[#c9c5c0] transition-colors hover:border-white/20 hover:bg-white/[0.055] hover:text-white max-[340px]:gap-1.5 max-[340px]:px-2 sm:gap-3 sm:px-4 sm:text-sm"><Icon className="h-4 w-4 shrink-0 text-[#e8b775]" />{label}</button>)}
+              { label: 'Plan a project', prompt: 'Help me plan a project for ', Icon: ListTodo },
+            ].map(({ label, prompt, Icon }) => <button key={label} type="button" onClick={() => { setMessage((current) => current || prompt); window.setTimeout(() => document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]')?.focus(), 0); }} className="group flex min-h-12 items-center gap-2 rounded-xl border border-white/[0.09] bg-white/[0.025] px-3 text-[13px] text-[#c9c5c0] transition-colors hover:border-white/20 hover:bg-white/[0.055] hover:text-white max-[340px]:gap-1.5 max-[340px]:px-2 sm:gap-3 sm:px-4 sm:text-sm"><Icon className="h-4 w-4 shrink-0 text-[#8f8b86] transition-colors group-hover:text-[#d8d4ce]" strokeWidth={1.7} />{label}</button>)}
           </div>}
           <p className="mt-3 text-center text-xs leading-5 text-[#aaa6a2]">ChatterStack can make mistakes. Check important information.</p>
         </div>

@@ -52,7 +52,7 @@ export const ModelSelector = () => {
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-controls="chat-model-listbox"
-        className="flex h-9 items-center gap-2 rounded-lg px-2 text-[13px] text-[#d1ccc6] transition-colors hover:bg-white/[0.07] hover:text-white"
+        className="flex h-8 items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-[#cfcbc5] transition-colors hover:bg-white/[0.06] hover:text-white"
       >
         {/* Model Name */}
         <span className="font-medium">

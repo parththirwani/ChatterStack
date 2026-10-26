@@ -81,7 +81,7 @@ const ChatPage: React.FC = () => {
   }, [pathname, currentConversationId, setCurrentConversationId]);
 
   const handleToggleSidebar = useCallback(() => {
-    if (window.matchMedia('(max-width: 767px)').matches) setMobileMenuOpen((open) => !open);
+    if (window.matchMedia('(max-width: 1023px)').matches) setMobileMenuOpen((open) => !open);
     else {
       setSidebarCollapsed(!sidebarCollapsed);
       window.setTimeout(() => {
@@ -211,7 +211,7 @@ const ChatPage: React.FC = () => {
     return (
       <div className="flex h-dvh items-center justify-center bg-[#191919]">
         <div className="text-center">
-          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-[#e8b775] border-t-transparent"></div>
+          <div className="mx-auto mb-4 h-8 w-8 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
           <p className="text-[#aaa6a2]">Loading...</p>
         </div>
       </div>
@@ -228,7 +228,7 @@ const ChatPage: React.FC = () => {
             type="button"
             aria-hidden="true"
             tabIndex={-1}
-            className="fixed inset-0 z-30 bg-black/60 md:hidden"
+            className="fixed inset-0 z-30 bg-black/60 lg:hidden"
             onClick={() => setMobileMenuOpen(false)}
           />
         )}
@@ -239,12 +239,12 @@ const ChatPage: React.FC = () => {
           aria-label="Chat navigation"
           inert={sidebarCollapsed && !mobileMenuOpen}
           className={`
-            fixed inset-y-0 left-0 z-40 w-72 transition-[transform,width] duration-200 ease-out md:relative md:z-auto md:overflow-hidden md:translate-x-0
-            ${sidebarCollapsed ? 'md:w-0' : 'md:w-72'}
-            ${mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full md:visible'}
+            fixed inset-y-0 left-0 z-40 w-72 transition-[transform,width] duration-200 ease-out lg:relative lg:z-auto lg:overflow-hidden lg:translate-x-0
+            ${sidebarCollapsed ? 'lg:w-0' : 'lg:w-72'}
+            ${mobileMenuOpen ? 'visible translate-x-0' : 'invisible -translate-x-full lg:visible'}
           `}
         >
-          <button ref={(node) => { if (node && mobileMenuOpen) node.focus(); }} type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" className="absolute right-4 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-lg text-[#aaa6a2] hover:bg-white/[0.07] md:hidden"><X className="h-4 w-4" /></button>
+          <button ref={(node) => { if (node && mobileMenuOpen) node.focus(); }} type="button" onClick={() => setMobileMenuOpen(false)} aria-label="Close navigation" className="absolute right-4 top-4 z-10 flex h-10 w-10 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white lg:hidden"><X className="h-4 w-4" /></button>
           <MemoizedSidebar
             collapsed={false}
             onToggleCollapse={handleToggleSidebar}

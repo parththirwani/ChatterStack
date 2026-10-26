@@ -17,7 +17,6 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
   isActive,
   onClick,
   onDelete,
-  formatDate,
 }) => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -55,86 +54,41 @@ const ConversationItem: React.FC<ConversationItemProps> = ({
     }
   }, [isDeleting]);
 
-  const getPreviewText = () => {
-    if (conversation.title) {
-      return conversation.title;
-    }
-    
-    if (conversation.messages && conversation.messages.length > 0) {
-      const firstMessage = conversation.messages[0];
-      return firstMessage?.content?.substring(0, 100) || 'No content';
-    }
-    
-    return 'New Chat';
-  };
-
   const displayTitle = conversation.title || 'New Chat';
-  const previewText = getPreviewText();
 
   return (
     <>
       <div
-        onClick={onClick}
         className={`
-          group relative 
-          px-3 py-2.5
+          group relative flex items-center
           rounded-lg
-          transition-all duration-150
-          cursor-pointer
-          touch-manipulation
-          active:scale-[0.98]
-          ${
-            isActive
-              ? 'bg-yellow-500/10 border border-yellow-500/20'
-              : 'hover:bg-gray-800/30 border border-transparent'
-          }
+          transition-colors duration-150
+          ${isActive ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}
         `}
       >
-        <div className="flex items-start gap-2.5">
-          <div className="flex-1 min-w-0">
-            {/* Title - clean typography */}
-            <p className={`
-              text-sm font-medium mb-0.5 truncate
-              ${isActive 
-                ? 'text-white' 
-                : 'text-gray-300 group-hover:text-white'
-              }
-            `}>
-              {displayTitle}
-            </p>
-            
-            {/* Preview - subtle */}
-            <p className="text-xs text-gray-500 line-clamp-1 break-words">
-              {previewText}
-            </p>
-            
-            {/* Date - very subtle */}
-            <p className="text-xs text-gray-600 mt-1">
-              {formatDate(conversation.updatedAt)}
-            </p>
-          </div>
-          
-          {/* Delete button - appears on hover, minimal */}
-          <div className="opacity-0 group-hover:opacity-100 transition-opacity flex items-start shrink-0">
-            <button
-              onClick={handleDeleteClick}
-              className="
-                p-1.5
-                rounded-md
-                hover:bg-red-500/10
-                text-gray-500 hover:text-red-400
-                transition-colors
-                cursor-pointer
-                touch-manipulation
-                active:scale-95
-              "
-              title="Delete conversation"
-              aria-label="Delete conversation"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={onClick}
+          className="min-w-0 flex-1 truncate rounded-lg px-3 py-2 pr-10 text-left text-[13px] leading-5 transition-colors focus-visible:outline-none"
+        >
+          <span className={`block truncate ${isActive ? 'text-white' : 'text-[#c4c0bb] group-hover:text-white'}`}>
+            {displayTitle}
+          </span>
+        </button>
+
+        <button
+          onClick={handleDeleteClick}
+          className={`
+            absolute right-1.5 top-1/2 ${isActive ? 'flex' : 'hidden sm:flex'} h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md
+            text-[#726e6a] sm:text-[#8f8b86] transition-colors hover:bg-red-500/10 hover:text-red-400
+            cursor-pointer touch-manipulation
+            opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100
+          `}
+          title="Delete conversation"
+          aria-label="Delete conversation"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
       </div>
 
       {showDeleteModal && typeof document !== 'undefined' && createPortal(

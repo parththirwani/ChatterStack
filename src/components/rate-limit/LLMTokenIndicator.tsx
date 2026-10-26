@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Clock, Zap, AlertCircle, Brain } from 'lucide-react';
+import { Clock, AlertCircle, Brain } from 'lucide-react';
 import { useAppStore } from '@/src/store/rootStore';
 
 interface LLMTokenStatus {
@@ -99,14 +99,12 @@ const LLMTokenIndicator: React.FC<LLMTokenIndicatorProps> = ({
     <div className={`space-y-2 ${className}`}>
       {/* Council message limit warning */}
       {isCouncilMode && councilLow && (
-        <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs">
-          <Brain className="w-4 h-4 text-red-400 flex-shrink-0" />
-          <div className="flex-1">
-            <div className="text-red-300 font-medium">
-              Council limit reached
-            </div>
-            <div className="text-red-400/80 mt-0.5">
-              {status.councilUsed}/2 council messages used • Resets in {timeUntilReset}
+        <div className="flex items-start gap-2.5 rounded-xl border border-red-500/25 bg-red-500/[0.07] px-3.5 py-2.5 text-xs">
+          <Brain className="mt-0.5 h-3.5 w-3.5 shrink-0 text-red-400" />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-red-300">Council limit reached</div>
+            <div className="mt-0.5 text-red-300/70">
+              {status.councilUsed}/{status.councilLimit} council messages used · Resets in {timeUntilReset}
             </div>
           </div>
         </div>
@@ -114,88 +112,61 @@ const LLMTokenIndicator: React.FC<LLMTokenIndicatorProps> = ({
 
       {/* Token limit warning/error */}
       {tokensLow && (
-        <>
-          {status.tokensRemaining > 0 ? (
-            <div className="flex items-center gap-2 px-3 py-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs">
-              <AlertCircle className="w-4 h-4 text-yellow-400 flex-shrink-0" />
-              <div className="flex-1">
-                <span className="text-yellow-300 font-medium">
-                  {status.tokensRemaining.toLocaleString()} tokens remaining
-                </span>
-                <span className="text-yellow-400/80 ml-2">
-                  • Resets in {timeUntilReset}
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/30 rounded-lg text-xs">
-              <Clock className="w-4 h-4 text-red-400 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="text-red-300 font-medium">
-                  Token limit reached
-                </div>
-                <div className="text-red-400/80 mt-0.5">
-                  More tokens available in {timeUntilReset}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Token usage progress bar */}
-          <div>
-            <div className="flex items-center justify-between text-xs text-gray-400 mb-1">
-              <span className="flex items-center gap-1">
-                <Zap className="w-3 h-3" />
-                Daily LLM Tokens
-              </span>
-              <span>
-                {status.tokensUsed.toLocaleString()}/{status.tokensLimit.toLocaleString()}
-              </span>
-            </div>
-            <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-300 ${
-                  percentTokensUsed >= 100
-                    ? 'bg-red-500'
-                    : percentTokensUsed >= 90
-                    ? 'bg-yellow-500'
-                    : 'bg-green-500'
-                }`}
-                style={{ width: `${Math.min(percentTokensUsed, 100)}%` }}
-              />
-            </div>
-            <div className="text-xs text-gray-500 mt-1">
-              {status.tokensRemaining > 0 ? (
-                <span>
-                  ~{Math.floor(status.tokensRemaining / 150)}-
-                  {Math.floor(status.tokensRemaining / 50)} messages left
-                </span>
-              ) : (
-                <span className="text-red-400">No tokens remaining</span>
-              )}
-            </div>
+        <div className="rounded-xl border border-white/[0.1] bg-white/[0.03] px-3.5 py-2.5">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+            {status.tokensRemaining > 0 ? (
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 text-[#d8d4ce]" />
+            ) : (
+              <Clock className="h-3.5 w-3.5 shrink-0 text-red-400" />
+            )}
+            <span className={status.tokensRemaining > 0 ? 'font-medium text-[#e6e3de]' : 'font-medium text-red-300'}>
+              {status.tokensRemaining > 0
+                ? `${status.tokensRemaining.toLocaleString()} tokens remaining`
+                : 'Token limit reached'}
+            </span>
+            <span className="ml-auto text-[11px] text-[#8f8b86]">
+              {status.tokensRemaining > 0 ? `Resets in ${timeUntilReset}` : `More in ${timeUntilReset}`}
+            </span>
           </div>
-        </>
+
+          <div className="mt-2 h-1 overflow-hidden rounded-full bg-white/[0.08]">
+            <div
+              className={`h-full transition-all duration-300 ${
+                percentTokensUsed >= 100
+                  ? 'bg-red-500'
+                  : percentTokensUsed >= 90
+                  ? 'bg-[#e6e3de]'
+                  : 'bg-[#8fb59a]'
+              }`}
+              style={{ width: `${Math.min(percentTokensUsed, 100)}%` }}
+            />
+          </div>
+
+          <div className="mt-1.5 flex justify-between text-[11px] text-[#8f8b86]">
+            <span>
+              {status.tokensRemaining > 0
+                ? `~${Math.floor(status.tokensRemaining / 150)}–${Math.floor(status.tokensRemaining / 50)} messages left`
+                : 'No tokens remaining'}
+            </span>
+            <span>
+              {status.tokensUsed.toLocaleString()}/{status.tokensLimit.toLocaleString()}
+            </span>
+          </div>
+        </div>
       )}
 
       {/* Council usage indicator (if not at limit) */}
       {isCouncilMode && !councilLow && status.councilUsed > 0 && (
-        <div className="flex items-center justify-between px-3 py-2 bg-gray-800/50 border border-gray-700/30 rounded-lg text-xs">
-          <div className="flex items-center gap-2">
-            <Brain className="w-3 h-3 text-gray-400" />
-            <span className="text-gray-300">Council Messages</span>
-          </div>
-          <span className="text-gray-400">
+        <div className="flex items-center justify-between rounded-xl border border-white/[0.08] bg-white/[0.03] px-3.5 py-2 text-xs">
+          <span className="flex items-center gap-2 text-[#c4c0bb]">
+            <Brain className="h-3.5 w-3.5 text-[#8f8b86]" />
+            Council messages
+          </span>
+          <span className="text-[#8f8b86]">
             {status.councilUsed}/{status.councilLimit} used
           </span>
         </div>
       )}
-
-      {/* Help text */}
-      <div className="text-xs text-gray-500 px-1">
-        💡 Each message uses ~50-500 tokens (input + output)
-        {isCouncilMode && ' • Council messages count toward daily limit'}
-      </div>
     </div>
   );
 };

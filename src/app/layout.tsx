@@ -1,5 +1,5 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { ModelSelectionProvider } from "@/src/context/ModelSelectionContext";
 
@@ -13,9 +13,19 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const sourceSerif = Source_Serif_4({
+  variable: "--font-source-serif",
+  subsets: ["latin"],
+  weight: ["400", "500"],
+});
+
 export const metadata: Metadata = {
-  title: "Chatterstack",
-  description: "Chatterstack is a smart LLM Aggregator",
+  title: "ChatterStack",
+  description: "ChatterStack is a multi-model AI assistant.",
+};
+
+export const viewport: Viewport = {
+  themeColor: "#191919",
 };
 
 export default function RootLayout({
@@ -24,10 +34,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
+    <html
+      lang="en"
+      className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable}`}
+    >
+      <body className="antialiased">
         <ModelSelectionProvider>
           {children}
         </ModelSelectionProvider>

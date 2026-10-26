@@ -127,16 +127,8 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
         />
       </div>
 
-      {!collapsed && !isAuthenticated && (
-        <div className="px-4 pt-2 text-[13px] leading-5 text-[#aaa6a2]">
-          <p className="font-medium text-[#c9c5c0]">Your chats</p>
-          <p className="mt-1">Sign in to save and revisit conversations.</p>
-        </div>
-      )}
-
-      {/* Divider */}
       {!collapsed && isAuthenticated && (
-        <div className="mx-4 h-px bg-gradient-to-r from-transparent via-gray-700/50 to-transparent" />
+        <div className="mx-4 h-px bg-white/[0.06]" />
       )}
 
       {/* Chat History OR Spacer */}
@@ -145,6 +137,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
           <MemoizedChatHistory
             loadingConversations={conversationsLoading}
             filteredConversations={filteredConversations}
+            searchQuery={searchQuery}
             currentConversationId={currentConversationId}
             onConversationClick={handleConversationClick}
             onDeleteConversation={handleDeleteConversation}
@@ -173,6 +166,7 @@ const MemoizedChatHistory = memo(ChatHistory, (prev, next) => {
   if (prev.filteredConversations && next.filteredConversations) {
     return (
       prev.loadingConversations === next.loadingConversations &&
+      prev.searchQuery === next.searchQuery &&
       prev.currentConversationId === next.currentConversationId &&
       prev.filteredConversations.length === next.filteredConversations.length &&
       JSON.stringify(prev.filteredConversations) === JSON.stringify(next.filteredConversations)
@@ -181,6 +175,7 @@ const MemoizedChatHistory = memo(ChatHistory, (prev, next) => {
   
   return (
     prev.loadingConversations === next.loadingConversations &&
+    prev.searchQuery === next.searchQuery &&
     prev.currentConversationId === next.currentConversationId
   );
 });

@@ -18,110 +18,84 @@ const UserSection: React.FC<UserSectionProps> = ({
   onLoginClick,
   onLogoutClick,
 }) => {
+  const avatar = user?.avatarUrl ? (
+    <Image
+      src={user.avatarUrl}
+      alt={user.name || 'User'}
+      width={32}
+      height={32}
+      className="h-8 w-8 rounded-full ring-1 ring-white/10"
+    />
+  ) : (
+    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3a3a3a] ring-1 ring-white/10">
+      <User className="h-3.5 w-3.5 text-[#e2dfda]" strokeWidth={1.8} />
+    </div>
+  );
+
+  if (!isAuthenticated) {
+    return collapsed ? (
+      <button
+        onClick={onLoginClick}
+        className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-[#d8d4ce] transition-colors hover:bg-white/[0.09]"
+        title="Sign in"
+        aria-label="Sign in"
+      >
+        <LogIn className="h-3.5 w-3.5" />
+      </button>
+    ) : (
+      <button
+        onClick={onLoginClick}
+        className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-[#c9c5c0] transition-colors hover:bg-white/[0.06] hover:text-white"
+      >
+        <LogIn className="h-4 w-4 text-[#b3afa9]" strokeWidth={1.8} />
+        <span>Sign in</span>
+      </button>
+    );
+  }
+
+  if (collapsed) {
+    return (
+      <div className="flex flex-col items-center gap-2">
+        <button
+          onClick={() => {}}
+          className="relative cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
+          title={user?.name || user?.email || 'Profile'}
+        >
+          {avatar}
+        </button>
+        <button
+          onClick={onLogoutClick}
+          className="rounded-md p-1.5 text-[#8f8b86] transition-colors hover:bg-red-500/10 hover:text-red-400"
+          title="Sign out"
+          aria-label="Sign out"
+        >
+          <LogOut className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
+
   return (
-    <div>
-      {isAuthenticated ? (
-        collapsed ? (
-          // Collapsed - Icon only
-          <div className="flex flex-col items-center space-y-2">
-            {/* Profile */}
-            <button
-              onClick={() => {}}
-              className="group relative cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-500/30 rounded-full"
-              title={user?.name || user?.email || 'Profile'}
-            >
-              {user?.avatarUrl ? (
-                <Image
-                  src={user.avatarUrl}
-                  alt={user.name || 'User'}
-                  width={28}
-                  height={28}
-                  className="w-7 h-7 rounded-full ring-1 ring-gray-700 hover:ring-gray-600 transition-all"
-                />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center ring-1 ring-gray-700 hover:ring-gray-600 transition-all">
-                  <User className="w-3.5 h-3.5 text-black" />
-                </div>
-              )}
-            </button>
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5">
+        {avatar}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-[13px] font-medium text-[#f0eeeb]">
+            {user?.name || 'User'}
+          </p>
+          <p className="truncate text-[11.5px] text-[#8f8b86]">
+            {user?.email || `Signed in with ${user?.provider}`}
+          </p>
+        </div>
+      </div>
 
-            {/* Logout */}
-            <button
-              onClick={onLogoutClick}
-              className="p-1 rounded-md hover:bg-red-500/10 text-gray-500 hover:text-red-400 
-                         transition-all duration-150 cursor-pointer 
-                         active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-500/30"
-              title="Sign Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          // Expanded - Full user card
-          <div className="space-y-2">
-            {/* User Card */}
-            <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-900/50 border border-gray-800/50">
-              {user?.avatarUrl ? (
-                <Image
-                  src={user.avatarUrl}
-                  alt={user.name || 'User'}
-                  width={36}
-                  height={36}
-                  className="w-9 h-9 rounded-full ring-2 ring-gray-800"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center ring-2 ring-gray-800">
-                  <User className="w-4 h-4 text-black" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {user?.name || 'User'}
-                </p>
-                <p className="text-xs text-gray-400 truncate">
-                  {user?.email || `Signed in with ${user?.provider}`}
-                </p>
-              </div>
-            </div>
-
-            {/* Logout Button */}
-            <button
-              onClick={onLogoutClick}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg 
-                         hover:bg-red-500/10 text-gray-400 hover:text-red-400 
-                         transition-all duration-150 text-sm font-medium 
-                         cursor-pointer active:scale-[0.98]
-                         focus:outline-none focus:ring-2 focus:ring-red-500/30"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
-            </button>
-          </div>
-        )
-      ) : collapsed ? (
-        // Collapsed - Login Icon
-        <button
-          onClick={onLoginClick}
-          className="w-7 h-7 flex items-center justify-center rounded-md 
-                     bg-gradient-to-br from-yellow-400 to-yellow-600 
-                     hover:from-yellow-500 hover:to-yellow-700 
-                     text-black transition-all duration-150 
-                     cursor-pointer active:scale-95
-                     focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
-          title="Sign In"
-        >
-          <LogIn className="w-3.5 h-3.5" />
-        </button>
-      ) : (
-        // Expanded - Login Button
-        <button
-          onClick={onLoginClick}
-          className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-sm font-medium text-[#c9c5c0] transition-colors hover:bg-white/[0.07] hover:text-white"
-        >
-          <LogIn className="w-4 h-4" />
-          <span className="text-sm">Sign in</span>
-        </button>
-      )}
+      <button
+        onClick={onLogoutClick}
+        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-[#9d9994] transition-colors hover:bg-red-500/10 hover:text-red-400"
+      >
+        <LogOut className="h-3.5 w-3.5" />
+        <span>Sign out</span>
+      </button>
     </div>
   );
 };

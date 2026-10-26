@@ -79,7 +79,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                 className={`${model.invert ? 'invert brightness-0' : ''} h-4 w-4`}
               />
             ) : (
-              <span className="text-xs font-bold text-[#e8b775]">AI</span>
+              <span className="text-xs font-bold text-[#d8d4ce]">AI</span>
             )}
             <span>{model?.name || 'Assistant'}</span>
           </div>
@@ -108,7 +108,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     </h3>
                   ),
                   p: ({ children }) => (
-                    <p className="mb-3 sm:mb-4 leading-relaxed last:mb-0 text-gray-100 text-sm sm:text-base break-words">
+                    <p className="mb-3 sm:mb-4 leading-relaxed last:mb-0 text-[#e9e7e4] text-sm sm:text-base break-words">
                       {children}
                     </p>
                   ),
@@ -132,12 +132,12 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     return <CodeBlock language={match?.[1] || 'Code'} code={codeText(children)} className={className}>{children}</CodeBlock>;
                   },
                   ul: ({ children }) => (
-                    <ul className="mb-3 list-outside list-disc space-y-1.5 pl-5 text-gray-100 sm:mb-4">
+                    <ul className="mb-3 list-outside list-disc space-y-1.5 pl-5 text-[#e9e7e4] sm:mb-4">
                       {children}
                     </ul>
                   ),
                   ol: ({ children }) => (
-                    <ol className="mb-3 list-outside list-decimal space-y-1.5 pl-5 text-gray-100 sm:mb-4">
+                    <ol className="mb-3 list-outside list-decimal space-y-1.5 pl-5 text-[#e9e7e4] sm:mb-4">
                       {children}
                     </ol>
                   ),
@@ -149,7 +149,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                   a: ({ href, children }) => (
                     <a
                       href={href}
-                      className="cursor-pointer break-all text-[#e8b775] underline hover:text-[#f2c58b]"
+                      className="cursor-pointer break-all text-[#e6e3de] underline decoration-white/30 underline-offset-2 hover:decoration-white/60"
                       target="_blank"
                       rel="noopener noreferrer"
                     >
@@ -157,7 +157,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     </a>
                   ),
                   blockquote: ({ children }) => (
-                    <blockquote className="border-l-2 sm:border-l-4 border-gray-700 pl-3 sm:pl-4 italic text-gray-400 my-3 sm:my-4">
+                    <blockquote className="border-l-2 sm:border-l-4 border-white/10 pl-3 sm:pl-4 italic text-[#a7a39e] my-3 sm:my-4">
                       {children}
                     </blockquote>
                   ),
@@ -169,12 +169,12 @@ const AIMessage: React.FC<AIMessageProps> = ({
                     </div>
                   ),
                   th: ({ children }) => (
-                    <th className="px-3 sm:px-4 py-2 text-left text-xs sm:text-sm font-semibold text-white bg-gray-800">
+                    <th className="px-3 sm:px-4 py-2 text-left text-xs sm:text-sm font-semibold text-white bg-white/[0.05]">
                       {children}
                     </th>
                   ),
                   td: ({ children }) => (
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-300 border-t border-gray-700">
+                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-[#c4c0bb] border-t border-white/10">
                       {children}
                     </td>
                   ),
@@ -182,7 +182,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
               >
                 {content}
               </ReactMarkdown>
-              {loading && isLastMessage && !content && <span role="status" className="text-sm text-[#aaa6a2]">Thinking…</span>}
+              {loading && isLastMessage && !content && <span role="status" className="flex items-center gap-1.5 text-sm text-[#aaa6a2]"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" /><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:150ms]" /><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:300ms]" /><span className="ml-1">Thinking</span></span>}
             </div>
 
             {/* Actions - Responsive positioning */}

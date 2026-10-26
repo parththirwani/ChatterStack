@@ -43,12 +43,12 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
         setActiveIndex(nextIndex);
         options[nextIndex]?.focus();
       }
-    }} className={`absolute right-[-3.5rem] z-50 w-[320px] max-w-[calc(100vw-3rem)] overflow-hidden rounded-xl border border-white/[0.13] bg-[#262626] shadow-[0_16px_40px_rgba(0,0,0,0.35)] md:right-0 ${placement === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
-      <div className="border-b border-white/[0.07] px-4 py-2.5 text-xs font-medium text-[#aaa6a2]">Choose a model</div>
-      <div className="max-h-[min(21rem,calc(100dvh-5rem))] overflow-y-auto p-1.5">
+    }} className={`animate-menu-in absolute right-[-3.5rem] z-50 w-[300px] max-w-[calc(100vw-3rem)] overflow-hidden rounded-[14px] border border-white/[0.11] bg-[#242424] shadow-[0_18px_44px_rgba(0,0,0,0.42)] md:right-0 ${placement === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'}`}>
+      <div className="px-3 pb-1 pt-2.5 text-[11px] font-medium uppercase tracking-[0.08em] text-white/55">Model</div>
+      <div className="max-h-[min(21rem,calc(100dvh-5rem))] overflow-y-auto p-1">
         {AVAILABLE_MODELS.map((model, index) => {
           const isSelected = selectedModel === model.id;
-          
+
           return (
             <button
               role="option"
@@ -56,26 +56,24 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({
               tabIndex={activeIndex === index ? 0 : -1}
               key={model.id}
               onClick={() => handleSelect(model.id as ModelId)}
-              className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg border border-transparent px-2.5 py-2 text-left transition-colors ${
-                isSelected
-                  ? 'bg-white/[0.08]'
-                  : 'hover:bg-white/[0.05]'
+              className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${
+                isSelected ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'
               }`}
             >
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-white/[0.04]">
+              <div className="flex h-5 w-5 shrink-0 items-center justify-center">
                 <Image
                   src={model.logo}
                   alt=""
-                  width={18}
-                  height={18}
+                  width={17}
+                  height={17}
                   className={model.company === 'OpenAI' ? 'invert brightness-0' : ''}
                 />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="truncate text-[13px] font-medium text-[#f0eeeb]">{model.name}</div>
-                <div className="truncate text-xs leading-4 text-[#a9a5a0]">{model.description}</div>
+                <div className="truncate text-[12px] leading-[17px] text-[#a9a5a0]">{model.description}</div>
               </div>
-              {isSelected && <Check className="h-4 w-4 shrink-0 text-[#e8b775]" aria-hidden="true" />}
+              {isSelected && <Check className="h-4 w-4 shrink-0 text-[#e6e3de]" strokeWidth={2.2} aria-hidden="true" />}
             </button>
           );
         })}

@@ -57,11 +57,11 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center gap-3">
               <div className="relative">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8b775]/10">
-                  <Brain className="h-4 w-4 text-[#e8b775]" />
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.06]">
+                  <Brain className="h-4 w-4 text-[#d8d4ce]" />
                 </div>
                 <motion.div
-                  className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#e8b775]"
+                  className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-[#d8d4ce]"
                   animate={{ scale: [1, 1.2, 1] }}
                   transition={{ duration: 1, repeat: Infinity }}
                 />
@@ -89,7 +89,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
           <div className="mb-4">
             <div className="h-1 overflow-hidden rounded-full bg-white/10">
               <motion.div
-                className="h-full bg-[#e8b775]"
+                className="h-full bg-[#d8d4ce]"
                 initial={{ width: 0 }}
                 animate={{ 
                   width: `${((currentStageIndex + (isStageComplete ? 1 : 0.5)) / 4) * 100}%` 
@@ -169,7 +169,7 @@ const CouncilProgressIndicator: React.FC<CouncilProgressIndicatorProps> = ({
                           {isComplete ? (
                             <CheckCircle className="w-4 h-4 text-green-400" />
                           ) : isProcessing ? (
-                            <Loader2 className="w-4 h-4 animate-spin text-[#e8b775]" />
+                            <Loader2 className="w-4 h-4 animate-spin text-[#d8d4ce]" />
                           ) : null}
                         </div>
                       </motion.div>

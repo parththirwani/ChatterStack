@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { MessageSquare, Loader2, AlertCircle } from 'lucide-react';
+import { MessageSquare, Loader2, AlertCircle, Search } from 'lucide-react';
 import { Conversation } from '@/src/types/conversation.types';
 import ConversationItem from './ConversationItem';
 import { useAppStore } from '@/src/store/rootStore';
@@ -8,6 +8,7 @@ import { OptimisticChat } from '@/src/lib/api/chat/optimistic-chat-manager';
 interface ChatHistoryProps {
   loadingConversations: boolean;
   filteredConversations?: Conversation[];
+  searchQuery?: string;
   currentConversationId?: string;
   onConversationClick: (conversationId: string) => void;
   onDeleteConversation: (conversationId: string) => Promise<void>;
@@ -17,6 +18,7 @@ interface ChatHistoryProps {
 const ChatHistory: React.FC<ChatHistoryProps> = ({
   loadingConversations,
   filteredConversations,
+  searchQuery = '',
   currentConversationId,
   onConversationClick,
   onDeleteConversation,
@@ -32,15 +34,15 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
   return (
     <div className="py-3">
       {/* Section label - subtle */}
-      <div className="px-2 mb-2">
-        <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider">
-          Conversations
+      <div className="px-2 pb-2 pt-1">
+        <h3 className="text-[11px] font-medium uppercase tracking-[0.08em] text-[#8a8681]">
+          Chats
         </h3>
       </div>
 
       {loadingConversations ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-5 h-5 text-yellow-500 animate-spin" />
+          <Loader2 className="h-4 w-4 animate-spin text-[#8f8b86]" />
         </div>
       ) : allChats.length > 0 ? (
         <div className="space-y-1">
@@ -63,11 +65,11 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
                 
                 {/* Streaming indicator - minimal badge */}
                 {optimistic && (
-                  <div className="absolute top-2 right-3 flex items-center gap-1">
+                  <div className="absolute right-10 top-2 flex items-center gap-1">
                     {chat.status === 'generating' || chat.status === 'streaming' ? (
-                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-yellow-500/10 border border-yellow-500/20">
-                        <Loader2 className="w-2.5 h-2.5 text-yellow-500 animate-spin" />
-                        <span className="text-xs text-yellow-400 font-medium">
+                      <div className="flex items-center gap-1 rounded-full border border-white/[0.12] bg-white/[0.06] px-2 py-0.5">
+                        <Loader2 className="h-2.5 w-2.5 animate-spin text-[#d8d4ce]" />
+                        <span className="text-[11px] font-medium text-[#d8d4ce]">
                           {chat.status === 'generating' ? 'Thinking' : 'Typing'}
                         </span>
                       </div>
@@ -84,13 +86,21 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
           })}
         </div>
       ) : (
-        <div className="text-center py-12 px-4">
-          <div className="w-12 h-12 rounded-full bg-gray-800/50 flex items-center justify-center mx-auto mb-3">
-            <MessageSquare className="w-6 h-6 text-gray-500" />
+        <div className="px-4 py-12 text-center">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04]">
+            {searchQuery.trim() ? (
+              <Search className="h-4 w-4 text-[#8f8b86]" strokeWidth={1.8} />
+            ) : (
+              <MessageSquare className="h-5 w-5 text-[#8f8b86]" strokeWidth={1.6} />
+            )}
           </div>
-          <p className="text-sm text-gray-400 mb-1">No conversations yet</p>
-          <p className="text-xs text-gray-500">
-            Start chatting to see your history
+          <p className="mb-1 text-[13px] text-[#b3afa9]">
+            {searchQuery.trim() ? 'No matching chats' : 'No chats yet'}
+          </p>
+          <p className="text-xs text-[#8f8b86]">
+            {searchQuery.trim()
+              ? 'Try a different search term'
+              : 'Start a conversation to see it here'}
           </p>
         </div>
       )}

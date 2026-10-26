@@ -48,17 +48,17 @@ const SidebarHeader: React.FC<SidebarHeaderProps> = ({
               />
             </div>
             <div className="flex flex-col">
-              <span className="text-sm font-semibold text-white tracking-tight">
+              <span className="text-[13px] font-semibold tracking-tight text-[#f0eeeb]">
                 ChatterStack
               </span>
-              <span className="text-xs text-gray-400">
+              <span className="text-[11px] text-[#8f8b86]">
                 AI Assistant
               </span>
             </div>
           </Link>
           <button
             onClick={onToggleCollapse}
-            className="hidden h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white md:flex"
+            className="hidden h-9 w-9 items-center justify-center rounded-lg text-[#aaa7a3] transition-colors hover:bg-white/[0.07] hover:text-white lg:flex"
             aria-label="Close sidebar"
             aria-controls="chat-sidebar"
             aria-expanded="true"
