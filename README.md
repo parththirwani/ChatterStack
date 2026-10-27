@@ -28,6 +28,19 @@ npm run dev
 
 `npm run build` checks the production build and prepares its standalone assets; `npm run start` serves that build. The app uses NextAuth with Google and GitHub sign-in. The optional retrieval flow is controlled by `RAG_ENABLED`.
 
+## Rate limiting
+
+Free-tier usage is capped per user over a rolling 24-hour window: 4,000 LLM
+tokens and 2 AI Council messages. The counters live in Redis (one sorted set
+per user), so the caps hold across serverless instances and survive cold
+starts. A request atomically reserves an estimate of its full prompt with a
+Lua script and the actual usage is reconciled afterwards, so concurrent
+requests can't both spend the same budget. If Redis is unavailable the
+limiter fails closed with a 503 in production; in development and tests it
+falls back to in-process counters with a console warning. The limiter's
+integration-style tests run automatically when `REDIS_URL` (or
+`REDIS_TEST_URL`) points at a reachable server, and skip otherwise.
+
 ## Resources and document storage
 
 Chat attachments are stored in a **private Vercel Blob store**. PostgreSQL keeps
@@ -53,6 +66,70 @@ The Docker app can use the same Blob store when its `.env.local` contains
 `BLOB_READ_WRITE_TOKEN`. For a Docker-only deployment, invoke
 `GET /api/cron/cleanup-documents` daily with
 `Authorization: Bearer <CRON_SECRET>`.
+
+## Error tracking (Sentry)
+
+Optional error monitoring for the browser and the Node server
+(`@sentry/nextjs`, App Router + Turbopack). While `SENTRY_DSN` is unset the SDK
+never initializes and nothing is sent, so local development, tests and Docker
+need no Sentry configuration.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SENTRY_DSN` | No | Server DSN. Unset ⇒ server capture is off. |
+| `NEXT_PUBLIC_SENTRY_DSN` | No | Browser DSN. Inlined at build time; Docker and Compose pass it as a build ARG that defaults to empty. |
+| `SENTRY_ENVIRONMENT` | No | Tag shown on issues (falls back to `NODE_ENV`). |
+| `SENTRY_RELEASE` | No | Release/version tag. |
+| `SENTRY_AUTH_TOKEN` | No | Only for uploading source maps at build time. |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | No | Only with the auth token: where to upload. |
+
+Files: `src/instrumentation.ts` (server register + `onRequestError`),
+`src/instrumentation-client.ts` (browser), `src/sentry.server.config.ts`,
+`src/app/global-error.tsx`, `src/app/error.tsx`, and the shared scrubber plus
+`captureError()` in `src/lib/observability/`. Existing `console.error` calls in
+request paths were replaced with `captureError()` — they were stripped from
+production builds by `compiler.removeConsole`, which is why these failures were
+previously invisible.
+
+Privacy and noise: `sendDefaultPii: false`, no tracing and no replay. Events
+carry tags (`route`, `model`, `council`, `stage`) and, when known, the NextAuth
+user id only — never an email. `beforeSend` drops the request object entirely
+(no headers, cookies or bodies), removes any `content`, `message`, `title`,
+`attachment`, `document`, `rag`-style field, truncates long provider messages
+and strips base64/data-URL blobs, so chat text and file data cannot ride along.
+Expected conditions are not reported: 401/403/404/409/429, aborted requests and
+user Stop, and rate-limit rejections.
+
+## Analytics (PostHog)
+
+Optional product analytics with `posthog-js` (browser) and `posthog-node`
+(server). Everything is inert while `POSTHOG_KEY` is unset, so local
+development, tests and Docker need no configuration.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `POSTHOG_KEY` | No | Public project token (`phc_...`). Unset disables analytics entirely. |
+| `POSTHOG_HOST` | No | Ingestion host, defaults to `https://us.i.posthog.com`. |
+| `POSTHOG_SESSION_REPLAY` | No | `true` turns on session recording. Off by default. |
+
+The key and host are read on the server in `src/app/layout.tsx` and passed to
+the client provider as props, so a Docker image works without build-time args
+and the values can be changed by restarting the container. A browser that sends
+Do Not Track or Global Privacy Control loads nothing.
+
+Event names and their property types live in `src/lib/analytics/events.ts`.
+Server events go through `captureServerEvent()` in
+`src/lib/analytics/posthog-server.ts`, which flushes with `after()` once the
+response — including the chat SSE stream — has finished.
+
+Nothing about the conversation itself is sent: no message text, chat titles,
+file names, document contents or retrieved context. Messages are described by
+model id, council yes/no, thinking level, attachment count and a length bucket;
+uploads by mime type and a size bucket. Identity is the NextAuth user id only
+(`identify()` on the client, `distinctId` on the server) — never an email,
+display name or avatar — and it is reset on sign-out. Person profiles are
+`identified_only`, element autocapture is off, and session replay masks all
+inputs, text and element attributes.
 
 ## LLM observability (OpenObserve)
 

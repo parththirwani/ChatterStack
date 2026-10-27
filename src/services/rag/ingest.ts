@@ -4,6 +4,7 @@ import { generateSparseVector } from './sparse';
 import type { RagPoint } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateEmbeddings } from './openrouter';
+import { captureError } from '@/src/lib/observability/capture';
 
 const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
 
@@ -66,7 +67,7 @@ export async function ingestMessage(params: {
       }
       
     } catch (embeddingError) {
-      console.error('Embedding generation failed:', embeddingError);
+      captureError(embeddingError, { route: 'rag/ingest', model: role === 'assistant' ? modelUsed : undefined, stage: 'embedding' });
       // If embeddings fail, skip RAG ingestion but don't fail the entire message
       console.warn(`Skipping RAG ingestion for message ${messageId} due to embedding failure`);
       return;
@@ -115,7 +116,7 @@ export async function ingestMessage(params: {
     });
 
   } catch (error) {
-    console.error('Ingestion error:', error);
+    captureError(error, { route: 'rag/ingest', stage: 'ingest' });
     // RAG is nice-to-have - don't break the main chat flow
     console.warn(`Failed to ingest message ${messageId}, continuing without RAG`);
   }

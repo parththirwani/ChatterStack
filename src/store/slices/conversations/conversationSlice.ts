@@ -62,6 +62,7 @@ interface StoreWithChat {
   chatState: Record<string, ChatState>;
   setChatState: (id: string, state: Partial<ChatState>) => void;
   clearChatState: (id: string) => void;
+  clearQueue: (id: string) => void;
 }
 
 export const createConversationsSlice: StateCreator<
@@ -224,8 +225,9 @@ export const createConversationsSlice: StateCreator<
             : currentState.currentConversationId,
       }));
       
-      // Clear chat state and any unsent draft
+      // Clear chat state, queued messages and any unsent draft
       state.clearChatState(conversationId);
+      state.clearQueue(conversationId);
       (get() as unknown as { setDraft: (key: string, text: string) => void }).setDraft(conversationId, '');
     } catch (error) {
       console.error('Failed to delete conversation:', error);

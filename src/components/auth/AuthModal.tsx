@@ -5,6 +5,8 @@ import { signIn } from 'next-auth/react';
 import { useAppStore } from '@/src/store/rootStore';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
 import { authErrorMessage } from '@/src/lib/auth/error-messages';
+import { AnalyticsEvents } from '@/src/lib/analytics/events';
+import { captureClientEvent } from '@/src/lib/analytics/posthog-client';
 import type { User } from '@/src/types/user.types';
 
 interface LoginModalProps {
@@ -68,6 +70,7 @@ const LoginModal: React.FC<LoginModalProps> = ({
 
   // OAuth login using NextAuth
   const handleLogin = async (provider: 'google' | 'github') => {
+    captureClientEvent(AnalyticsEvents.SignInStarted, { provider });
     setLoading(true);
     setError(null);
     try {

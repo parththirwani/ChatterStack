@@ -3,6 +3,7 @@
  * Generates concise, descriptive titles for conversations based on the first user message
  */
 import { TITLE_MODEL } from '@/src/config/models';
+import { captureError } from '@/src/lib/observability/capture';
 import { traceLlmCall, type LlmCallMetrics } from '@/src/lib/observability/trace-llm-call';
 
 interface TitleGenerationParams {
@@ -35,7 +36,8 @@ async function generateTitleWithAI(userMessage: string, trace?: TitleGenerationP
       (metrics) => requestTitle(userMessage, metrics)
     );
   } catch (error) {
-    console.error('AI title generation failed:', error);
+    // The fallback title keeps the UI fine; the failure is still worth reporting.
+    captureError(error, { route: 'title', model: TITLE_MODEL, stage: 'title-generation' });
     return generateFallbackTitle(userMessage);
   }
 }

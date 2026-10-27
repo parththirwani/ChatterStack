@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import { ingestMessage } from '@/src/services/rag/ingest';
 import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
 import { retrieveContextWithFallback, formatContextForLLM } from '@/src/services/rag/retrievalService';
+import { captureError } from '@/src/lib/observability/capture';
 
 const RAG_ENABLED = process.env.RAG_ENABLED === 'true';
 
@@ -36,7 +37,7 @@ export async function retrieveRAGContext(
 
     return formatContextForLLM(context);
   } catch (error) {
-    console.error('RAG retrieval failed:', error);
+    captureError(error, { route: 'chat/rag', stage: 'retrieve' });
     return '';
   }
 }
@@ -62,7 +63,7 @@ export async function ingestConversationData(
     content: userMessage,
     role: 'user',
     traceId,
-  }).catch((err) => console.error('User message ingestion failed:', err));
+  }).catch((err) => captureError(err, { route: 'chat/rag', stage: 'ingest-user' }));
 
   // Ingest AI response
   ingestMessage({
@@ -73,11 +74,11 @@ export async function ingestConversationData(
     role: 'assistant',
     modelUsed: selectedModel,
     traceId,
-  }).catch((err) => console.error('AI message ingestion failed:', err));
+  }).catch((err) => captureError(err, { route: 'chat/rag', model: selectedModel, stage: 'ingest-assistant' }));
 
   // Update profile
   incrementalProfileUpdate(userId, {
     role: 'user',
     content: userMessage,
-  }).catch((err) => console.error('Profile update failed:', err));
+  }).catch((err) => captureError(err, { route: 'chat/rag', stage: 'profile-update' }));
 }

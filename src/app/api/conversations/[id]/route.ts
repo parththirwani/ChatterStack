@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 import { prisma } from '@/src/lib/prisma';
 import { getConversation } from '@/src/lib/server/conversations';
+import { AnalyticsEvents } from '@/src/lib/analytics/events';
+import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { z } from 'zod';
 
 const UpdateConversationSchema = z
@@ -72,6 +74,7 @@ export async function DELETE(
     const { redisStore } = await import('@/src/lib/redis');
     await redisStore.delete(id);
 
+    captureServerEvent(session.user.id, AnalyticsEvents.ConversationDeleted, {});
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[API] Error deleting conversation:', error);
@@ -119,6 +122,10 @@ export async function PATCH(
       },
       select: { id: true, title: true, pinnedAt: true, updatedAt: true },
     });
+
+    if (pinned !== undefined) {
+      captureServerEvent(session.user.id, AnalyticsEvents.ConversationPinned, { pinned });
+    }
 
     return NextResponse.json({
       conversation: {

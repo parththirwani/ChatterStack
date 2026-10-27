@@ -13,6 +13,8 @@ import {
   type ChatModelId,
   type ThinkingLevel,
 } from '@/src/config/models';
+import { AnalyticsEvents } from '@/src/lib/analytics/events';
+import { captureClientEvent } from '@/src/lib/analytics/posthog-client';
 
 export const AVAILABLE_MODELS = CHAT_MODELS;
 
@@ -34,6 +36,9 @@ interface ModelSelectionContextType {
   thinkingLevel: ThinkingLevel;
   setThinkingLevel: (level: ThinkingLevel) => void;
 }
+
+/** What a message is sent with: model (or council), thinking, and council setup. */
+export type SendSettings = Pick<ModelSelectionContextType, 'activeModelId' | 'thinkingLevel' | 'councilMembers' | 'councilChair'>;
 
 const ModelSelectionContext = createContext<ModelSelectionContextType | undefined>(undefined);
 
@@ -113,6 +118,7 @@ export const ModelSelectionProvider: React.FC<{ children: ReactNode }> = ({ chil
   }, [settingsHydrated, selectedModel, council, thinkingLevel]);
 
   const setSelectedModel = useCallback((modelId: ModelId) => {
+    captureClientEvent(AnalyticsEvents.ModelChanged, { model_id: modelId });
     setSelectedModelState(modelId);
   }, []);
 

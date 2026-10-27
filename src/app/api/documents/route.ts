@@ -3,6 +3,9 @@ import { auth } from '@/src/lib/auth';
 import { prisma } from '@/src/lib/prisma';
 import { confirmUpload, documentMeta, MAX_FILE_SIZE } from '@/src/lib/server/documents';
 import { fileMimeType } from '@/src/lib/api/chat/attachments';
+import { captureError } from '@/src/lib/observability/capture';
+import { AnalyticsEvents, sizeBucket } from '@/src/lib/analytics/events';
+import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 
 const uploadSchema = z.object({
   name: z.string().min(1).max(180),
@@ -31,8 +34,13 @@ export async function POST(request: Request) {
   }
   try {
     const document = await confirmUpload(session.user.id, parsed.data);
+    captureServerEvent(session.user.id, AnalyticsEvents.DocumentUploaded, {
+      mime_type: parsed.data.mimeType,
+      size_bucket: sizeBucket(parsed.data.size),
+    });
     return Response.json({ document: documentMeta(document) }, { status: 201 });
   } catch (error) {
+    captureError(error, { route: '/api/documents', userId: session.user.id, stage: 'confirm-upload' });
     return Response.json({ error: error instanceof Error ? error.message : 'Could not save document' }, { status: 400 });
   }
 }
