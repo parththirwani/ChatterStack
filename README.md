@@ -28,6 +28,19 @@ npm run dev
 
 `npm run build` checks the production build and prepares its standalone assets; `npm run start` serves that build. The app uses NextAuth with Google and GitHub sign-in. The optional retrieval flow is controlled by `RAG_ENABLED`.
 
+## Rate limiting
+
+Free-tier usage is capped per user over a rolling 24-hour window: 4,000 LLM
+tokens and 2 AI Council messages. The counters live in Redis (one sorted set
+per user), so the caps hold across serverless instances and survive cold
+starts. A request atomically reserves an estimate of its full prompt with a
+Lua script and the actual usage is reconciled afterwards, so concurrent
+requests can't both spend the same budget. If Redis is unavailable the
+limiter fails closed with a 503 in production; in development and tests it
+falls back to in-process counters with a console warning. The limiter's
+integration-style tests run automatically when `REDIS_URL` (or
+`REDIS_TEST_URL`) points at a reachable server, and skip otherwise.
+
 ## Resources and document storage
 
 Chat attachments are stored in a **private Vercel Blob store**. PostgreSQL keeps

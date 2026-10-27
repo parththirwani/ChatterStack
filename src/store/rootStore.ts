@@ -112,6 +112,8 @@ export const useAppStore = create<AppState>()(
           conversationsHydrated: true,
           currentConversationId: undefined,
           chatState: {},
+          queues: {},
+          queuesPaused: {},
           drafts: {},
           draftsOwner: null,
           // sidebarCollapsed stays (persisted)

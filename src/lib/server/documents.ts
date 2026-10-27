@@ -108,13 +108,37 @@ export async function cleanupUnusedDocuments(now = new Date()) {
   return removed;
 }
 
-/** Clear uploads that reached Blob but were never confirmed in Postgres. */
-export async function cleanupUnconfirmedUploads(now = new Date()) {
+export interface UnconfirmedUploadCleanup {
+  /** Objects deleted in this invocation. */
+  removed: number;
+  /** True when the listing was not exhausted: the next run resumes from `cursor`. */
+  hasMore: boolean;
+  /** Listing cursor to continue from, or null when the store was fully scanned. */
+  cursor: string | null;
+}
+
+/**
+ * Clear uploads that reached Blob but were never confirmed in Postgres.
+ * The daily cron may not re-list the entire store every run (pages are
+ * 1000 blobs each), so the work is bounded by pages and a time budget;
+ * pass the returned cursor on the next run to resume where this one stopped.
+ */
+export async function cleanupUnconfirmedUploads(
+  now = new Date(),
+  options: { cursor?: string | null; maxPages?: number; timeBudgetMs?: number } = {}
+): Promise<UnconfirmedUploadCleanup> {
+  const maxPages = options.maxPages ?? 3;
+  const timeBudgetMs = options.timeBudgetMs ?? 20_000;
+  const startedAt = Date.now();
   const cutoff = now.getTime() - 24 * 60 * 60 * 1000;
-  let cursor: string | undefined;
+  let cursor = options.cursor ?? undefined;
   let removed = 0;
-  while (true) {
+  let pages = 0;
+  let hasMore = true;
+
+  while (hasMore && pages < maxPages) {
     const listing = await documentStorage.list(cursor);
+    pages += 1;
     const old = listing.blobs.filter((blob) => blob.uploadedAt.getTime() < cutoff);
     if (old.length) {
       const known = await prisma.document.findMany({
@@ -129,8 +153,10 @@ export async function cleanupUnconfirmedUploads(now = new Date()) {
         }
       }
     }
-    if (!listing.hasMore || !listing.cursor) break;
-    cursor = listing.cursor;
+    hasMore = Boolean(listing.hasMore && listing.cursor);
+    cursor = hasMore ? listing.cursor : undefined;
+    if (hasMore && Date.now() - startedAt >= timeBudgetMs) break;
   }
-  return removed;
+
+  return { removed, hasMore, cursor: hasMore ? cursor ?? null : null };
 }

@@ -1,7 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { z } from 'zod';
 import { auth } from '@/src/lib/auth';
 import { enforceUserScope } from '@/src/middleware/authMiddleware';
-import { getUserProfile, saveUserProfile } from '@/src/services/profile/storage';
+import { getUserProfile, saveUserProfile, EXPLANATION_STYLES, TECHNICAL_LEVELS } from '@/src/services/profile/storage';
+
+const ProfileUpdateSchema = z.object({
+  explanationStyle: z.enum(EXPLANATION_STYLES).optional(),
+  technicalLevel: z.enum(TECHNICAL_LEVELS).optional(),
+  preferences: z
+    .object({
+      likes: z.array(z.string().max(500)).max(100).optional(),
+      dislikes: z.array(z.string().max(500)).max(100).optional(),
+    })
+    .optional(),
+});
 
 
 export async function GET(
@@ -63,18 +75,24 @@ export async function PUT(
       return scopeCheck.error!;
     }
 
-    const body = await request.json();
-    const { explanationStyle, technicalLevel, preferences } = body;
+    const body = await request.json().catch(() => null);
+    const parsed = ProfileUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: 'Invalid request', errors: parsed.error.issues },
+        { status: 400 }
+      );
+    }
+    const { explanationStyle, technicalLevel, preferences } = parsed.data;
 
     const profile = await getUserProfile(targetUserId);
     if (!profile) {
       return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
     }
 
-    if (explanationStyle) profile.explanationStyle = explanationStyle;
-    if (technicalLevel) profile.technicalLevel = technicalLevel;
-    if (preferences)
-      profile.preferences = { ...profile.preferences, ...preferences };
+    if (explanationStyle !== undefined) profile.explanationStyle = explanationStyle;
+    if (technicalLevel !== undefined) profile.technicalLevel = technicalLevel;
+    if (preferences) profile.preferences = { ...profile.preferences, ...preferences };
 
     profile.lastUpdated = new Date();
 

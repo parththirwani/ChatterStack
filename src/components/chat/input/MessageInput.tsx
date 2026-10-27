@@ -19,9 +19,11 @@ interface MessageInputProps {
   loading: boolean;
   onStopGenerating?: () => void;
   placeholder?: string;
+  /** Rendered just above the input box, tucked behind its top edge. */
+  queue?: React.ReactNode;
 }
 
-const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, attachments, onAttachmentsChange, onSendMessage, loading, onStopGenerating, placeholder = 'Ask anything' }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, attachments, onAttachmentsChange, onSendMessage, loading, onStopGenerating, placeholder = 'Ask anything', queue }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState('');
@@ -40,7 +42,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     if (event.nativeEvent.isComposing) return;
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      if (!loading && !readingFiles && (message.trim() || attachments.length)) onSendMessage();
+      // While a reply streams, sending puts the message in the queue.
+      if (!readingFiles && (message.trim() || attachments.length)) onSendMessage();
     }
   };
 
@@ -65,9 +68,15 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     }
   };
 
+  const hasContent = Boolean(message.trim()) || attachments.length > 0;
+  // Streaming with something typed: the button queues it. Streaming with an
+  // empty box: the button stops the reply.
+  const showStop = loading && !hasContent;
+
   return (
     <div className="w-full">
-      <div className="rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.38] focus-within:ring-1 focus-within:ring-white/[0.12]">
+      {queue}
+      <div className="relative rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.38] focus-within:ring-1 focus-within:ring-white/[0.12]">
         <textarea
           ref={textareaRef}
           aria-label="Message"
@@ -86,7 +95,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
         </div>}
         <div className="flex min-h-12 items-center gap-2 px-3 pb-3">
           <input ref={fileInputRef} type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.txt,.md" aria-label="Choose files" className="sr-only" onChange={(event) => void addFiles(event.target.files)} />
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading || readingFiles} aria-label="Attach files" title="Attach files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"><Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={readingFiles} aria-label="Attach files" title="Attach files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"><Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>
           <CouncilToggle />
           <div className="flex-1" />
           <div className="flex min-w-0 items-center gap-0.5">
@@ -95,12 +104,13 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
           </div>
           <button
             type="button"
-            onClick={loading ? onStopGenerating : onSendMessage}
-            disabled={!loading && (readingFiles || (!message.trim() && attachments.length === 0))}
-            aria-label={loading ? 'Stop generating' : 'Send message'}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f0eeeb] text-[#1c1b19] transition-colors hover:bg-white disabled:bg-white/10 disabled:text-white/35 disabled:cursor-not-allowed"
+            onClick={showStop ? onStopGenerating : onSendMessage}
+            disabled={!showStop && (readingFiles || !hasContent)}
+            aria-label={showStop ? 'Stop generating' : loading ? 'Queue message' : 'Send message'}
+            title={loading && !showStop ? 'Queue message' : undefined}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/35 ${showStop ? 'bg-[#e5484d] text-white hover:bg-[#ec5d61]' : 'bg-[#f0eeeb] text-[#1c1b19] hover:bg-white'}`}
           >
-            {loading ? <Square className="h-3.5 w-3.5 fill-current" /> : <ArrowUp className="h-5 w-5" />}
+            {showStop ? <Square className="h-3.5 w-3.5 fill-current" /> : <ArrowUp className="h-5 w-5" />}
           </button>
         </div>
       </div>

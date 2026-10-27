@@ -35,6 +35,9 @@ interface ModelSelectionContextType {
   setThinkingLevel: (level: ThinkingLevel) => void;
 }
 
+/** What a message is sent with: model (or council), thinking, and council setup. */
+export type SendSettings = Pick<ModelSelectionContextType, 'activeModelId' | 'thinkingLevel' | 'councilMembers' | 'councilChair'>;
+
 const ModelSelectionContext = createContext<ModelSelectionContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'selectedModel';
