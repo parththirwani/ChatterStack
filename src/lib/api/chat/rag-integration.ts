@@ -15,7 +15,8 @@ export async function retrieveRAGContext(
   userId: string,
   query: string,
   conversationId: string,
-  conversationHistory: ConversationMessage[]
+  conversationHistory: ConversationMessage[],
+  traceId?: string
 ): Promise<string> {
   if (!RAG_ENABLED) {
     return '';
@@ -30,6 +31,7 @@ export async function retrieveRAGContext(
         role: m.role,
         content: m.content,
       })),
+      traceId,
     });
 
     return formatContextForLLM(context);
@@ -44,7 +46,8 @@ export async function ingestConversationData(
   conversationId: string,
   userMessage: string,
   aiResponse: string,
-  selectedModel: string
+  selectedModel: string,
+  traceId?: string
 ) {
   if (!RAG_ENABLED) return;
 
@@ -58,6 +61,7 @@ export async function ingestConversationData(
     messageId: userMessageId,
     content: userMessage,
     role: 'user',
+    traceId,
   }).catch((err) => console.error('User message ingestion failed:', err));
 
   // Ingest AI response
@@ -68,6 +72,7 @@ export async function ingestConversationData(
     content: aiResponse,
     role: 'assistant',
     modelUsed: selectedModel,
+    traceId,
   }).catch((err) => console.error('AI message ingestion failed:', err));
 
   // Update profile

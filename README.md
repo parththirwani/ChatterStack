@@ -53,3 +53,46 @@ The Docker app can use the same Blob store when its `.env.local` contains
 `BLOB_READ_WRITE_TOKEN`. For a Docker-only deployment, invoke
 `GET /api/cron/cleanup-documents` daily with
 `Authorization: Bearer <CRON_SECRET>`.
+
+## LLM observability (OpenObserve)
+
+Every model call - the streamed chat answer, each council stage, the title model
+and the embedding calls - can be recorded to an OpenObserve stream for latency,
+token, cost and failure analysis. Nothing is sent unless both
+`OPENOBSERVE_URL` and credentials are set.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `OPENOBSERVE_URL` | No | Base URL, e.g. `https://observe.example.com`. Unset disables everything. |
+| `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` | No | Basic auth user and password. |
+| `OPENOBSERVE_AUTH` | No | Instead of the pair: a ready base64 Basic token, or `user:password`. |
+| `OPENOBSERVE_ORG` | No | Organisation, defaults to `default`. |
+| `OPENOBSERVE_STREAM` | No | Stream name, defaults to `llm_calls`. |
+| `OPENOBSERVE_LOG_CONTENT` | No | `true` also stores prompts and answers. See the warning below. |
+
+The client (`src/lib/observability/openobserve.ts`) is deliberately
+dependency-free: it POSTs batches of JSON records to
+`/api/{org}/{stream}/_json`. No OpenTelemetry provider is registered here -
+Sentry's SDK owns the process-wide OTel setup, and registering a second one
+would fight it. Records are buffered in memory (capped, oldest dropped first)
+and flushed with `after()` from `next/server`, i.e. once the response -
+including the chat's SSE stream - is finished. Sends time out after 3 seconds,
+failures are swallowed, and a failing endpoint gets a 30 second backoff, so
+observability can never slow down or break a chat.
+
+Each record carries a `trace_id` shared by every call of one chat request, so a
+council run (member answers, peer rankings, chair synthesis) and the embeddings
+it triggered can be read back as one story. Fields: model, provider, thinking
+level, status (`ok` / `error` / `aborted`), duration, time to first token, input
+and output tokens (`estimated: true` when OpenRouter sent no usage), `cost_usd`
+from the pricing in `src/config/models.ts`, finish reason, message count,
+attachment count, whether retrieved context was used, and whether the user
+pressed Stop. Query set and field notes:
+[`docs/openobserve-llm-observability.md`](docs/openobserve-llm-observability.md).
+
+**Privacy.** Prompts, answers, titles, filenames and document or retrieved
+content are not recorded. `user_id` is the NextAuth id, never an email. Only
+error types and truncated provider messages travel with failures. If you set
+`OPENOBSERVE_LOG_CONTENT=true`, prompts and answers are stored in OpenObserve
+too (each cut to 2,000 characters, attachment bytes never included) - treat that
+stream as holding private user content, and restrict who can query it.

@@ -1,8 +1,17 @@
 import { formatMessagesWithSystemContext } from '@/src/services/prompt/promptService';
 import { effectiveThinkingLevel, type ThinkingLevel } from '@/src/config/models';
+import {
+  promptText,
+  traceLlmCall,
+  type LlmCallMetrics,
+  type LlmTraceContext,
+} from '@/src/lib/observability/trace-llm-call';
 import type { OpenRouterPart } from './attachments';
 
 type ChatMessage = { role: string; content: string | OpenRouterPart[] };
+
+/** Everything except the model and the signal, which the call already knows. */
+export type StreamTrace = Omit<LlmTraceContext, 'model' | 'signal'>;
 
 export interface StreamOptions {
   thinkingLevel?: ThinkingLevel;
@@ -10,6 +19,8 @@ export interface StreamOptions {
   onReasoning?: (chunk: string) => void;
   /** Cancels the upstream request (the user stopped or disconnected). */
   signal?: AbortSignal;
+  /** When set, this call is recorded to OpenObserve. No-op when it is unset. */
+  trace?: StreamTrace;
 }
 
 // Reasoning tokens count against max_tokens, so higher effort needs more room
@@ -30,16 +41,18 @@ function reasoningParam(level: ThinkingLevel) {
 
 const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
 
-/**
- * Streams a completion from OpenRouter without adding any system context.
- * Returns the full answer text (reasoning is reported only via onReasoning).
- * If `signal` aborts mid-stream, the upstream request is cancelled and the
- * text received so far is returned.
- */
-export async function streamCompletion(
+const idleMetrics: LlmCallMetrics = {
+  firstToken: () => {},
+  usage: () => {},
+  finishReason: () => {},
+  completion: () => {},
+};
+
+async function runStream(
   messages: ChatMessage[],
   model: string,
-  { thinkingLevel = 'off', onChunk, onReasoning, signal }: StreamOptions = {}
+  { thinkingLevel = 'off', onChunk, onReasoning, signal }: StreamOptions,
+  metrics: LlmCallMetrics
 ): Promise<string> {
   // Clamp to what this model supports; e.g. Gemini has no Off and no Max.
   const level = effectiveThinkingLevel(model, thinkingLevel);
@@ -84,6 +97,7 @@ export async function streamCompletion(
   // A stream that ends normally without any answer text (for example, the
   // model spent its whole token budget thinking) must not look like success.
   const finish = () => {
+    metrics.completion(fullContent);
     // Stop before any text is not a failure.
     if (fullContent || signal?.aborted) return fullContent;
     throw new Error(
@@ -103,13 +117,19 @@ export async function streamCompletion(
     if (parsed.error) {
       throw new Error(parsed.error.message || 'OpenRouter stream error');
     }
+    if (parsed.usage) metrics.usage(parsed.usage);
     const choice = parsed.choices?.[0];
-    if (choice?.finish_reason) finishReason = choice.finish_reason;
+    if (choice?.finish_reason) {
+      finishReason = choice.finish_reason;
+      metrics.finishReason(choice.finish_reason);
+    }
     const delta = choice?.delta;
     if (typeof delta?.reasoning === 'string' && delta.reasoning) {
+      metrics.firstToken();
       onReasoning?.(delta.reasoning);
     }
     if (typeof delta?.content === 'string' && delta.content) {
+      metrics.firstToken();
       fullContent += delta.content;
       onChunk?.(delta.content);
     }
@@ -129,7 +149,10 @@ export async function streamCompletion(
       }
     }
   } catch (error) {
-    if (isAbort(error)) return fullContent;
+    if (isAbort(error)) {
+      metrics.completion(fullContent);
+      return fullContent;
+    }
     throw error;
   }
 
@@ -139,10 +162,48 @@ export async function streamCompletion(
   return finish();
 }
 
+function traceContext(
+  trace: StreamTrace,
+  model: string,
+  signal: AbortSignal | undefined,
+  messages: ChatMessage[]
+): LlmTraceContext {
+  return {
+    ...trace,
+    model,
+    signal,
+    prompt: trace.prompt ?? promptText(messages),
+    messageCount: trace.messageCount ?? messages.length,
+  };
+}
+
+/**
+ * Streams a completion from OpenRouter without adding any system context.
+ * Returns the full answer text (reasoning is reported only via onReasoning).
+ * If `signal` aborts mid-stream, the upstream request is cancelled and the
+ * text received so far is returned.
+ */
+export async function streamCompletion(
+  messages: ChatMessage[],
+  model: string,
+  options: StreamOptions = {}
+): Promise<string> {
+  if (!options.trace) return runStream(messages, model, options, idleMetrics);
+
+  return traceLlmCall(traceContext(options.trace, model, options.signal, messages), (metrics) =>
+    runStream(messages, model, options, metrics)
+  );
+}
+
 export async function createCompletion(
   messages: ChatMessage[],
   model: string,
   options: StreamOptions = {}
 ): Promise<string> {
-  return streamCompletion(formatMessagesWithSystemContext(messages, model), model, options);
+  const formatted = formatMessagesWithSystemContext(messages, model);
+  if (!options.trace) return runStream(formatted, model, options, idleMetrics);
+
+  return traceLlmCall(traceContext(options.trace, model, options.signal, formatted), (metrics) =>
+    runStream(formatted, model, options, metrics)
+  );
 }
