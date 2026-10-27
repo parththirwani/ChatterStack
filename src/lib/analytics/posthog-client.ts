@@ -67,6 +67,11 @@ export function initPostHog(config: PostHogClientConfig | null | undefined): boo
   if (typeof window === 'undefined' || isDoNotTrack()) return false;
 
   posthog.init(config.key, {
+    // Every browser event (pageviews included) carries the deployment, so
+    // development / preview / production can be filtered apart.
+    loaded: (instance) => {
+      if (config.environment) instance.register({ environment: config.environment });
+    },
     api_host: config.host,
     defaults: '2026-08-30',
     person_profiles: 'identified_only',

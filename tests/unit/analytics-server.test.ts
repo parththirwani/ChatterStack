@@ -106,7 +106,7 @@ describe('captureServerEvent', () => {
     expect(capture).toHaveBeenCalledWith({
       distinctId: USER,
       event: 'conversation_pinned',
-      properties: { pinned: true },
+      properties: { pinned: true, environment: 'development' },
     });
   });
 
@@ -153,6 +153,7 @@ describe('captureServerEvent', () => {
       thinking_level: 'medium',
       attachment_count: 1,
       message_length_bucket: '1-99',
+      environment: 'development',
     });
   });
 });

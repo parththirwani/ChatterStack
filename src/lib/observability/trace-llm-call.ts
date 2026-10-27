@@ -1,4 +1,5 @@
 import { estimateCostUsd, estimateTokens } from './cost';
+import { appEnvironment } from './environment';
 import {
   describeError,
   enqueueLlmCallRecord,
@@ -176,6 +177,7 @@ function recordCall(
     enqueueLlmCallRecord(compact({
       _timestamp: startedAt * 1000,
       timestamp: new Date(startedAt).toISOString(),
+      environment: appEnvironment(),
       trace_id: context.traceId,
       span: context.span,
       provider: context.provider ?? PROVIDER,

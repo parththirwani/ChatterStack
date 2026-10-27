@@ -36,6 +36,7 @@ import {
   postToOpenObserve,
   type LlmCallStatus,
 } from './openobserve';
+import { appEnvironment } from './environment';
 
 export const SERVICE_NAME = 'chatterstack';
 /** The user's message and the model's answer are each cut to this many characters. */
@@ -173,7 +174,9 @@ export function toOtlpPayload(spans: FinishedSpan[], droppedSinceLastSend = 0) {
         resource: {
           attributes: otlpAttributes({
             'service.name': SERVICE_NAME,
-            'deployment.environment': process.env.SENTRY_ENVIRONMENT || process.env.VERCEL_ENV || process.env.NODE_ENV,
+            // Same development / preview / production value as Sentry and PostHog.
+            'deployment.environment': appEnvironment(),
+            'deployment.environment.name': appEnvironment(),
             // Spans this instance had to drop (buffer cap, refused payload) since the last send.
             'chatterstack.spans_dropped': droppedSinceLastSend || undefined,
           }),

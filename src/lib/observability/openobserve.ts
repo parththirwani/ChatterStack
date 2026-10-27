@@ -18,6 +18,8 @@ export interface LlmCallRecord {
   /** OpenObserve's time field, in microseconds. */
   _timestamp: number;
   timestamp: string;
+  /** development / preview / production (see environment.ts). */
+  environment?: string;
   trace_id: string;
   span: string;
   user_id?: string;

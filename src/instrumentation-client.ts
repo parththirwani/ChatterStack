@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/nextjs';
 import { clientSentryDsn, sentryBaseOptions } from './lib/observability/sentry-options';
+import { clientAppEnvironment } from './lib/observability/environment';
 import { scrubBreadcrumb, scrubEvent, type SentryEventLike, type SentryLikeBreadcrumb } from './lib/observability/sentry-filters';
 
 /**
@@ -8,7 +9,7 @@ import { scrubBreadcrumb, scrubEvent, type SentryEventLike, type SentryLikeBread
  * the SDK stays disabled and nothing is sent.
  */
 Sentry.init({
-  ...sentryBaseOptions(clientSentryDsn()),
+  ...sentryBaseOptions(clientSentryDsn(), clientAppEnvironment()),
   beforeSend: (event, hint) => scrubEvent(event as unknown as SentryEventLike, hint) as typeof event | null,
   beforeBreadcrumb: (breadcrumb) => scrubBreadcrumb(breadcrumb as unknown as SentryLikeBreadcrumb) as typeof breadcrumb | null,
 });

@@ -143,3 +143,12 @@ describe('PostHogAnalytics', () => {
     expect(posthog.reset).not.toHaveBeenCalled();
   });
 });
+
+describe('PostHog environment tag', () => {
+  it('registers the deployment as a property on every browser event', async () => {
+    render(<PostHogAnalytics config={{ ...config, environment: 'development' }}><p>child</p></PostHogAnalytics>);
+    const register = vi.fn();
+    (initOptions().loaded as (instance: { register: typeof register }) => void)({ register });
+    expect(register).toHaveBeenCalledWith({ environment: 'development' });
+  });
+});
