@@ -25,3 +25,17 @@ if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({ matches: false, media: query, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false }) as MediaQueryList;
 }
+
+// motion's useInView needs an IntersectionObserver; the stub never fires, so
+// arc components stay in their pre-reveal state and tests assert ARIA, not style.
+if (!('IntersectionObserver' in globalThis)) {
+  class StubIntersectionObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+    takeRecords() {
+      return [];
+    }
+  }
+  (globalThis as Record<string, unknown>).IntersectionObserver = StubIntersectionObserver;
+}

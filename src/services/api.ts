@@ -8,6 +8,7 @@ import type {
   SSEData,
 } from "../types/chat.types";
 import { apiOptimizer, cacheInvalidators, HttpError } from "./apiOptimizer";
+import type { DailyActivityRow } from "@/src/lib/client/activity";
 
 export interface ChatStreamHandlers {
   onChunk?: (chunk: string) => void;
@@ -284,6 +285,17 @@ export class ApiService {
     } catch {
       return { models: [] };
     }
+  }
+
+  // ============= Activity (No caching) =============
+
+  /** Daily message counts for the signed-in user, newest window of `days` calendar days. */
+  static async getDailyActivity(days = 91): Promise<DailyActivityRow[]> {
+    const response = await this.fetchWithCredentials(`/api/activity/daily?days=${days}`, {
+      cache: 'no-store',
+    });
+    const data = (await response.json()) as { activity?: DailyActivityRow[] };
+    return data.activity ?? [];
   }
 
   // ============= RAG (No caching) =============

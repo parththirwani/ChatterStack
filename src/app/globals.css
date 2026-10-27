@@ -27,6 +27,44 @@
   --focus-ring: rgb(255 255 255 / 0.42);
 }
 
+/* Design tokens for the Arc UI registry components (src/components/arc).
+   They are token-driven CSS modules; the values are mapped to the app's
+   dark palette. The app is dark-only for now, so :root is enough. */
+:root {
+  --surface: #191919;
+  --surface-raised: #232323;
+  --surface-muted: rgb(255 255 255 / 0.07);
+  --text-secondary: #c9c5c0;
+  --text-muted: #8f8b86;
+  --border: rgb(255 255 255 / 0.09);
+  --border-strong: rgb(255 255 255 / 0.18);
+  --success: #34d399;
+  --danger: var(--color-danger, #f87171);
+  --warning: #fbbf24;
+  --radius-pill: 999px;
+  --radius-panel: 16px;
+  --shadow-floating: 0 24px 64px -12px rgb(0 0 0 / 0.55), 0 0 0 0.5px rgb(255 255 255 / 0.06);
+  --space-2: 8px;
+  --font-body: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --text-xs: 11px;
+  --text-sm: 13px;
+  --text-base: 15px;
+  --tracking-body: -0.01em;
+  --duration-fast: 0.16s;
+  --duration-standard: 0.24s;
+  --duration-spring: 0.32s;
+  --ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Extra tokens for the activity heatmap. */
+  --accent: #f0eeeb;
+  --ease-enter: cubic-bezier(0.16, 1, 0.3, 1);
+  --leading-body: 1.5;
+  --radius-control: 8px;
+  --shadow-raised: 0 8px 24px -8px rgb(0 0 0 / 0.45);
+  --space-3: 12px;
+  --space-4: 16px;
+}
+
 .chat-code-block code.hljs,
 .chat-code-block .hljs {
   background: transparent;
