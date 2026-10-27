@@ -44,3 +44,24 @@ export async function addMessagesToConversation(
     prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: messages[messages.length - 1].createdAt } }),
   ]);
 }
+
+/**
+ * Drop the last exchange (the question and the answer saved with it) so a retry
+ * can save its replacement in that spot instead of appending a second copy.
+ * Returns how many rows went away.
+ */
+export async function deleteLastExchange(conversationId: string): Promise<number> {
+  const question = await prisma.message.findFirst({
+    where: { conversationId, role: Role.User },
+    orderBy: { createdAt: 'desc' },
+    select: { createdAt: true },
+  });
+  if (!question) return 0;
+
+  // The exchange is the question plus anything saved after it (its answer,
+  // or nothing at all when the model failed to answer).
+  const { count } = await prisma.message.deleteMany({
+    where: { conversationId, createdAt: { gte: question.createdAt } },
+  });
+  return count;
+}

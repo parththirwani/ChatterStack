@@ -8,6 +8,7 @@
 export const AnalyticsEvents = {
   SignInStarted: 'sign_in_started',
   ChatMessageSent: 'chat_message_sent',
+  ChatMessageRetried: 'chat_message_retried',
   ChatResponseCompleted: 'chat_response_completed',
   CouncilRunCompleted: 'council_run_completed',
   ConversationCreated: 'conversation_created',
@@ -36,6 +37,12 @@ export interface ChatMessageSentProps {
   thinking_level: string;
   attachment_count: number;
   message_length_bucket: MessageLengthBucket;
+}
+
+export interface ChatMessageRetriedProps {
+  model_id: string;
+  council: boolean;
+  thinking_level: string;
 }
 
 export interface ChatResponseCompletedProps {
@@ -81,6 +88,7 @@ export interface RateLimitHitProps {
 export interface AnalyticsEventProps {
   sign_in_started: SignInStartedProps;
   chat_message_sent: ChatMessageSentProps;
+  chat_message_retried: ChatMessageRetriedProps;
   chat_response_completed: ChatResponseCompletedProps;
   council_run_completed: CouncilRunCompletedProps;
   conversation_created: ConversationCreatedProps;
@@ -126,6 +134,18 @@ export function chatMessageSentProps(input: {
     thinking_level: input.thinkingLevel,
     attachment_count: input.attachmentCount,
     message_length_bucket: messageLengthBucket(input.messageLength),
+  };
+}
+
+export function chatMessageRetriedProps(input: {
+  modelId: string;
+  council: boolean;
+  thinkingLevel: string;
+}): ChatMessageRetriedProps {
+  return {
+    model_id: input.modelId,
+    council: input.council,
+    thinking_level: input.thinkingLevel,
   };
 }
 
