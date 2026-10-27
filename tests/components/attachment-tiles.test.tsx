@@ -117,6 +117,64 @@ describe('attachments while uploading', () => {
   });
 });
 
+describe('attachment bookkeeping', () => {
+  it('attaches identical files once', async () => {
+    const user = userEvent.setup();
+    uploadMock.mockResolvedValue({ documentId: 'doc-1', name: 'cat.png', mimeType: 'image/png', size: 3 });
+
+    render(<Composer />);
+    await chooseFiles(user, file('cat.png', 'image/png'), file('copy.png', 'image/png'));
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled());
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+  });
+
+  it('releases the local preview once its attachment is removed', async () => {
+    const user = userEvent.setup();
+    uploadMock.mockResolvedValue({ documentId: 'doc-1', name: 'cat.png', mimeType: 'image/png', size: 3 });
+
+    render(<Composer />);
+    await chooseFiles(user, file('cat.png', 'image/png'));
+    await user.click(await screen.findByRole('button', { name: 'Remove cat.png' }));
+
+    expect(screen.queryByRole('listitem')).toBeNull();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:local-preview');
+  });
+});
+
+describe('previewing a file that was just uploaded', () => {
+  const contentCalls = () => vi.mocked(fetch).mock.calls.filter(([input]) => String(input).includes('/api/documents/'));
+
+  it('opens from the picked file without downloading it back', async () => {
+    const user = userEvent.setup();
+    uploadMock.mockResolvedValue({ documentId: 'doc-1', name: 'notes.txt', mimeType: 'text/plain', size: 11 });
+
+    render(<Composer />);
+    await chooseFiles(user, new File(['local notes'], 'notes.txt', { type: 'text/plain' }));
+    await user.click(await screen.findByRole('button', { name: 'Preview notes.txt' }));
+
+    expect(await screen.findByText('local notes')).toBeInTheDocument();
+    expect(contentCalls()).toHaveLength(0);
+  });
+
+  it('still asks the server for DOCX text, which only it can extract', async () => {
+    const user = userEvent.setup();
+    const docx = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    uploadMock.mockResolvedValue({ documentId: 'doc-2', name: 'plan.docx', mimeType: docx, size: 4 });
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes('/api/documents/')) return new Response('extracted text');
+      return Response.json(String(input) === '/api/skills' ? { skills: [] } : {});
+    }));
+
+    render(<Composer />);
+    await chooseFiles(user, new File(['PK'], 'plan.docx', { type: docx }));
+    await user.click(await screen.findByRole('button', { name: 'Preview plan.docx' }));
+
+    expect(await screen.findByText('extracted text')).toBeInTheDocument();
+    expect(contentCalls().map(([input]) => String(input))).toEqual(['/api/documents/doc-2/content?preview=1']);
+  });
+});
+
 describe('attachments on a sent message', () => {
   it('renders image attachments as thumbnails that open the document preview', async () => {
     const user = userEvent.setup();

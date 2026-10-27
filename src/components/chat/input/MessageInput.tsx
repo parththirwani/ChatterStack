@@ -59,6 +59,9 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   // Keeps the already-decoded local preview on screen after the upload
   // finishes, so the tile does not flash while the saved file loads.
   const previewsByDocument = useRef(new Map<string, string>());
+  // The picked files, so a just-uploaded document previews without being
+  // downloaded back from storage.
+  const filesByDocument = useRef(new Map<string, File>());
   // Uploads the user dismissed while they were still in flight.
   const cancelledUploads = useRef(new Set<string>());
   const uploading = pending.some((file) => file.status === 'uploading');
@@ -142,6 +145,20 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }, [message]);
 
+  // Once an attachment is removed or sent, nothing needs its local copy.
+  useEffect(() => {
+    const live = new Set(attachments.map((file) => file.documentId));
+    previewsByDocument.current.forEach((url, id) => {
+      if (live.has(id)) return;
+      URL.revokeObjectURL(url);
+      objectUrls.current = objectUrls.current.filter((entry) => entry !== url);
+      previewsByDocument.current.delete(id);
+    });
+    filesByDocument.current.forEach((_file, id) => {
+      if (!live.has(id)) filesByDocument.current.delete(id);
+    });
+  }, [attachments]);
+
   // Local previews outlive the upload, so release them when the composer goes.
   useEffect(() => () => {
     objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -210,14 +227,19 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
       if (result.status === 'fulfilled') {
         if (cancelledUploads.current.has(key)) return;
         saved.push(result.value.attachment);
-        const { previewUrl } = batch[index];
+        const { previewUrl, file } = batch[index];
         if (previewUrl) previewsByDocument.current.set(result.value.attachment.documentId, previewUrl);
+        filesByDocument.current.set(result.value.attachment.documentId, file);
       } else {
         failures.push({ key, message: result.reason instanceof Error ? result.reason.message : 'Could not upload file.' });
       }
     });
 
-    if (saved.length) onAttachmentsChange((current) => [...current, ...saved]);
+    if (saved.length) onAttachmentsChange((current) => {
+      // Identical files dedupe to one saved document; attach it once.
+      const seen = new Set(current.map((file) => file.documentId));
+      return [...current, ...saved.filter((file) => !seen.has(file.documentId) && (seen.add(file.documentId), true))];
+    });
     setPending((current) => current
       .filter((entry) => !batch.some((item) => item.key === entry.key) || failures.some((failure) => failure.key === entry.key))
       .map((entry) => {
@@ -352,7 +374,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
         </div>
       </div>
       {fileError && <p role="alert" className="mt-2 px-2 text-xs text-red-300">{fileError}</p>}
-      {preview && <DocumentPreview document={preview} onClose={() => setPreview(null)} />}
+      {preview && <DocumentPreview document={preview} localFile={filesByDocument.current.get(preview.id)} onClose={() => setPreview(null)} />}
       <LLMTokenIndicator isCouncilMode={councilMode} className="mt-2" />
     </div>
   );

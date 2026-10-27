@@ -10,7 +10,14 @@ interface PreviewDocument {
   mimeType: string;
 }
 
-export default function DocumentPreview({ document: file, onClose }: { document: PreviewDocument; onClose: () => void }) {
+const DOCX = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+
+/**
+ * `localFile` is the picked file when it was just uploaded from this browser.
+ * Its bytes are the saved bytes, so the preview opens without downloading
+ * them again. DOCX still goes through the server, which extracts its text.
+ */
+export default function DocumentPreview({ document: file, localFile, onClose }: { document: PreviewDocument; localFile?: Blob; onClose: () => void }) {
   const [content, setContent] = useState<{ kind: 'loading' | 'text' | 'file' | 'error'; value: string }>({ kind: 'loading', value: '' });
   const closeButton = useRef<HTMLButtonElement>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
@@ -32,17 +39,21 @@ export default function DocumentPreview({ document: file, onClose }: { document:
   useEffect(() => {
     const controller = new AbortController();
     let objectUrl: string | undefined;
+    const openFromServer = async () => {
+      const response = await fetch(`${url}?preview=1`, { signal: controller.signal });
+      if (!response.ok) throw new Error('Could not open this file.');
+      return response;
+    };
     const load = async () => {
       setContent({ kind: 'loading', value: '' });
       try {
-        const response = await fetch(`${url}?preview=1`, { signal: controller.signal });
-        if (!response.ok) throw new Error('Could not open this file.');
-        const isText = file.mimeType.startsWith('text/') || file.mimeType.endsWith('wordprocessingml.document');
+        const local = file.mimeType === DOCX ? undefined : localFile;
+        const isText = file.mimeType.startsWith('text/') || file.mimeType === DOCX;
         if (isText) {
-          const value = await response.text();
+          const value = local ? await local.text() : await (await openFromServer()).text();
           if (!controller.signal.aborted) setContent({ kind: 'text', value });
         } else {
-          const blob = await response.blob();
+          const blob = local ? local.slice(0, local.size, file.mimeType) : await (await openFromServer()).blob();
           if (controller.signal.aborted) return;
           objectUrl = URL.createObjectURL(blob);
           setContent({ kind: 'file', value: objectUrl });
@@ -56,7 +67,7 @@ export default function DocumentPreview({ document: file, onClose }: { document:
       controller.abort();
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [file.id, file.mimeType, url]);
+  }, [file.id, file.mimeType, localFile, url]);
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/75 p-4" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>

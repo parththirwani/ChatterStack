@@ -51,6 +51,8 @@ export default function AttachmentTile({
           <img
             src={source}
             alt={name}
+            decoding="async"
+            loading="lazy"
             className={`h-full w-full object-cover transition-[filter,opacity] duration-200 ${uploading ? 'opacity-70 blur-[1px]' : 'opacity-100'} ${removed ? 'grayscale' : ''}`}
           />
         : <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-1.5 text-center">
