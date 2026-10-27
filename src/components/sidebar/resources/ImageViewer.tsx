@@ -81,6 +81,8 @@ interface Gesture {
   originX: number;
   originY: number;
   moved: boolean;
+  /** Dragging a zoomed image moves it; at fit the magnifier draws a region. */
+  mode: 'pan' | 'region';
 }
 
 /**
@@ -158,8 +160,10 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
     if (event.button !== 0 || (tool === 'pan' && !zoomed)) return;
     event.currentTarget.setPointerCapture?.(event.pointerId);
     const point = local(event);
-    gesture.current = { pointerId: event.pointerId, startX: point.x, startY: point.y, originX: view.x, originY: view.y, moved: false };
-    if (tool === 'pan') setPanning(true);
+    // A zoomed image is always dragged by the hand, whichever tool is chosen.
+    const mode = zoomed ? 'pan' : 'region';
+    gesture.current = { pointerId: event.pointerId, startX: point.x, startY: point.y, originX: view.x, originY: view.y, moved: false, mode };
+    if (mode === 'pan') setPanning(true);
   };
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const start = gesture.current;
@@ -169,7 +173,7 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
     const dy = point.y - start.startY;
     if (!start.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
     start.moved = true;
-    if (tool === 'pan') {
+    if (start.mode === 'pan') {
       apply((current) => ({ ...current, x: start.originX + dx, y: start.originY + dy }), 0);
     } else {
       setBox({ x: Math.min(start.startX, point.x), y: Math.min(start.startY, point.y), width: Math.abs(dx), height: Math.abs(dy) });
@@ -184,6 +188,7 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
     if (tool !== 'magnify' || cancelled) return;
     const point = local(event);
     if (start.moved) {
+      if (start.mode === 'pan') return;
       const region = { x: Math.min(start.startX, point.x), y: Math.min(start.startY, point.y), width: Math.abs(point.x - start.startX), height: Math.abs(point.y - start.startY) };
       apply((current) => viewForRegion(current, point, region));
     } else if (event.altKey) {
@@ -199,9 +204,8 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
     else zoomTo(() => 2, toFocal(local(event)));
   };
 
-  const cursor = tool === 'pan'
-    ? (zoomed ? (panning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default')
-    : (zoomOutKey ? 'cursor-zoom-out' : 'cursor-zoom-in');
+  const hand = zoomed ? (panning ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default';
+  const cursor = tool === 'pan' ? hand : zoomOutKey ? 'cursor-zoom-out' : zoomed ? hand : 'cursor-zoom-in';
   const button = 'flex h-8 w-8 items-center justify-center rounded-lg text-[#d8d5d1] transition-colors hover:bg-white/10 hover:text-white disabled:opacity-35 disabled:hover:bg-transparent';
   const toolButton = (active: boolean) => `${button} ${active ? 'bg-white/15 text-white' : ''}`;
 
@@ -237,7 +241,7 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
         className="pointer-events-none absolute rounded-sm border border-white/90 bg-white/10"
       />}
       <div role="toolbar" aria-label="Zoom" className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/15 bg-[#161616]/90 p-1 shadow-lg backdrop-blur">
-        <button type="button" onClick={() => setTool('magnify')} aria-pressed={tool === 'magnify'} aria-label="Magnifier" title="Magnifier: click to zoom in (150%, then 200%), drag to zoom to a region, Alt-click to step back out" className={toolButton(tool === 'magnify')}><ZoomIn className="h-4 w-4" /></button>
+        <button type="button" onClick={() => setTool('magnify')} aria-pressed={tool === 'magnify'} aria-label="Magnifier" title="Magnifier: click to zoom in (150%, then 200%), drag to zoom to a region, Alt-click to step back out. Drag a zoomed image to move it" className={toolButton(tool === 'magnify')}><ZoomIn className="h-4 w-4" /></button>
         <button type="button" onClick={() => setTool('pan')} aria-pressed={tool === 'pan'} aria-label="Pan" title="Pan: drag a zoomed image" className={toolButton(tool === 'pan')}><Hand className="h-4 w-4" /></button>
         <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/15" />
         <button type="button" onClick={() => zoomTo((scale) => stepScale(scale, -1))} disabled={view.scale <= MIN_SCALE} aria-label="Zoom out" title="Zoom out (−)" className={button}><Minus className="h-4 w-4" /></button>

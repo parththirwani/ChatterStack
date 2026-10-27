@@ -268,6 +268,31 @@ describe('zooming an image preview', () => {
     expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
   });
 
+  it('shows a hand and drags a zoomed image around, even with the magnifier', async () => {
+    const user = await openImage();
+    const frame = screen.getByTestId('image-viewer-frame');
+    const image = screen.getAllByAltText('cat.png').at(-1)!;
+    expect(frame.className).toContain('cursor-zoom-in');
+
+    await user.click(frame);
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
+    expect(frame.className).toContain('cursor-grab');
+
+    await user.pointer([
+      { keys: '[MouseLeft>]', target: frame, coords: { clientX: 100, clientY: 100 } },
+      { coords: { clientX: 160, clientY: 130 } },
+    ]);
+    expect(frame.className).toContain('cursor-grabbing');
+    expect(image.style.transform).toContain('translate(60px, 30px)');
+    await user.pointer({ keys: '[/MouseLeft]' });
+
+    // Dragging moved the image without changing the zoom, and the hand is back.
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
+    expect(image.style.transform).toContain('translate(60px, 30px)');
+    expect(frame.className).toMatch(/cursor-grab$/);
+    expect(screen.queryByTestId('zoom-region')).toBeNull();
+  });
+
   it('switches to the hand to pan, where the magnifier no longer zooms on click', async () => {
     const user = await openImage();
     const frame = screen.getByTestId('image-viewer-frame');
