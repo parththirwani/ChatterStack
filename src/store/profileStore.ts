@@ -7,6 +7,8 @@ import { persist, createJSONStorage } from 'zustand/middleware';
  * exists. Empty values mean "fall back to the sign-in provider's data".
  */
 export interface ProfileOverrides {
+  /** The signed-in user these edits belong to; another account on this device ignores them. */
+  ownerId: string | null;
   /** Display name; '' when the session name should be used. */
   name: string;
   bio: string;
@@ -19,7 +21,7 @@ interface ProfileState extends ProfileOverrides {
   resetProfile: () => void;
 }
 
-const EMPTY_PROFILE: ProfileOverrides = { name: '', bio: '', avatarUrl: null };
+const EMPTY_PROFILE: ProfileOverrides = { ownerId: null, name: '', bio: '', avatarUrl: null };
 
 export const useProfileStore = create<ProfileState>()(
   persist(
@@ -34,3 +36,9 @@ export const useProfileStore = create<ProfileState>()(
     }
   )
 );
+
+/** The saved edits for `userId`, or none if they were made by another account on this device. */
+export function overridesFor(state: ProfileOverrides, userId: string | undefined): Omit<ProfileOverrides, 'ownerId'> {
+  if (!userId || state.ownerId !== userId) return { name: '', bio: '', avatarUrl: null };
+  return { name: state.name, bio: state.bio, avatarUrl: state.avatarUrl };
+}

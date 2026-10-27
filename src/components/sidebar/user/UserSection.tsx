@@ -4,7 +4,8 @@ import React, { memo, useEffect, useState } from 'react';
 import { LogIn, UserRound } from 'lucide-react';
 import { User as UserType } from '@/src/types/user.types';
 import { UserMenu } from '@/src/components/arc/user-menu/user-menu';
-import { useProfileStore } from '@/src/store/profileStore';
+import { useShallow } from 'zustand/react/shallow';
+import { overridesFor, useProfileStore } from '@/src/store/profileStore';
 import { useChatActivity } from '@/src/hooks/useChatActivity';
 import ProfileModal, { ACTIVITY_WINDOW_DAYS } from '@/src/components/sidebar/user/ProfileModal';
 
@@ -34,9 +35,10 @@ const UserSection: React.FC<UserSectionProps> = ({
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  const storedName = useProfileStore((state) => state.name);
-  const storedBio = useProfileStore((state) => state.bio);
-  const storedAvatar = useProfileStore((state) => state.avatarUrl);
+  // Edits saved on this device by a different account are not shown.
+  const { name: storedName, bio: storedBio, avatarUrl: storedAvatar } = useProfileStore(
+    useShallow((state) => overridesFor(state, user?.id))
+  );
   const updateProfile = useProfileStore((state) => state.updateProfile);
   const activity = useChatActivity(profileOpen, ACTIVITY_WINDOW_DAYS);
 
@@ -68,7 +70,7 @@ const UserSection: React.FC<UserSectionProps> = ({
   const bio = mounted ? storedBio : '';
 
   const handleSaveProfile = ({ name: nextName, bio: nextBio, avatarUrl }: { name: string; bio: string; avatarUrl: string | null }) => {
-    updateProfile({ name: nextName, bio: nextBio, avatarUrl: avatarUrl ?? '' });
+    updateProfile({ ownerId: user?.id ?? null, name: nextName, bio: nextBio, avatarUrl: avatarUrl ?? '' });
   };
 
   return (

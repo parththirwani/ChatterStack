@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { useProfileStore } from '@/src/store/profileStore';
+import { overridesFor, useProfileStore } from '@/src/store/profileStore';
 
 describe('profile store (mock)', () => {
   beforeEach(() => {
@@ -30,5 +30,13 @@ describe('profile store (mock)', () => {
 
     useProfileStore.getState().resetProfile();
     expect(useProfileStore.getState().avatarUrl).toBeNull();
+  });
+
+  it('keeps one account\'s edits away from another account on the same device', () => {
+    useProfileStore.getState().updateProfile({ ownerId: 'user-a', name: 'Alice', bio: 'Hi', avatarUrl: 'data:image/png;base64,abc' });
+    const state = useProfileStore.getState();
+    expect(overridesFor(state, 'user-a')).toEqual({ name: 'Alice', bio: 'Hi', avatarUrl: 'data:image/png;base64,abc' });
+    expect(overridesFor(state, 'user-b')).toEqual({ name: '', bio: '', avatarUrl: null });
+    expect(overridesFor(state, undefined)).toEqual({ name: '', bio: '', avatarUrl: null });
   });
 });
