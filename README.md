@@ -145,9 +145,10 @@ token, cost and failure analysis. Nothing is sent unless both
 | `OPENOBSERVE_AUTH` | No | Instead of the pair: a ready base64 Basic token, or `user:password`. |
 | `OPENOBSERVE_ORG` | No | Organisation, defaults to `default`. |
 | `OPENOBSERVE_STREAM` | No | Stream name, defaults to `llm_calls`. |
-| `OPENOBSERVE_LOG_CONTENT` | No | `true` also stores prompts and answers (records and traces). See the warning below. |
+| `OPENOBSERVE_LOG_CONTENT` | No | `true` also stores prompts and answers in the log records. See the warning below. |
 | `OPENOBSERVE_TRACES` | No | `true` also sends one OTLP trace per chat request to OpenObserve's Traces view. |
 | `OPENOBSERVE_TRACE_STREAM` | No | Traces stream, defaults to `default`. |
+| `OPENOBSERVE_TRACE_CONTENT` | No | `true` attaches the user's message and the answer to trace spans. Separate from `OPENOBSERVE_LOG_CONTENT`. |
 
 The client (`src/lib/observability/openobserve.ts`) is deliberately
 dependency-free: it POSTs batches of JSON records to
@@ -171,22 +172,32 @@ pressed Stop. Query set and field notes:
 
 **Traces.** With `OPENOBSERVE_TRACES=true`, each chat request also becomes one
 trace in OpenObserve → Traces (`src/lib/observability/otlp-traces.ts`, OTLP/HTTP
-JSON to `/api/{org}/v1/traces`, same auth, buffering and timeouts as above). The
-root span `chat <model>` (or `council <model>`) covers the whole turn; under it
-sit `rag.retrieve` and one span per model call (`completion`, each
-`council-member-answer` / `council-ranking`, `council-chair`, `title-generation`,
-`embedding(s)`), with `gen_ai.*` attributes for model, tokens and finish reason
-plus cost and time to first token. With `OPENOBSERVE_LOG_CONTENT=true` as well,
-each span carries the messages sent and the answer received
-(`gen_ai.input.messages` / `gen_ai.output.messages`, and
-`gen_ai.prompt.N.*` / `gen_ai.completion.0.*`), each message cut to 16,000
-characters, so answer quality - including every council member's answer and
-ranking - can be read side by side.
+JSON to `/api/{org}/v1/traces`, same auth, timeouts and never-throw rules as
+above; at most 100 spans per POST, and a payload OpenObserve refuses outright is
+dropped and counted instead of blocking later traces). The root span
+`chat <model>` (or `council`) covers the whole turn; under it sit
+`rag.retrieve` (with its query embedding nested inside), one span per model call
+(`completion`, each `council-member-answer` / `council-ranking`,
+`council-chair`, `title-generation`), `db.persist`, `rag.ingest` (with its
+embeddings) and `profile.update`. Model spans carry `gen_ai.*` attributes for
+model, tokens and finish reason, plus cost and time to first token. Requests
+refused before streaming (sign-in, validation, ownership, rate limit) are a
+root span alone with status `rejected` and `http.response.status_code`.
+
+With `OPENOBSERVE_TRACE_CONTENT=true`, model and root spans also carry the
+user's own message and the model's answer (`gen_ai.input.messages` /
+`gen_ai.output.messages`, each cut to 4,000 characters), so answer quality -
+including every council member's answer and ranking - can be read side by side.
+Only those two texts: never the system prompt, earlier turns, retrieved memory,
+extracted attachment text, file bytes or embedding inputs.
 
 **Privacy.** Prompts, answers, titles, filenames and document or retrieved
 content are not recorded. `user_id` is the NextAuth id, never an email. Only
 error types and truncated provider messages travel with failures. If you set
 `OPENOBSERVE_LOG_CONTENT=true`, prompts and answers are stored in OpenObserve
-too (each cut to 2,000 characters in records and 16,000 per message in traces,
-attachment bytes never included) - treat those streams as holding private user
-content, and restrict who can query them.
+too (each cut to 2,000 characters, attachment bytes never included), and
+`OPENOBSERVE_TRACE_CONTENT=true` stores the user's message and the answer in
+traces (4,000 characters each) - treat those streams as holding private user
+content, and restrict who can query them. Error messages sent to OpenObserve
+are one line, at most 300 characters, with credentials, data URLs and base64
+removed.
