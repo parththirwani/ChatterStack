@@ -19,8 +19,9 @@ const db = {
     delete: vi.fn(async ({ where }: { where: { id: string } }) => { records.delete(where.id); }),
   },
 };
+const discard = vi.fn(async () => {});
 const storage = {
-  stat: vi.fn(),
+  open: vi.fn(),
   read: vi.fn(),
   save: vi.fn(),
   delete: vi.fn(),
@@ -40,7 +41,7 @@ const key = 'users/user-1/0e7ba32e-05b0-477d-8e30-2bf0a849649e/notes.md';
 beforeEach(() => {
   records.clear();
   vi.clearAllMocks();
-  storage.stat.mockResolvedValue({ size: bytes.length, contentType: meta.mimeType });
+  storage.open.mockResolvedValue({ size: bytes.length, contentType: meta.mimeType, read: async () => bytes, discard });
   storage.read.mockResolvedValue(bytes);
   storage.save.mockResolvedValue({});
   storage.delete.mockResolvedValue(undefined);
@@ -59,7 +60,8 @@ describe('document storage rules', () => {
     const result = await confirmUpload(userId, { ...meta, storageKey: key });
     expect(result.storageKey).toBe(key);
     expect(db.document.create).toHaveBeenCalledOnce();
-    expect(storage.read).toHaveBeenCalledWith(key);
+    expect(storage.open).toHaveBeenCalledOnce();
+    expect(storage.open).toHaveBeenCalledWith(key);
   });
 
   it('reuses the same content per user without reading or uploading it again', async () => {
@@ -67,8 +69,7 @@ describe('document storage rules', () => {
     vi.clearAllMocks();
     const again = await confirmUpload(userId, { ...meta, storageKey: newStorageKey(userId, meta.name) });
     expect(again.id).toBe(first.id);
-    expect(storage.stat).not.toHaveBeenCalled();
-    expect(storage.read).not.toHaveBeenCalled();
+    expect(storage.open).not.toHaveBeenCalled();
     expect(db.document.create).not.toHaveBeenCalled();
   });
 
@@ -82,9 +83,25 @@ describe('document storage rules', () => {
   });
 
   it('rejects metadata that disagrees with the stored object', async () => {
-    storage.stat.mockResolvedValue({ size: 2, contentType: meta.mimeType });
+    const read = vi.fn(async () => bytes);
+    storage.open.mockResolvedValue({ size: 2, contentType: meta.mimeType, read, discard });
     await expect(confirmUpload(userId, { ...meta, storageKey: key })).rejects.toThrow('does not match');
-    expect(storage.read).not.toHaveBeenCalled();
+    // The mismatch is caught from metadata alone, so the body is never downloaded.
+    expect(read).not.toHaveBeenCalled();
+    expect(discard).toHaveBeenCalledOnce();
+    expect(db.document.create).not.toHaveBeenCalled();
+  });
+
+  it('rejects an upload whose stored type differs from the claimed one', async () => {
+    storage.open.mockResolvedValue({ size: bytes.length, contentType: 'application/pdf', read: async () => bytes, discard });
+    await expect(confirmUpload(userId, { ...meta, storageKey: key })).rejects.toThrow('does not match');
+    expect(discard).toHaveBeenCalledOnce();
+  });
+
+  it('rejects an upload that is not in storage', async () => {
+    storage.open.mockResolvedValue(null);
+    await expect(confirmUpload(userId, { ...meta, storageKey: key })).rejects.toThrow('does not match');
+    expect(db.document.create).not.toHaveBeenCalled();
   });
 
   it('does not resolve another user’s document', async () => {

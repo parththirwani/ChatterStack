@@ -28,7 +28,7 @@ const db = {
   },
 };
 const storage = {
-  stat: vi.fn(),
+  open: vi.fn(),
   read: vi.fn(),
   stream: vi.fn(),
   delete: vi.fn(),
@@ -60,7 +60,7 @@ beforeEach(() => {
   records.clear();
   vi.clearAllMocks();
   auth.mockResolvedValue({ user: { id: userId } });
-  storage.stat.mockResolvedValue({ size: file.length, contentType: 'text/markdown' });
+  storage.open.mockResolvedValue({ size: file.length, contentType: 'text/markdown', read: async () => file, discard: async () => {} });
   storage.read.mockResolvedValue(file);
   storage.delete.mockResolvedValue(undefined);
   storage.stream.mockImplementation(async () => ({ statusCode: 200, stream: new ReadableStream({
