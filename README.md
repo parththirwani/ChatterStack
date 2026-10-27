@@ -80,7 +80,7 @@ deploys) or `production`. It comes from `src/lib/observability/environment.ts`:
 | Sentry | the environment selector at the top of Issues (`environment:development`) |
 | PostHog | event property `environment` (filters, insights, breakdowns) |
 | OpenObserve logs | field `environment` in `llm_calls` |
-| OpenObserve traces | resource attribute `deployment.environment` |
+| OpenObserve traces | field `service_deployment_environment` (sent as the resource attribute `deployment.environment`) |
 
 ## Error tracking (Sentry)
 
