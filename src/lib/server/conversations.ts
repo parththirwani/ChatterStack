@@ -4,6 +4,7 @@ import type { Conversation } from '@/src/types/conversation.types';
 import type { Message } from '@/src/types/chat.types';
 import type { AttachmentMeta } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
+import type { Prisma } from '@prisma/client';
 
 /**
  * The one place conversations are read and shaped for the client, shared by
@@ -98,8 +99,12 @@ export async function listConversations(
 }
 
 /** One conversation with all its messages, or null if it isn't this user's. */
-export async function getConversation(userId: string, conversationId: string): Promise<Conversation | null> {
-  const conversation = await prisma.conversation.findFirst({
+export async function getConversation(
+  userId: string,
+  conversationId: string,
+  db: Prisma.TransactionClient | typeof prisma = prisma
+): Promise<Conversation | null> {
+  const conversation = await db.conversation.findFirst({
     where: { id: conversationId, userId },
     include: { messages: { orderBy: MESSAGE_ORDER } },
   });
@@ -113,8 +118,8 @@ export async function getConversation(userId: string, conversationId: string): P
     Array.isArray(message.skills) ? (message.skills as unknown as SkillTag[]).map((skill) => skill.id) : []
   );
   const [documents, skills] = await Promise.all([
-    ids.length ? prisma.document.findMany({ where: { userId, id: { in: ids } }, select: { id: true } }) : [],
-    skillIds.length ? prisma.skill.findMany({ where: { userId, id: { in: skillIds } }, select: { id: true } }) : [],
+    ids.length ? db.document.findMany({ where: { userId, id: { in: ids } }, select: { id: true } }) : [],
+    skillIds.length ? db.skill.findMany({ where: { userId, id: { in: skillIds } }, select: { id: true } }) : [],
   ]);
   return serializeConversation(conversation, {
     documents: new Set(documents.map((document) => document.id)),

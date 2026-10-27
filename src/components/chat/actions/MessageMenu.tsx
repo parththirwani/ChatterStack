@@ -29,6 +29,7 @@ const MessageMenu: React.FC<MessageMenuProps> = ({ messageId, onFork, forking = 
       <div className={className}>
         <Menu
           label="More message actions"
+          portal
           align={align}
           disabled={forking}
           trigger={<MoreHorizontal className="h-4 w-4" strokeWidth={1.8} aria-hidden="true" />}

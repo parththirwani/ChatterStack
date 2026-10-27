@@ -163,8 +163,8 @@ through that message, message included, and leaves the source as it was.
 - Messages are numbered by a per-chat `position` assigned in the same write that
   saves them. A question and its answer are saved together, so `createdAt` alone is
   not enough to keep them in order, and a fork needs an exact cut point.
-- The menu appears on messages the database has saved: the row id is the cut point,
-  so a message you have just sent gets it once the chat is loaded again.
+- The menu appears once the database saves a message. The server sends its row id
+  back in the chat stream, so a new message can be forked without reloading.
 - `POST /api/conversations/[id]/fork` is the only way to fork. It checks ownership,
   copies the prefix in one transaction (a failure leaves no empty chat behind) and
   returns the new conversation.

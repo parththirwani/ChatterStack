@@ -52,7 +52,7 @@ export async function forkConversationAtMessage(
   });
   if (!selected) return { ok: false, reason: 'not-found' };
 
-  const forkedId = await prisma.$transaction(async (tx) => {
+  const conversation = await prisma.$transaction(async (tx) => {
     const rows = await tx.message.findMany({
       where: { conversationId: source.id },
       orderBy: MESSAGE_ORDER,
@@ -92,10 +92,11 @@ export async function forkConversationAtMessage(
       })),
     });
 
-    return created.id;
+    // Shape the response before commit. A read or serialization failure must
+    // roll back the fork instead of leaving a copy behind after a 500 response.
+    const result = await getConversation(userId, created.id, tx);
+    if (!result) throw new ForkTargetGone();
+    return result;
   });
-
-  const conversation = await getConversation(userId, forkedId);
-  if (!conversation) return { ok: false, reason: 'not-found' };
   return { ok: true, conversation };
 }

@@ -397,6 +397,7 @@ export async function POST(request: NextRequest) {
         { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
+      let savedMessageIds: { userMessageId: string; assistantMessageId?: string } | undefined;
       try {
         await traceStep(traceId, 'db.persist', async () => {
           // A retry that produced nothing (failed, or stopped before the first
@@ -410,10 +411,11 @@ export async function POST(request: NextRequest) {
             }
             // The retried answer takes the place of the one it replaces.
             if (isRetry) await deleteLastExchange(conversationId);
-            await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
+            savedMessageIds = await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           }
           await markDocumentsUsed(userId, attachments);
         });
+        if (savedMessageIds) send({ savedMessages: savedMessageIds });
       } catch (error) {
         captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'persist', userId });
         throw error;

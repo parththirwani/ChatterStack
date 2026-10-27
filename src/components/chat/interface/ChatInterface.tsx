@@ -189,7 +189,7 @@ const MessageList = memo(function MessageList({
     <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
       {messages.map((msg, index) => {
         const isLastMessage = index === messages.length - 1;
-        const key = msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
+        const key = msg.clientKey ?? msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
         // The menu itself stays hidden unless the row is one the database saved.
         const forking = !!msg.id && msg.id === forkingMessageId;
 

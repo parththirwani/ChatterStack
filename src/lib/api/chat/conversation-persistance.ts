@@ -4,6 +4,7 @@ import { Role } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
 import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'crypto';
 
 
 /**
@@ -41,21 +42,27 @@ export async function addMessagesToConversation(
 ) {
   const userMessageTime = new Date();
   const aiMessageTime = new Date(userMessageTime.getTime() + 1);
+  const userMessageId = randomUUID();
+  const assistantMessageId = aiResponse ? randomUUID() : undefined;
   const messages = [
-    { conversationId, content: userMessage, role: Role.User, attachments: attachments as unknown as Prisma.InputJsonValue, ...(skills.length ? { skills: skills as unknown as Prisma.InputJsonValue } : {}), createdAt: userMessageTime },
+    { id: userMessageId, conversationId, content: userMessage, role: Role.User, attachments: attachments as unknown as Prisma.InputJsonValue, ...(skills.length ? { skills: skills as unknown as Prisma.InputJsonValue } : {}), createdAt: userMessageTime },
     ...(aiResponse
-      ? [{ conversationId, content: aiResponse, role: Role.Assistant, modelId: selectedModel, createdAt: aiMessageTime }]
+      ? [{ id: assistantMessageId!, conversationId, content: aiResponse, role: Role.Assistant, modelId: selectedModel, createdAt: aiMessageTime }]
       : []),
   ];
 
   // The position is read in the same transaction as the insert, so two writes
   // can never hand the same row a position.
   await prisma.$transaction(async (tx) => {
+    // Serialize position allocation across server instances. Reading MAX inside
+    // a transaction alone still lets two writers choose the same position.
+    await tx.$queryRaw`SELECT id FROM conversations WHERE id = ${conversationId} FOR UPDATE`;
     const position = await firstFreePosition(tx, conversationId);
     await tx.message.createMany({ data: messages.map((message, index) => ({ ...message, position: position + index })) });
     // Bump activity so the chat sorts by its latest message.
     await tx.conversation.update({ where: { id: conversationId }, data: { updatedAt: messages[messages.length - 1].createdAt } });
   });
+  return { userMessageId, assistantMessageId };
 }
 
 /**

@@ -304,6 +304,17 @@ describe('POST /api/conversations/[id]/fork', () => {
     expect(savedConversations()).toHaveLength(count);
   });
 
+  it('rolls back the fork when reading its response fails', async () => {
+    const count = savedConversations().length;
+    // The source read succeeds; the read of the newly created fork fails.
+    db.conversation.findFirst.mockResolvedValueOnce({ id: CHAT, title: 'Caching plan' });
+    db.conversation.findFirst.mockRejectedValueOnce(new Error('response read failed'));
+
+    const response = await post(CHAT, { messageId: mid(2) });
+    expect(response.status).toBe(500);
+    expect(savedConversations()).toHaveLength(count);
+  });
+
   it('gives up without a fork if the chosen message goes missing mid-write', async () => {
     const count = savedConversations().length;
     // The snapshot the copy is made from no longer holds the chosen row.

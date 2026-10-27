@@ -95,8 +95,8 @@ async function sendToConversation(
     createdAt: now,
   };
   const aiMessage: Message = {
-    // Stable id from the start: changing it on completion used to remount
-    // the whole markdown tree (and re-highlight every code block).
+    // Keep this as the render key after the server assigns its database id,
+    // so the markdown tree stays mounted when the fork action appears.
     id: nextLocalId('assistant'),
     role: 'assistant',
     content: '',
@@ -108,6 +108,8 @@ async function sendToConversation(
       ? { members: [...councilMembers], chair: councilChair, answers: [], rankings: [] }
       : undefined,
   };
+  userMessage.clientKey = userMessage.id;
+  aiMessage.clientKey = aiMessage.id;
 
   const previousMessages = (store.chatState[key] ?? EMPTY_CHAT_STATE).messages;
 
@@ -261,6 +263,18 @@ async function sendToConversation(
           })),
         onAnalytics: (completion) => {
           analytics = completion;
+        },
+        onSavedMessages: ({ userMessageId, assistantMessageId }) => {
+          const fresh = useAppStore.getState();
+          const chat = fresh.chatState[key];
+          if (!chat) return;
+          fresh.setChatState(key, {
+            messages: chat.messages.map((item) =>
+              item.id === userMessage.id ? { ...item, id: userMessageId }
+                : item.id === aiMessage.id && assistantMessageId ? { ...item, id: assistantMessageId }
+                  : item
+            ),
+          });
         },
       },
       abortController.signal

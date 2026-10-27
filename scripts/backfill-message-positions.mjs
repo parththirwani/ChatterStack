@@ -1,50 +1,51 @@
 /**
- * One-time, resumable backfill of `messages.position` for rows saved before the
- * column existed. Run it after `npx prisma db push`, while traffic is low:
+ * Number legacy messages after `npx prisma db push`:
  *
  *   node scripts/backfill-message-positions.mjs
  *
- * Every row of every conversation is renumbered 1..n by (createdAt, id), the only
- * order history old rows carry. Whole conversations are renumbered rather than
- * just the rows with no position, so a chat written partly before and partly
- * after the column landed ends up in the right order.
- *
- * Two passes because (conversationId, position) is unique and renumbering in
- * place would briefly put two rows on the same number. The first pass moves every
- * row out of the way into negative numbers, which cannot collide with anything
- * that is still to be written; the second flips them into place. Running it twice
- * changes nothing the second time around.
+ * Existing positions define the order of new chats and forks. Null positions
+ * sort first, with their old createdAt/id order. A table lock and one transaction
+ * keep readers from ever seeing a partly renumbered conversation.
  */
 import 'dotenv/config';
 import { Pool } from 'pg';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-
-const RENUMBER = `
-  WITH ranked AS (
-    SELECT id, row_number() OVER (
-      PARTITION BY "conversationId" ORDER BY "createdAt", id
-    ) AS n
-    FROM messages
-  )
-  UPDATE messages m
-  SET position = -ranked.n
-  FROM ranked
-  WHERE m.id = ranked.id
-`;
-
-const FLIP = `UPDATE messages SET position = -position WHERE position < 0`;
+const client = await pool.connect();
 
 try {
-  const before = await pool.query('SELECT count(*)::int AS missing FROM messages WHERE position IS NULL');
-  const renumbered = await pool.query(RENUMBER);
-  const placed = await pool.query(FLIP);
-  const left = await pool.query('SELECT count(*)::int AS pending FROM messages WHERE position IS NULL OR position < 0');
+  await client.query('BEGIN');
+  await client.query('LOCK TABLE messages IN SHARE ROW EXCLUSIVE MODE');
+  const { rows: [{ missing }] } = await client.query(
+    'SELECT count(*)::int AS missing FROM messages WHERE position IS NULL OR position < 0'
+  );
 
-  console.log(`Message positions: ${before.rows[0].missing} row(s) had none, ${renumbered.rowCount} moved, ${placed.rowCount} placed.`);
-  if (left.rows[0].pending > 0) {
-    console.warn(`Warning: ${left.rows[0].pending} row(s) are still unplaced (a write raced this run). Please run the script again.`);
+  if (missing > 0) {
+    // Record the current display order before clearing positions. Clearing to
+    // NULL avoids transient unique-key collisions while we assign 1..n.
+    await client.query(`
+      CREATE TEMP TABLE message_position_rank ON COMMIT DROP AS
+      SELECT id, row_number() OVER (
+        PARTITION BY "conversationId"
+        ORDER BY position ASC NULLS FIRST, "createdAt" ASC, id ASC
+      )::int AS new_position
+      FROM messages
+    `);
+    await client.query('UPDATE messages SET position = NULL');
+    await client.query(`
+      UPDATE messages m
+      SET position = ranked.new_position
+      FROM message_position_rank ranked
+      WHERE m.id = ranked.id
+    `);
   }
+
+  await client.query('COMMIT');
+  console.log(`Message positions: ${missing} legacy row(s) found; backfill complete.`);
+} catch (error) {
+  await client.query('ROLLBACK');
+  throw error;
 } finally {
+  client.release();
   await pool.end();
 }

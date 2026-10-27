@@ -26,11 +26,12 @@ const messageRows = {
 };
 
 const db = {
+  $queryRaw: vi.fn(async () => [{ id: NEW_ID }]),
   document: { findMany: vi.fn(async () => []), updateMany: vi.fn(async () => ({ count: 1 })) },
   conversation: conversationRows,
   message: messageRows,
   $transaction: vi.fn(async (work: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
-    typeof work === 'function' ? work({ conversation: conversationRows, message: messageRows }) : Promise.all(work)),
+    typeof work === 'function' ? work({ $queryRaw: db.$queryRaw, conversation: conversationRows, message: messageRows }) : Promise.all(work)),
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));

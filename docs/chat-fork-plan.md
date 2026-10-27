@@ -85,9 +85,6 @@ Notes on where the implementation differs from the steps above, and why.
   is built from the fork's own rows, so what can repeat is one retrieved chunk that
   also appears in that window - the same thing that already happens between two
   ordinary chats that mention the same text. No duplicate short-term context.
-- **Known limit.** The menu appears on rows the browser loaded from the database. An
-  exchange written in the current tab keeps a local id until the chat is loaded
-  again, so its fork choice appears after a reload (covered by a browser test).
-  Forking a long chat also duplicates its rows, so the next prompt in a very long
+- **Long chats.** Forking a long chat duplicates its rows, so the next prompt in a very long
   fork can hit the existing chat request size limit, which reports it the way it already does.
 

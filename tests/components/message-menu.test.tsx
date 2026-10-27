@@ -105,6 +105,30 @@ describe('a saved assistant reply', () => {
     expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
+  it('portals the menu and opens upward when its trigger is near the bottom', async () => {
+    const user = userEvent.setup();
+    const rect = (top: number, left: number, width: number, height: number) => ({
+      top, left, width, height, right: left + width, bottom: top + height,
+      x: left, y: top, toJSON: () => ({}),
+    } as DOMRect);
+    const measure = vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.getAttribute('role') === 'menu') return rect(0, 0, 190, 80);
+      if (this.getAttribute('aria-label') === 'More message actions') return rect(500, 300, 32, 32);
+      return rect(0, 0, 0, 0);
+    });
+    const viewport = vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(600);
+    try {
+      render(<AIMessage content="Last answer" messageId={SAVED} onFork={vi.fn()} />);
+      await user.click(trigger());
+      const dropdown = screen.getByRole('menu', { name: 'More message actions' });
+      expect(dropdown.parentElement).toBe(document.body);
+      expect(dropdown).toHaveStyle({ top: '416px' });
+    } finally {
+      measure.mockRestore();
+      viewport.mockRestore();
+    }
+  });
+
   it('asks about the message that was clicked, not the last one', async () => {
     const user = userEvent.setup();
     const onFork = vi.fn();

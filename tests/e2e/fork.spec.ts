@@ -131,7 +131,7 @@ test('deleting the source leaves its fork usable', async ({ page }) => {
   const rows = savedMessages(SOURCE);
   const forkId = await forkAt(page, rows[1].id);
 
-  const row = sidebar.row(page, 'Caching plan');
+  const row = page.getByRole('button', { name: 'Caching plan', exact: true }).locator('..');
   await row.hover();
   await row.getByRole('button', { name: 'Actions for Caching plan' }).click();
   await page.getByRole('menuitem', { name: 'Delete' }).click();
@@ -144,7 +144,7 @@ test('deleting the source leaves its fork usable', async ({ page }) => {
   expect(messageCount(forkId)).toBe(2);
 });
 
-test('a message written in this tab gets its menu once the chat is reloaded', async ({ page, mockChat }) => {
+test('a message written in this tab gets its menu as soon as it is saved', async ({ page, mockChat }) => {
   await openApp(page);
   mockChat.next(async (stream) => {
     stream.createConversation();
@@ -155,9 +155,10 @@ test('a message written in this tab gets its menu once the chat is reloaded', as
   await sendMessage(page, 'A fresh question');
   await expect(page.getByText('An answer.')).toBeVisible();
 
-  // Neither row can be a cut point yet: the ids the page holds are local ones.
-  await expect(page.getByRole('button', { name: 'More message actions' })).toHaveCount(0);
-
-  await page.reload();
   await expect(page.getByRole('button', { name: 'More message actions' })).toHaveCount(2);
+  const sourceId = page.url().split('/').at(-1)!;
+  const rows = savedMessages(sourceId);
+  await menu(page, rows[1].id).click();
+  await forkItem(page).click();
+  await expect.poll(() => forksOf(sourceId)).toHaveLength(1);
 });

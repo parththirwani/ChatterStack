@@ -23,6 +23,7 @@ export interface ChatStreamHandlers {
   onCouncilRankings?: (rankings: CouncilRanking[]) => void;
   /** Tokens and timing of the finished completion, sent just before done. */
   onAnalytics?: (analytics: CompletionAnalytics) => void;
+  onSavedMessages?: (ids: { userMessageId: string; assistantMessageId?: string }) => void;
 }
 
 interface UserProfileResponse {
@@ -200,6 +201,9 @@ export class ApiService {
       }
       if (parsed.analytics) {
         handlers.onAnalytics?.(parsed.analytics);
+      }
+      if (parsed.savedMessages) {
+        handlers.onSavedMessages?.(parsed.savedMessages);
       }
       if (parsed.reasoning) {
         handlers.onReasoning?.(parsed.reasoning);

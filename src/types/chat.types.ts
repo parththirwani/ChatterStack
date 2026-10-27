@@ -7,6 +7,8 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface Message {
   id?: string;
+  /** Stable React key while a local message receives its database id. */
+  clientKey?: string;
   role: MessageRole;
   content: string;
   createdAt?: string;
@@ -203,4 +205,6 @@ export interface SSEData {
   title?: string;
   /** Tokens and timing for the completion that just finished. */
   analytics?: CompletionAnalytics;
+  /** Database ids for the exchange just saved. */
+  savedMessages?: { userMessageId: string; assistantMessageId?: string };
 }

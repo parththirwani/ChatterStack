@@ -5,6 +5,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = {
+  $queryRaw: vi.fn(),
   message: {
     aggregate: vi.fn(),
     count: vi.fn(),
@@ -27,6 +28,7 @@ beforeEach(() => {
   Object.values(db.message).forEach((fn) => fn.mockReset());
   Object.values(db.conversation).forEach((fn) => fn.mockReset());
   db.$transaction.mockReset();
+  db.$queryRaw.mockReset().mockResolvedValue([{ id: CONVERSATION }]);
   // Prisma hands the transactional client to a callback; here that is the same fake.
   db.$transaction.mockImplementation(async (work: unknown) =>
     typeof work === 'function' ? (work as (tx: unknown) => unknown)(db) : Promise.all(work as Promise<unknown>[]));
@@ -63,11 +65,12 @@ describe('addMessagesToConversation', () => {
     expect(saved().map((row) => row.position)).toEqual([1]);
   });
 
-  it('reads the position and inserts in one transaction, so two writers cannot share a number', async () => {
+  it('locks the conversation before reading the position and inserting', async () => {
     const order: string[] = [];
     db.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => {
       order.push('transaction');
       return work({
+        $queryRaw: async () => { order.push('lock'); return [{ id: CONVERSATION }]; },
         message: {
           aggregate: async () => { order.push('read'); return { _max: { position: 2 } }; },
           count: async () => 2,
@@ -77,7 +80,7 @@ describe('addMessagesToConversation', () => {
       });
     });
     await addMessagesToConversation(CONVERSATION, 'Q', 'A', 'openai/gpt-6.1-sol');
-    expect(order).toEqual(['transaction', 'read', 'insert']);
+    expect(order).toEqual(['transaction', 'lock', 'read', 'insert']);
   });
 
   it('bumps the chat activity to the last saved message', async () => {

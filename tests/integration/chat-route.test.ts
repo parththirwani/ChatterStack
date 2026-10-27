@@ -47,6 +47,7 @@ const messageRows = {
 };
 
 const db = {
+  $queryRaw: vi.fn(async () => [{ id: PLAN_ID }]),
   skill: {
     findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; userId: string } }) =>
       [...skillRows.values()].filter((row) => row.userId === where.userId && where.id.in.includes(row.id))),
@@ -61,7 +62,7 @@ const db = {
   // $transaction takes either a list of operations or a callback that is handed
   // the transactional client; both use the same fakes here.
   $transaction: vi.fn(async (work: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
-    typeof work === 'function' ? work({ conversation: conversationRows, message: messageRows }) : Promise.all(work)),
+    typeof work === 'function' ? work({ $queryRaw: db.$queryRaw, conversation: conversationRows, message: messageRows }) : Promise.all(work)),
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
@@ -183,6 +184,11 @@ describe('POST /api/chat, new conversation', () => {
     expect(events).toContainEqual({ reasoning: 'Thinking it over' });
     expect(events.filter((e) => e !== '[DONE]' && 'chunk' in e).map((e) => (e as { chunk: string }).chunk).join('')).toBe('Slow start doubles cwnd.');
     expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start doubles cwnd.');
+    const saved = events.find((event) => event !== '[DONE]' && 'savedMessages' in event);
+    expect(saved).toMatchObject({ savedMessages: {
+      userMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      assistantMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    } });
     expect(events.at(-1)).toBe('[DONE]');
   });
 });
