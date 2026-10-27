@@ -215,6 +215,28 @@ describe('zooming an image preview', () => {
     expect(screen.getByRole('button', { name: 'Zoom in' })).toBeDisabled();
   });
 
+  it('zooms with the wheel, counting Firefox line units as real travel', async () => {
+    await openImage();
+    const frame = screen.getByTestId('image-viewer-frame');
+    const wheel = (init: WheelEventInit) => act(() => { frame.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ...init })); });
+
+    wheel({ deltaY: -100 });
+    expect(screen.getByLabelText('Zoom 122%')).toBeInTheDocument();
+    await userEvent.setup().keyboard('0');
+    // One Firefox notch is 3 lines, not 3 pixels: it must zoom visibly.
+    wheel({ deltaY: -3, deltaMode: 1 });
+    expect(screen.getByLabelText('Zoom 110%')).toBeInTheDocument();
+    wheel({ deltaY: 100 });
+    expect(screen.getByLabelText('Zoom 90%')).toBeInTheDocument();
+  });
+
+  it('zooms further per step for a touchpad pinch, which arrives as ctrl+wheel', async () => {
+    await openImage();
+    const frame = screen.getByTestId('image-viewer-frame');
+    act(() => { frame.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -10, ctrlKey: true })); });
+    expect(screen.getByLabelText('Zoom 111%')).toBeInTheDocument();
+  });
+
   it('toggles between fit and 200% on double-click', async () => {
     const user = await openImage();
     const frame = screen.getByTestId('image-viewer-frame');
