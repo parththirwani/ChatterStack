@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
 import { prisma } from '@/src/lib/prisma';
-import { listConversations } from '@/src/lib/server/conversations';
+import { listConversations, recentsWhere } from '@/src/lib/server/conversations';
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     const [conversations, total] = await Promise.all([
       listConversations(session.user.id, { limit, offset }),
-      prisma.conversation.count({ where: { userId: session.user.id } }),
+      prisma.conversation.count({ where: recentsWhere(session.user.id) }),
     ]);
 
     return NextResponse.json({ conversations, total, limit, offset });
