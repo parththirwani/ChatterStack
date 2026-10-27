@@ -6,6 +6,12 @@ import UserSection from '@/src/components/sidebar/user/UserSection';
 import { useProfileStore } from '@/src/store/profileStore';
 import type { User } from '@/src/types/user.types';
 
+// Keep the heatmap data fetch out of this wiring test; ProfileModal's own
+// tests cover activity rendering.
+vi.mock('@/src/hooks/useChatActivity', () => ({
+  useChatActivity: () => ({ status: 'ready', days: [] }),
+}));
+
 const user: User = { id: 'u1', name: 'Ada', email: 'ada@example.com', avatarUrl: null };
 
 function renderSection(props: Partial<React.ComponentProps<typeof UserSection>> = {}) {

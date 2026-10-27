@@ -4,9 +4,12 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Camera, Trash2, LoaderCircle } from 'lucide-react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
+import { ActivityHeatmap } from '@/src/components/arc/activity-heatmap/activity-heatmap';
+import type { ChatActivity } from '@/src/hooks/useChatActivity';
 
 const BIO_MAX_LENGTH = 200;
 const MAX_AVATAR_BYTES = 2 * 1024 * 1024;
+export const ACTIVITY_WINDOW_DAYS = 91;
 
 export interface ProfileModalValues {
   name: string;
@@ -19,13 +22,15 @@ interface ProfileModalProps {
   onClose: () => void;
   /** The values shown when the modal opens (saved overrides already merged with the session). */
   profile: ProfileModalValues & { email: string };
+  /** Per-day message counts for the heatmap, loaded while the modal is open. */
+  activity: ChatActivity;
   onSave: (next: ProfileModalValues) => void;
 }
 
 const initialsFor = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]?.toUpperCase()).join('') || '?';
 
-const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, profile, onSave }) => {
+const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, profile, activity, onSave }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -223,6 +228,33 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, profile, o
                 className="w-full resize-none rounded-xl border border-white/[0.09] bg-[#171717] px-3.5 py-2.5 text-[13.5px] leading-5 text-[#f0eeeb] placeholder:text-[#6f6b66] focus:border-white/25 focus:outline-none"
               />
             </label>
+
+            {/* Chat activity heatmap */}
+            <div className="mt-5">
+              <span className="mb-2 block text-[12px] font-medium uppercase tracking-[0.04em] text-[#8f8b86]">
+                Chat activity
+              </span>
+              {activity.status === 'loading' && (
+                <p className="flex items-center gap-2 text-[12.5px] text-[#6f6b66]">
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  Loading your chat history…
+                </p>
+              )}
+              {activity.status === 'error' && (
+                <p className="text-[12.5px] text-[#8f8b86]">Couldn&apos;t load your chat activity right now.</p>
+              )}
+              {activity.status === 'ready' && (
+                <div style={{ '--heatmap-surface': '#202020' } as React.CSSProperties}>
+                  <ActivityHeatmap
+                    days={activity.days}
+                    label="Messages sent over the last 3 months"
+                    period="the last 3 months"
+                    unit={{ one: 'message', other: 'messages' }}
+                    weekStartsOn={1}
+                  />
+                </div>
+              )}
+            </div>
 
             {error && (
               <p role="alert" className="mt-3 text-[12.5px] text-red-400">

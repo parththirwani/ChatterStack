@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ProfileModal from '@/src/components/sidebar/user/ProfileModal';
+import { fillActivityDays } from '@/src/lib/client/activity';
+import type { ChatActivity } from '@/src/hooks/useChatActivity';
 
 const profile = { name: 'Ada', email: 'ada@example.com', bio: 'Computes things', avatarUrl: null };
+const noActivity: ChatActivity = { status: 'ready', days: [] };
 
 function renderModal(overrides: Partial<React.ComponentProps<typeof ProfileModal>> = {}) {
   const onClose = vi.fn();
@@ -14,6 +17,7 @@ function renderModal(overrides: Partial<React.ComponentProps<typeof ProfileModal
       isOpen
       onClose={onClose}
       profile={profile}
+      activity={noActivity}
       onSave={onSave}
       {...overrides}
     />
@@ -70,5 +74,41 @@ describe('ProfileModal', () => {
     const { onClose } = renderModal();
     await user.keyboard('{Escape}');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  describe('chat activity heatmap', () => {
+    const windowUntil = new Date('2026-10-27T12:00:00Z');
+
+    it('renders per-day message counts from the activity window', () => {
+      const activity: ChatActivity = {
+        status: 'ready',
+        days: fillActivityDays([{ date: '2026-10-26', count: 5 }], 91, windowUntil),
+      };
+      renderModal({ activity });
+
+      expect(screen.getByRole('grid', { name: 'Messages sent over the last 3 months' })).toBeInTheDocument();
+      expect(screen.getByRole('status')).toHaveTextContent('5 messages in the last 3 months');
+      expect(screen.getByRole('gridcell', { name: /^5 messages/ })).toBeInTheDocument();
+    });
+
+    it('shows a zero grid for a user who has not chatted', () => {
+      const activity: ChatActivity = { status: 'ready', days: fillActivityDays([], 91, windowUntil) };
+      renderModal({ activity });
+      expect(screen.getByRole('status')).toHaveTextContent('0 messages in the last 3 months');
+    });
+
+    it('shows loading and error states without a grid', () => {
+      const { rerender } = render(
+        <ProfileModal isOpen onClose={vi.fn()} profile={profile} activity={{ status: 'loading', days: [] }} onSave={vi.fn()} />
+      );
+      expect(screen.getByText(/loading your chat history/i)).toBeInTheDocument();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+
+      rerender(
+        <ProfileModal isOpen onClose={vi.fn()} profile={profile} activity={{ status: 'error', days: [] }} onSave={vi.fn()} />
+      );
+      expect(screen.getByText(/couldn.t load your chat activity/i)).toBeInTheDocument();
+      expect(screen.queryByRole('grid')).not.toBeInTheDocument();
+    });
   });
 });

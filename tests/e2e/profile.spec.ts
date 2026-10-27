@@ -1,7 +1,9 @@
 /**
- * Account menu and the mock profile modal: the menu opens upward from the
- * sidebar footer, and saving name, bio, or photo changes what the menu shows.
+ * Account menu and the profile modal: the menu opens upward from the sidebar
+ * footer, saving name, bio, or photo changes what the menu shows (mock, local
+ * only), and the heatmap tracks the days the user actually chatted.
  */
+import { seedConversation } from './support/db';
 import { expect, openApp, test } from './support/fixtures';
 
 // 1x1 blue PNG; the mock upload only needs any image bytes.
@@ -78,4 +80,35 @@ test('sign out routes to the logout confirmation', async ({ page }) => {
   const menu = await openAccountMenu(page);
   await menu.getByRole('menuitem', { name: 'Sign out' }).click();
   await expect(page.getByRole('dialog', { name: 'Sign out?' })).toBeVisible();
+});
+
+test('the profile modal heatmap shows the days the user chatted', async ({ page }) => {
+  // Three messages minutes ago (today's column) and one from yesterday.
+  seedConversation({
+    id: 'profile-heat-today',
+    title: 'Today',
+    updated: 1,
+    messages: [
+      { content: 'a', role: 'user' },
+      { content: 'b', role: 'assistant' },
+      { content: 'c', role: 'user' },
+    ],
+  });
+  seedConversation({
+    id: 'profile-heat-yesterday',
+    title: 'Earlier',
+    updated: 60 * 24 + 30,
+    messages: [{ content: 'x', role: 'user' }],
+  });
+
+  await openApp(page);
+  const menu = await openAccountMenu(page);
+  await menu.getByRole('menuitem', { name: 'View profile' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Profile' });
+  await expect(dialog).toBeVisible();
+
+  await expect(dialog.getByRole('grid', { name: 'Messages sent over the last 3 months' })).toBeVisible();
+  await expect(dialog.getByRole('gridcell', { name: /^3 messages/ })).toBeVisible();
+  await expect(dialog.getByRole('gridcell', { name: /^1 message,/ })).toBeVisible();
+  await expect(dialog.getByRole('status')).toContainText('4 messages in the last 3 months');
 });

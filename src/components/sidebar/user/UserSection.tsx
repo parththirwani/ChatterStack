@@ -5,7 +5,8 @@ import { LogIn, UserRound } from 'lucide-react';
 import { User as UserType } from '@/src/types/user.types';
 import { UserMenu } from '@/src/components/arc/user-menu/user-menu';
 import { useProfileStore } from '@/src/store/profileStore';
-import ProfileModal from '@/src/components/sidebar/user/ProfileModal';
+import { useChatActivity } from '@/src/hooks/useChatActivity';
+import ProfileModal, { ACTIVITY_WINDOW_DAYS } from '@/src/components/sidebar/user/ProfileModal';
 
 interface UserSectionProps {
   user?: UserType | null;
@@ -37,6 +38,7 @@ const UserSection: React.FC<UserSectionProps> = ({
   const storedBio = useProfileStore((state) => state.bio);
   const storedAvatar = useProfileStore((state) => state.avatarUrl);
   const updateProfile = useProfileStore((state) => state.updateProfile);
+  const activity = useChatActivity(profileOpen, ACTIVITY_WINDOW_DAYS);
 
   if (!isAuthenticated) {
     return collapsed ? (
@@ -93,6 +95,7 @@ const UserSection: React.FC<UserSectionProps> = ({
         isOpen={profileOpen}
         onClose={() => setProfileOpen(false)}
         profile={{ name, email, bio, avatarUrl: avatarSrc ?? null }}
+        activity={activity}
         onSave={handleSaveProfile}
       />
     </>
