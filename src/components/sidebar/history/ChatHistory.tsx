@@ -80,7 +80,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
   if (loadingConversations && chats.length === 0) {
     return (
       <div className="py-3">
-        <SectionLabel>Chats</SectionLabel>
+        <SectionLabel>Recents</SectionLabel>
         <div className="flex items-center justify-center py-12">
           <Loader2 className="h-4 w-4 animate-spin text-[#8f8b86]" />
         </div>
@@ -91,7 +91,7 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
   if (chats.length === 0) {
     return (
       <div className="py-3">
-        <SectionLabel>Chats</SectionLabel>
+        <SectionLabel>Recents</SectionLabel>
         <div className="px-4 py-12 text-center">
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/[0.04]">
             {searchQuery.trim() ? (
@@ -120,8 +120,8 @@ const ChatHistory: React.FC<ChatHistoryProps> = ({
         </section>
       )}
       {recent.length > 0 && (
-        <section aria-label="Chats">
-          <SectionLabel>Chats</SectionLabel>
+        <section aria-label="Recents">
+          <SectionLabel>Recents</SectionLabel>
           {renderList(recent)}
         </section>
       )}

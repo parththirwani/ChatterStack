@@ -1,57 +1,66 @@
 'use client';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import type { ParsedSkill, SkillSource } from '@/src/lib/skills/skill-file';
-import type { Skill, SkillTag } from '@/src/types/skill.types';
+import type { ParsedSkill, SkillFile } from '@/src/lib/skills/skill-file';
+import type { Skill, SkillUploadResult } from '@/src/types/skill.types';
+import { SKILL_CREATOR_ID } from '@/src/config/skill-catalog';
+import { useAppStore } from '@/src/store/rootStore';
 
 /** Fired after any change to the user's skills, so every list refreshes. */
 export const SKILLS_CHANGED_EVENT = 'chatterstack:skills-changed';
-/** Asks the composer to tag a skill; preventDefault() means it couldn't. */
-export const ADD_SKILL_EVENT = 'chatterstack:add-skill';
-
-export interface SkillDraftResult {
-  draft: ParsedSkill;
-  issues: Array<{ field: string; message: string }>;
-}
+/** Opens the create-skill dialog, optionally prefilled (Save as skill). */
+export const OPEN_SKILL_EDITOR_EVENT = 'chatterstack:open-skill-editor';
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
+  const isForm = init?.body instanceof FormData;
   const response = await fetch(url, {
     ...init,
-    headers: init?.body ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
+    headers: init?.body && !isForm ? { 'Content-Type': 'application/json', ...init.headers } : init?.headers,
   });
   if (response.status === 204) return undefined as T;
   const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(body.message ?? body.error ?? 'Something went wrong. Try again.');
+  if (!response.ok && !body.results) {
+    throw Object.assign(new Error(body.message ?? body.error ?? 'Something went wrong. Try again.'), { field: body.field });
   }
   return body as T;
 }
 
 const changed = () => window.dispatchEvent(new Event(SKILLS_CHANGED_EVENT));
-
-export async function saveSkill(input: ParsedSkill & { source?: SkillSource }, id?: string): Promise<Skill> {
-  const { skill } = await request<{ skill: Skill }>(id ? `/api/skills/${id}` : '/api/skills', {
-    method: id ? 'PATCH' : 'POST',
-    body: JSON.stringify(id ? { name: input.name, description: input.description, instructions: input.instructions } : input),
-  });
+const withChange = async <T,>(work: Promise<T>) => {
+  const result = await work;
   changed();
-  return skill;
+  return result;
+};
+
+export interface SkillContentInput extends ParsedSkill {
+  files?: SkillFile[];
 }
 
-export async function deleteSkill(id: string) {
-  await request(`/api/skills/${id}`, { method: 'DELETE' });
-  changed();
+export const createSkill = (content: SkillContentInput, source: 'created' | 'generated' = 'created') =>
+  withChange(request<{ skill: Skill }>('/api/skills', { method: 'POST', body: JSON.stringify({ ...content, source }) }).then((body) => body.skill));
+
+export const updateSkill = (id: string, patch: Partial<SkillContentInput> & { enabled?: boolean }) =>
+  withChange(request<{ skill: Skill }>(`/api/skills/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((body) => body.skill));
+
+export const deleteSkill = (id: string) => withChange(request<void>(`/api/skills/${id}`, { method: 'DELETE' }));
+
+export const duplicateSkill = (id: string) =>
+  withChange(request<{ skill: Skill }>(`/api/skills/${id}/duplicate`, { method: 'POST' }).then((body) => body.skill));
+
+export const addCatalogSkill = (id: string) =>
+  withChange(request<{ skill: Skill }>('/api/skills/catalog', { method: 'POST', body: JSON.stringify({ id }) }).then((body) => body.skill));
+
+/** Uploads .md, .zip or .skill files; each file gets its own result. */
+export function uploadSkills(files: File[], replaceId?: string) {
+  const form = new FormData();
+  for (const file of files) form.append('files', file);
+  if (replaceId) form.append('replaceId', replaceId);
+  return withChange(request<{ results: SkillUploadResult[] }>('/api/skills/upload', { method: 'POST', body: form }).then((body) => body.results));
 }
 
-export const importSkillFile = (content: string, fileName?: string) =>
-  request<SkillDraftResult>('/api/skills/import', { method: 'POST', body: JSON.stringify({ content, fileName }) });
+export const skillDownloadUrl = (id: string) => `/api/skills/${id}/download`;
 
-export const draftSkillWithAI = (ask: string, current?: ParsedSkill, signal?: AbortSignal) =>
-  request<SkillDraftResult>('/api/skills/generate', { method: 'POST', body: JSON.stringify({ request: ask, current }), signal });
-
-export const skillExportUrl = (id: string) => `/api/skills/${id}/export`;
-
-export function tagSkill(skill: SkillTag) {
-  return window.dispatchEvent(new CustomEvent<SkillTag>(ADD_SKILL_EVENT, { detail: skill, cancelable: true }));
+export function openSkillEditor(draft?: SkillContentInput & { id?: string; source?: 'created' | 'generated' }) {
+  window.dispatchEvent(new CustomEvent(OPEN_SKILL_EDITOR_EVENT, { detail: draft ?? null }));
 }
 
 // One shared list for the sidebar and the composer, loaded once per session
@@ -116,4 +125,32 @@ export function resetSkillsCache() {
   loadedFor = null;
   inFlight = null;
   generation += 1;
+}
+
+/** Opens a new chat whose composer holds `text` (kept ahead of any existing new-chat draft). */
+function startChat(text: string, { replace = false } = {}) {
+  const store = useAppStore.getState();
+  const existing = replace ? '' : (store.drafts.new ?? '').trim();
+  store.setDraft('new', existing ? `${text}${existing}` : text);
+  window.dispatchEvent(new Event('chatterstack:new-chat'));
+  window.setTimeout(() => {
+    const input = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
+    input?.focus();
+    input?.setSelectionRange(input.value.length, input.value.length);
+  }, 50);
+}
+
+/** "Try in chat": a new chat with `/name ` ready to use. */
+export const trySkillInChat = (skill: Pick<Skill, 'name'>) => startChat(`/${skill.name} `);
+
+/** "Create with AI": a chat with skill-creator, which drafts a SKILL.md to save. */
+export async function createSkillWithAI() {
+  await addCatalogSkill(SKILL_CREATOR_ID);
+  startChat("Let's create a skill together using /skill-creator. First ask me what the skill should do.", { replace: true });
+}
+
+/** "Edit with AI": skill-creator plus the skill itself, so the model sees its text. */
+export async function editSkillWithAI(skill: Pick<Skill, 'name'>) {
+  await addCatalogSkill(SKILL_CREATOR_ID);
+  startChat(`Use /skill-creator to help me improve my /${skill.name} skill. Ask me what I want to change, then show the full updated SKILL.md.`, { replace: true });
 }

@@ -8,11 +8,11 @@ import { ModelSelectionProvider } from '@/src/context/ModelSelectionContext';
 import { resetSkillsCache } from '@/src/lib/client/skills';
 import { useAppStore } from '@/src/store/rootStore';
 import type { DocumentAttachment } from '@/src/types/chat.types';
-import type { SkillTag } from '@/src/types/skill.types';
 import type { User } from '@/src/types/user.types';
 
-const skill = (name: string, description: string, index: number) => ({
+const skill = (name: string, description: string, index: number, enabled = true) => ({
   id: `5b1f6c2a-7d3e-4f1a-9c2b-1e2d3c4b5a6${index}`, name, description, instructions: 'x', source: 'created',
+  enabled, categories: [], files: [], version: 1, catalogId: null,
   createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z',
 });
 const SKILLS = [
@@ -20,35 +20,27 @@ const SKILLS = [
   skill('release-notes', 'Write a changelog', 1),
   skill('review-pr', 'Review a pull request', 2),
   skill('haiku', 'Answer as a haiku', 3),
+  skill('turned-off', 'Hidden while off', 4, false),
 ];
 
 let onSend: ReturnType<typeof vi.fn>;
-let latest: { message: string; skills: SkillTag[] };
+let latest: { message: string };
 
-function Composer({ initialSkills = [] }: { initialSkills?: SkillTag[] }) {
-  const [message, setMessage] = useState('');
+function Composer({ initial = '' }: { initial?: string }) {
+  const [message, setMessage] = useState(initial);
   const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
-  const [skills, setSkills] = useState<SkillTag[]>(initialSkills);
-  latest = { message, skills };
+  latest = { message };
   return (
     <ModelSelectionProvider>
-      <MessageInput
-        message={message}
-        onMessageChange={setMessage}
-        attachments={attachments}
-        onAttachmentsChange={setAttachments}
-        skills={skills}
-        onSkillsChange={setSkills}
-        onSendMessage={onSend}
-        loading={false}
-      />
+      <MessageInput message={message} onMessageChange={setMessage} attachments={attachments} onAttachmentsChange={setAttachments} onSendMessage={onSend} loading={false} />
     </ModelSelectionProvider>
   );
 }
 
 const textbox = () => screen.getByRole('textbox', { name: 'Message' });
-const optionNames = () => within(screen.getByRole('listbox', { name: 'Skills' })).queryAllByRole('option')
-  .map((option) => option.firstElementChild?.textContent);
+const optionNames = () => within(screen.getByRole('listbox', { name: 'Skills and actions' })).queryAllByRole('option')
+  .map((option) => option.querySelector('span > span')?.textContent);
+const tokens = () => [...document.querySelectorAll('[data-skill-token]')].map((token) => token.textContent);
 
 beforeEach(() => {
   resetSkillsCache();
@@ -65,23 +57,46 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('tagging skills in the composer', () => {
-  it('opens a filtered picker on /, tags the chosen skill with Enter, and removes the typed query', async () => {
+describe('the / menu in the composer', () => {
+  it('offers Add files and turned-on skills, like claude.ai', async () => {
+    const user = userEvent.setup();
+    render(<Composer />);
+    await user.type(textbox(), '/');
+    await waitFor(() => expect(optionNames()).toEqual(['Add files', 'code-review', 'release-notes', 'review-pr', 'haiku']));
+    expect(optionNames()).not.toContain('turned-off');
+  });
+
+  it('filters as you type and inserts the skill as an inline, highlighted /token', async () => {
     const user = userEvent.setup();
     render(<Composer />);
     await user.type(textbox(), 'Please /rev');
-    await waitFor(() => expect(optionNames()).toEqual(['/review-pr', '/code-review']));
+    await waitFor(() => expect(optionNames()).toEqual(['review-pr', 'code-review']));
     expect(textbox()).toHaveAttribute('aria-activedescendant');
 
     await user.keyboard('{ArrowDown}{Enter}');
     expect(screen.queryByRole('listbox')).toBeNull();
-    expect(latest).toEqual({ message: 'Please ', skills: [{ id: SKILLS[0].id, name: 'code-review' }] });
-    expect(screen.getByText('/code-review')).toBeInTheDocument();
+    expect(latest.message).toBe('Please /code-review ');
+    expect(tokens()).toEqual(['/code-review']);
     expect(onSend).not.toHaveBeenCalled();
 
+    // Typing continues right after the token.
+    await user.keyboard('this');
+    expect(latest.message).toBe('Please /code-review this');
+
     // Already-tagged skills aren't offered again.
-    await user.type(textbox(), '/');
-    await waitFor(() => expect(optionNames()).not.toContain('/code-review'));
+    await user.type(textbox(), ' /');
+    await waitFor(() => expect(optionNames()).not.toContain('code-review'));
+  });
+
+  it('Add files removes the /query and opens the file picker', async () => {
+    const user = userEvent.setup();
+    render(<Composer />);
+    const click = vi.spyOn(HTMLInputElement.prototype, 'click');
+    await user.type(textbox(), 'Look /add');
+    await waitFor(() => expect(optionNames()).toEqual(['Add files']));
+    await user.keyboard('{Enter}');
+    expect(latest.message).toBe('Look ');
+    expect(click).toHaveBeenCalled();
   });
 
   it('closes on Escape so Enter sends, and ignores slashes inside words', async () => {
@@ -91,12 +106,11 @@ describe('tagging skills in the composer', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
 
     await user.type(textbox(), ' /co');
-    await screen.findByRole('listbox', { name: 'Skills' });
+    await screen.findByRole('listbox');
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('listbox')).toBeNull();
     await user.keyboard('{Enter}');
     expect(onSend).toHaveBeenCalledOnce();
-    expect(latest.skills).toEqual([]);
   });
 
   it('says when nothing matches and lets Enter send the text', async () => {
@@ -108,38 +122,34 @@ describe('tagging skills in the composer', () => {
     expect(onSend).toHaveBeenCalledOnce();
   });
 
-  it('opens the picker from the Skills button and tags with a click', async () => {
+  it('picks with a click', async () => {
     const user = userEvent.setup();
-    render(<Composer />);
-    await user.type(textbox(), 'Hello');
-    await user.click(screen.getByRole('button', { name: 'Tag a skill' }));
-    expect(textbox()).toHaveValue('Hello /');
+    render(<Composer initial="Hello " />);
+    await user.click(textbox());
+    await user.keyboard('/ha');
     await user.click(await screen.findByRole('option', { name: /haiku/ }));
-    expect(latest).toEqual({ message: 'Hello ', skills: [{ id: SKILLS[3].id, name: 'haiku' }] });
-  });
-
-  it('removes a tagged skill from its chip', async () => {
-    const user = userEvent.setup();
-    render(<Composer initialSkills={[{ id: SKILLS[1].id, name: 'release-notes' }]} />);
-    await user.click(screen.getByRole('button', { name: 'Remove skill release-notes' }));
-    expect(latest.skills).toEqual([]);
+    expect(latest.message).toBe('Hello /haiku ');
   });
 
   it('stops at three skills per message', async () => {
     const user = userEvent.setup();
-    render(<Composer initialSkills={SKILLS.slice(0, 3).map(({ id, name }) => ({ id, name }))} />);
-    await user.type(textbox(), '/ha');
+    render(<Composer initial="/code-review /release-notes /review-pr " />);
+    await user.click(textbox());
+    await user.keyboard('/ha');
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('alert')).toHaveTextContent('Tag up to 3 skills per message.');
-    expect(latest.skills).toHaveLength(3);
-    expect(latest.message).toBe('/ha');
+    expect(screen.getByRole('alert')).toHaveTextContent('Use up to 3 skills per message.');
+    expect(latest.message).toBe('/code-review /release-notes /review-pr /ha');
+  });
+
+  it('highlights only known, turned-on skill names', async () => {
+    render(<Composer initial="/haiku and /turned-off and /nope" />);
+    await waitFor(() => expect(tokens()).toEqual(['/haiku']));
   });
 
   it('does not offer skills to signed-out users', async () => {
     useAppStore.setState({ user: null });
     const user = userEvent.setup();
     render(<Composer />);
-    expect(screen.queryByRole('button', { name: 'Tag a skill' })).toBeNull();
     await user.type(textbox(), '/co');
     expect(screen.queryByRole('listbox')).toBeNull();
     expect(fetch).not.toHaveBeenCalledWith('/api/skills', expect.anything());
@@ -147,9 +157,10 @@ describe('tagging skills in the composer', () => {
 });
 
 describe('sent messages', () => {
-  it('show their skills, with deleted ones struck through', () => {
-    render(<UserMessage content="Check this" skills={[{ id: 'a', name: 'code-review' }, { id: 'b', name: 'old', removed: true }]} />);
-    const list = screen.getByRole('list', { name: 'Skills used' });
-    expect(within(list).getAllByRole('listitem').map((item) => item.textContent)).toEqual(['/code-review', '/old (deleted)']);
+  it('highlight their skills inline, with deleted ones struck through', () => {
+    render(<UserMessage content="/code-review check /old this" skills={[{ id: 'a', name: 'code-review' }, { id: 'b', name: 'old', removed: true }]} />);
+    expect(tokens()).toEqual(['/code-review', '/old (deleted skill)']);
+    expect(document.querySelector('[data-skill-token="old"]')).toHaveClass('line-through');
+    expect(screen.getByText(/check/)).toBeInTheDocument();
   });
 });

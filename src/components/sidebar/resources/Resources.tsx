@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FileText, Plus, Star, Trash2 } from 'lucide-react';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import DocumentPreview from './DocumentPreview';
+import { showConversation } from '@/src/lib/navigation';
 
 interface DocumentRow extends DocumentAttachment {
   id: string;
@@ -64,8 +65,13 @@ export default function Resources() {
       detail: { documentId: document.id, name: document.name, mimeType: document.mimeType, size: document.size },
       cancelable: true,
     }));
-    if (!added) setError('This chat already has that file or has reached its attachment limit.');
-    else setError('');
+    if (!added) {
+      setError('This chat already has that file or has reached its attachment limit.');
+      return;
+    }
+    setError('');
+    // The composer is waiting in the chat view; go back to it.
+    showConversation(undefined);
   };
 
   return (

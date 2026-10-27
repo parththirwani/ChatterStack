@@ -62,7 +62,7 @@ const SKILL_MD = '---\nname: style-guide\ndescription: Apply our writing style.\
 
 function uploadRequest(files: Array<[string, Uint8Array | string]>, replaceId?: string) {
   const form = new FormData();
-  for (const [name, content] of files) form.append('files', new File([content], name));
+  for (const [name, content] of files) form.append('files', new File([content as BlobPart], name));
   if (replaceId) form.append('replaceId', replaceId);
   return new Request('http://localhost/api/skills/upload', { method: 'POST', body: form });
 }

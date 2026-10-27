@@ -36,3 +36,31 @@ export function matchSkills<T extends { name: string; description: string }>(ski
     (skill.name.includes(q) || skill.description.toLowerCase().includes(q)));
   return [...prefix, ...contains].slice(0, limit);
 }
+
+const TOKEN = /(^|\s)\/([a-z0-9]+(?:-[a-z0-9]+)*)(?=$|[\s.,!?;:)\]])/g;
+
+/** Text split into plain runs and `/name` tokens for known skill names. */
+export function splitSkillTokens(text: string, names: ReadonlySet<string>) {
+  const parts: Array<{ text: string; skill?: string }> = [];
+  let last = 0;
+  for (const match of text.matchAll(TOKEN)) {
+    const start = (match.index ?? 0) + match[1].length;
+    if (!names.has(match[2])) continue;
+    if (start > last) parts.push({ text: text.slice(last, start) });
+    parts.push({ text: `/${match[2]}`, skill: match[2] });
+    last = start + match[2].length + 1;
+  }
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
+/** The skills tagged in a message as `/name` tokens, in order, without repeats. */
+export function skillsInText<T extends { name: string }>(text: string, skills: readonly T[]): T[] {
+  const byName = new Map(skills.map((skill) => [skill.name, skill]));
+  const found: T[] = [];
+  for (const part of splitSkillTokens(text, new Set(byName.keys()))) {
+    const skill = part.skill ? byName.get(part.skill) : undefined;
+    if (skill && !found.includes(skill)) found.push(skill);
+  }
+  return found;
+}

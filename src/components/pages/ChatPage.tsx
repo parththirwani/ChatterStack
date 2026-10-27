@@ -14,7 +14,9 @@ import { usePathname, useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 
 import { useAppStore } from '@/src/store/rootStore';
-import { showConversation } from '@/src/lib/navigation';
+import { appViewFromPath, isAppPagePath, navigateTo, showConversation, skillsPath } from '@/src/lib/navigation';
+import AppPages from '@/src/components/pages/AppPages';
+import SkillEditorHost from '@/src/components/customize/SkillEditorHost';
 import type { User } from '@/src/types/user.types';
 import type { Conversation } from '@/src/types/conversation.types';
 import ChatInterface from '@/src/components/chat/interface/ChatInterface';
@@ -31,8 +33,9 @@ export interface ChatPageProps {
 }
 
 function conversationIdFromPathname(pathname: string): string | undefined {
-  const [first] = pathname.split('/').filter(Boolean);
-  return first || undefined;
+  const segments = pathname.split('/').filter(Boolean);
+  if (isAppPagePath(segments)) return undefined;
+  return segments[0] || undefined;
 }
 
 const ChatPage: React.FC<ChatPageProps> = ({
@@ -60,6 +63,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
   const logout = useAppStore((state) => state.logout);
 
   const urlConversationId = conversationIdFromPathname(pathname);
+  const view = useMemo(() => appViewFromPath(pathname), [pathname]);
   // The store's id is the single source of truth once it has been synced
   // from the URL; until then (the server render and hydration) use the URL.
   const [urlSynced, setUrlSynced] = useState(false);
@@ -236,6 +240,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
     showConversation(undefined);
   }, []);
 
+  const handleOpenPage = useCallback((page: 'resources' | 'skills') => {
+    setMobileMenuOpen(false);
+    navigateTo(page === 'resources' ? '/resources' : skillsPath.discover);
+  }, []);
+
   useEffect(() => {
     window.addEventListener('chatterstack:new-chat', handleNewChat);
     return () => window.removeEventListener('chatterstack:new-chat', handleNewChat);
@@ -284,6 +293,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
       onConversationSelect: handleConversationSelect,
       onNewChat: handleNewChat,
       currentConversationId: activeConversationId,
+      activePage: view.kind === 'chat' ? undefined : view.kind,
+      onOpenPage: handleOpenPage,
       onLoginClick: handleLoginClick,
       onLogoutClick: handleLogoutClick,
       initialConversations: firstServerPayload.conversations,
@@ -297,6 +308,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
       handleLoginClick,
       handleLogoutClick,
       firstServerPayload,
+      view.kind,
+      handleOpenPage,
     ]
   );
 
@@ -349,6 +362,10 @@ const ChatPage: React.FC<ChatPageProps> = ({
 
         {/* Main Chat Area */}
         <main id="chat-main" inert={mobileMenuOpen} className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          {view.kind !== 'chat' && <AppPages key={view.kind} view={view} user={user} />}
+          {/* Kept mounted while a page is open, so the composer and any
+              streaming answer carry on when the user comes back. */}
+          <div hidden={view.kind !== 'chat'} className="flex min-h-0 flex-1 flex-col">
           <MemoizedChatInterface
             selectedConversationId={activeConversationId}
             initialConversation={initialConversation}
@@ -356,8 +373,11 @@ const ChatPage: React.FC<ChatPageProps> = ({
             mobileMenuOpen={mobileMenuOpen}
             sidebarCollapsed={sidebarCollapsed}
           />
+          </div>
         </main>
       </div>
+
+      {user && user.id !== 'guest' && <SkillEditorHost />}
 
       {/* Login Modal - AT ROOT LEVEL, OUTSIDE MAIN LAYOUT */}
       <LoginModal

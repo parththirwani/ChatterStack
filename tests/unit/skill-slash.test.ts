@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { matchSkills, removeSlashQuery, slashQueryAt } from '@/src/lib/skills/slash';
+import { matchSkills, removeSlashQuery, skillsInText, slashQueryAt, splitSkillTokens } from '@/src/lib/skills/slash';
 
 describe('slashQueryAt', () => {
   it('finds a /query at the start or after whitespace', () => {
@@ -38,5 +38,24 @@ describe('matchSkills', () => {
     expect(matchSkills(skills, 'rev').map((skill) => skill.name)).toEqual(['review-pr', 'code-review']);
     expect(matchSkills(skills, 'changelog').map((skill) => skill.name)).toEqual(['release-notes']);
     expect(matchSkills(skills, '', 2)).toHaveLength(2);
+  });
+});
+
+describe('skill tokens in text', () => {
+  const skills = [{ name: 'code-review' }, { name: 'haiku' }];
+  const names = new Set(skills.map((skill) => skill.name));
+
+  it('splits out known /name tokens only', () => {
+    expect(splitSkillTokens('Check /code-review, then /unknown and a/haiku /haiku', names)).toEqual([
+      { text: 'Check ' },
+      { text: '/code-review', skill: 'code-review' },
+      { text: ', then /unknown and a/haiku ' },
+      { text: '/haiku', skill: 'haiku' },
+    ]);
+    expect(splitSkillTokens('/code-reviewer', names)).toEqual([{ text: '/code-reviewer' }]);
+  });
+
+  it('lists tagged skills once, in order', () => {
+    expect(skillsInText('/haiku and /code-review and /haiku', skills).map((skill) => skill.name)).toEqual(['haiku', 'code-review']);
   });
 });
