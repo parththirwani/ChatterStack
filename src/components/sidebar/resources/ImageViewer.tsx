@@ -5,8 +5,8 @@ import { Hand, Maximize2, Minus, Plus, ZoomIn } from 'lucide-react';
 
 const MIN_SCALE = 0.5;
 const MAX_SCALE = 8;
-const STEP = 1.25;
-const CLICK_ZOOM = 2;
+/** Zoom levels for clicks, buttons and keys: 100% -> 150% -> 200% and back. */
+const LEVELS = [0.5, 1, 1.5, 2, 3, 4, 6, 8];
 /** Pointer travel under this many pixels is a click, not a drag. */
 const DRAG_THRESHOLD = 5;
 /** Leaves a little air around a region that is zoomed to. */
@@ -25,6 +25,13 @@ export interface Region {
   y: number;
   width: number;
   height: number;
+}
+
+/** The next level above (`1`) or below (`-1`) `scale`; the wheel can land between levels. */
+export function stepScale(scale: number, direction: 1 | -1): number {
+  const epsilon = 0.005;
+  if (direction === 1) return LEVELS.find((level) => level > scale + epsilon) ?? scale;
+  return [...LEVELS].reverse().find((level) => level < scale - epsilon) ?? scale;
 }
 
 export const FIT: View = { scale: 1, x: 0, y: 0 };
@@ -105,8 +112,8 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Alt') setZoomOutKey(true);
       if (event.metaKey || event.ctrlKey || event.altKey) return;
-      if (event.key === '+' || event.key === '=') zoomTo((scale) => scale * STEP);
-      else if (event.key === '-' || event.key === '_') zoomTo((scale) => scale / STEP);
+      if (event.key === '+' || event.key === '=') zoomTo((scale) => stepScale(scale, 1));
+      else if (event.key === '-' || event.key === '_') zoomTo((scale) => stepScale(scale, -1));
       else if (event.key === '0') fit();
     };
     const onKeyUp = (event: KeyboardEvent) => {
@@ -179,9 +186,9 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
       const region = { x: Math.min(start.startX, point.x), y: Math.min(start.startY, point.y), width: Math.abs(point.x - start.startX), height: Math.abs(point.y - start.startY) };
       apply((current) => viewForRegion(current, point, region));
     } else if (event.altKey) {
-      zoomTo((scale) => scale / CLICK_ZOOM, toFocal(point));
+      zoomTo((scale) => stepScale(scale, -1), toFocal(point));
     } else {
-      zoomTo((scale) => scale * CLICK_ZOOM, toFocal(point));
+      zoomTo((scale) => stepScale(scale, 1), toFocal(point));
     }
   };
   const onDoubleClick = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -229,12 +236,12 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
         className="pointer-events-none absolute rounded-sm border border-white/90 bg-white/10"
       />}
       <div role="toolbar" aria-label="Zoom" className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/15 bg-[#161616]/90 p-1 shadow-lg backdrop-blur">
-        <button type="button" onClick={() => setTool('magnify')} aria-pressed={tool === 'magnify'} aria-label="Magnifier" title="Magnifier: click to zoom in, drag to zoom to a region, Alt-click to zoom out" className={toolButton(tool === 'magnify')}><ZoomIn className="h-4 w-4" /></button>
+        <button type="button" onClick={() => setTool('magnify')} aria-pressed={tool === 'magnify'} aria-label="Magnifier" title="Magnifier: click to zoom in (150%, 200%…), drag to zoom to a region, Alt-click to step back out" className={toolButton(tool === 'magnify')}><ZoomIn className="h-4 w-4" /></button>
         <button type="button" onClick={() => setTool('pan')} aria-pressed={tool === 'pan'} aria-label="Pan" title="Pan: drag a zoomed image" className={toolButton(tool === 'pan')}><Hand className="h-4 w-4" /></button>
         <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/15" />
-        <button type="button" onClick={() => zoomTo((scale) => scale / STEP)} disabled={view.scale <= MIN_SCALE} aria-label="Zoom out" title="Zoom out (−)" className={button}><Minus className="h-4 w-4" /></button>
+        <button type="button" onClick={() => zoomTo((scale) => stepScale(scale, -1))} disabled={view.scale <= MIN_SCALE} aria-label="Zoom out" title="Zoom out (−)" className={button}><Minus className="h-4 w-4" /></button>
         <span aria-live="polite" aria-label={`Zoom ${percent}%`} className="min-w-[3.25rem] text-center text-xs tabular-nums text-[#d8d5d1]">{percent}%</span>
-        <button type="button" onClick={() => zoomTo((scale) => scale * STEP)} disabled={view.scale >= MAX_SCALE} aria-label="Zoom in" title="Zoom in (+)" className={button}><Plus className="h-4 w-4" /></button>
+        <button type="button" onClick={() => zoomTo((scale) => stepScale(scale, 1))} disabled={view.scale >= MAX_SCALE} aria-label="Zoom in" title="Zoom in (+)" className={button}><Plus className="h-4 w-4" /></button>
         <button type="button" onClick={fit} disabled={view.scale === 1 && view.x === 0 && view.y === 0} aria-label="Fit to window" title="Fit to window (0)" className={button}><Maximize2 className="h-4 w-4" /></button>
       </div>
     </div>

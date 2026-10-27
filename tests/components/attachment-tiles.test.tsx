@@ -6,7 +6,7 @@ import MessageInput from '@/src/components/chat/input/MessageInput';
 import UserMessage from '@/src/components/chat/messages/UserMessage/UserMessage';
 import { ModelSelectionProvider } from '@/src/context/ModelSelectionContext';
 import { resetSkillsCache } from '@/src/lib/client/skills';
-import { FIT, viewForRegion, zoomAbout } from '@/src/components/sidebar/resources/ImageViewer';
+import { FIT, stepScale, viewForRegion, zoomAbout } from '@/src/components/sidebar/resources/ImageViewer';
 import { uploadDocument } from '@/src/lib/client/documents';
 import { useAppStore } from '@/src/store/rootStore';
 import type { DocumentAttachment } from '@/src/types/chat.types';
@@ -194,12 +194,16 @@ describe('zooming an image preview', () => {
     expect(screen.getByRole('button', { name: 'Fit to window' })).toBeDisabled();
 
     await user.click(screen.getByRole('button', { name: 'Zoom in' }));
-    expect(screen.getByLabelText('Zoom 125%')).toBeInTheDocument();
-    expect(image.style.transform).toContain('scale(1.25)');
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
+    expect(image.style.transform).toContain('scale(1.5)');
+    await user.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
 
+    // Back out through the same levels: 200% -> 150% -> 100%.
     await user.click(screen.getByRole('button', { name: 'Zoom out' }));
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Zoom out' }));
-    expect(screen.getByLabelText('Zoom 80%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Fit to window' }));
     expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
@@ -208,7 +212,7 @@ describe('zooming an image preview', () => {
   it('supports the keyboard and stops at the limits', async () => {
     const user = await openImage();
     await user.keyboard('+');
-    expect(screen.getByLabelText('Zoom 125%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
     await user.keyboard('0');
     expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
     for (let press = 0; press < 12; press++) await user.keyboard('+');
@@ -245,15 +249,17 @@ describe('zooming an image preview', () => {
     expect(frame.className).toContain('cursor-zoom-in');
 
     await user.click(frame);
-    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
     await user.click(frame);
-    expect(screen.getByLabelText('Zoom 400%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
 
     await user.keyboard('{Alt>}');
     expect(frame.className).toContain('cursor-zoom-out');
     await user.click(frame);
+    expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
+    await user.click(frame);
     await user.keyboard('{/Alt}');
-    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
   });
 
   it('switches to the hand to pan, where the magnifier no longer zooms on click', async () => {
@@ -279,6 +285,16 @@ describe('zooming an image preview', () => {
 });
 
 describe('zoom maths', () => {
+  it('steps 100% -> 150% -> 200% and back, and from between levels', () => {
+    expect([1, 1.5, 2].map((scale) => stepScale(scale, 1))).toEqual([1.5, 2, 3]);
+    expect([2, 1.5, 1].map((scale) => stepScale(scale, -1))).toEqual([1.5, 1, 0.5]);
+    // A wheel can stop between levels; the next click goes to the nearest level in that direction.
+    expect(stepScale(1.22, 1)).toBe(1.5);
+    expect(stepScale(1.22, -1)).toBe(1);
+    expect(stepScale(8, 1)).toBe(8);
+    expect(stepScale(0.5, -1)).toBe(0.5);
+  });
+
   const frame = { width: 1000, height: 600 };
   // Where an image point that sits at `focal` (from the frame centre) lands on screen.
   const screenOf = (view: { scale: number; x: number; y: number }, point: { x: number; y: number }) => ({ x: view.x + view.scale * point.x, y: view.y + view.scale * point.y });
