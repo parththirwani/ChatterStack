@@ -31,11 +31,12 @@ vi.mock('@/src/services/api', () => ({
         calls.push({ request, handlers, signal, finish: resolve, fail: reject });
       }),
     updateConversation: vi.fn(),
+    deleteConversation: vi.fn(async () => {}),
   },
 }));
 
 const { useChat } = await import('@/src/hooks/useChat');
-const { ModelSelectionProvider } = await import('@/src/context/ModelSelectionContext');
+const { ModelSelectionProvider, useModelSelection } = await import('@/src/context/ModelSelectionContext');
 const { useAppStore } = await import('@/src/store/rootStore');
 
 const wrapper = ({ children }: { children: React.ReactNode }) => <ModelSelectionProvider>{children}</ModelSelectionProvider>;
@@ -51,6 +52,8 @@ beforeEach(() => {
     user: { id: 'u1', name: 'T', email: 't@example.com', avatarUrl: null },
     conversations: [],
     chatState: {},
+    queues: {},
+    queuesPaused: {},
     currentConversationId: undefined,
   });
 });
@@ -202,5 +205,171 @@ describe('failures and stopping', () => {
     expect(call.signal.aborted).toBe(true);
     expect(state().chatState[id].messages.at(-1)?.content).toBe('Partial');
     expect(state().conversations.map((c) => c.id)).toEqual([id]);
+  });
+});
+
+describe('queueing messages while a reply streams', () => {
+  async function streamingChat() {
+    const started = await startNewChat('First');
+    act(() => started.call.handlers.onConversationCreated?.(started.id));
+    const view = renderHook(() => useChat(started.id), { wrapper });
+    return { ...started, view };
+  }
+  const sentMessages = () => calls.map((c) => c.request.message);
+
+  it('holds queued messages and sends them one at a time as each reply finishes', async () => {
+    const { view, call } = await streamingChat();
+    act(() => {
+      view.result.current.queueMessage('Second');
+      view.result.current.queueMessage('Third');
+    });
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Second', 'Third']);
+    expect(calls).toHaveLength(1);
+
+    act(() => call.finish());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(sentMessages()).toEqual(['First', 'Second']);
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Third']);
+
+    act(() => calls[1].finish());
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(sentMessages()).toEqual(['First', 'Second', 'Third']);
+    expect(view.result.current.queue).toEqual([]);
+    calls[2].finish();
+  });
+
+  it('Steer interrupts the reply, keeps what streamed, and sends the steered message next', async () => {
+    const { view, call, id } = await streamingChat();
+    act(() => call.handlers.onChunk?.('Partial'));
+    act(() => {
+      view.result.current.queueMessage('Later');
+      view.result.current.queueMessage('Change of plan');
+    });
+    const steered = view.result.current.queue[1].id;
+
+    act(() => view.result.current.steerQueuedMessage(steered));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(call.signal.aborted).toBe(true);
+    expect(sentMessages()).toEqual(['First', 'Change of plan']);
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Later']);
+    const contents = state().chatState[id].messages.map((m) => m.content);
+    expect(contents.slice(0, 3)).toEqual(['First', 'Partial', 'Change of plan']);
+    calls[1].finish();
+  });
+
+  it('Stop pauses the queue, and Send on a paused message sends it', async () => {
+    const { view, pending } = await streamingChat();
+    act(() => view.result.current.queueMessage('Queued'));
+    act(() => view.result.current.stopGenerating());
+    await act(() => pending);
+    expect(calls).toHaveLength(1);
+    expect(view.result.current.queue.map((item) => item.content)).toEqual(['Queued']);
+
+    act(() => view.result.current.steerQueuedMessage(view.result.current.queue[0].id));
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(sentMessages()).toEqual(['First', 'Queued']);
+    calls[1].finish();
+  });
+
+  it('carries queued attachments along', async () => {
+    const { view, call } = await streamingChat();
+    const file = { documentId: 'd1', name: 'notes.pdf', mimeType: 'application/pdf', size: 10 };
+    act(() => view.result.current.queueMessage('See file', [file]));
+    act(() => call.finish());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1].request.attachments).toEqual([file]);
+    calls[1].finish();
+  });
+});
+
+describe('queue review fixes', () => {
+  async function streamingChat() {
+    const started = await startNewChat('First');
+    act(() => started.call.handlers.onConversationCreated?.(started.id));
+    const view = renderHook(() => ({ chat: useChat(started.id), models: useModelSelection() }), { wrapper });
+    return { ...started, view };
+  }
+
+  it('sends a queued message with the model chosen when it was queued', async () => {
+    const { view, call } = await streamingChat();
+    act(() => view.result.current.models.setSelectedModel('anthropic/claude-sonnet-5.5'));
+    act(() => view.result.current.chat.queueMessage('Queued with Claude'));
+    act(() => view.result.current.models.setSelectedModel('google/gemini-4-argon'));
+    act(() => call.finish());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1].request.selectedModel).toBe('anthropic/claude-sonnet-5.5');
+    calls[1].finish();
+  });
+
+  it('never sends a message while it is open for editing, and sends the edit afterwards', async () => {
+    const { view, call } = await streamingChat();
+    act(() => {
+      view.result.current.chat.queueMessage('Being edited');
+      view.result.current.chat.queueMessage('Ready');
+    });
+    const edited = view.result.current.chat.queue[0].id;
+    act(() => view.result.current.chat.startEditingQueued(edited));
+    act(() => call.finish());
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1].request.message).toBe('Ready');
+
+    act(() => calls[1].finish());
+    await waitFor(() => expect(state().chatState[call.request.conversationId!].loading).toBe(false));
+    expect(calls).toHaveLength(2);
+    act(() => view.result.current.chat.finishEditingQueued(edited, 'Edited text'));
+    await waitFor(() => expect(calls).toHaveLength(3));
+    expect(calls[2].request.message).toBe('Edited text');
+    calls[2].finish();
+  });
+
+  it('drops the queue when its chat is deleted', async () => {
+    const { view, call, id, pending } = await streamingChat();
+    act(() => view.result.current.chat.queueMessage('Orphan'));
+    await act(() => state().deleteConversation(id));
+    expect(state().queues[id]).toBeUndefined();
+    act(() => call.finish());
+    await act(() => pending);
+    expect(calls).toHaveLength(1);
+  });
+
+  it('a held queue stays held after the user sends something else', async () => {
+    const { view, pending } = await streamingChat();
+    act(() => view.result.current.chat.queueMessage('Held'));
+    act(() => view.result.current.chat.stopGenerating());
+    await act(() => pending);
+    expect(view.result.current.chat.queuePaused).toBe(true);
+
+    act(() => {
+      void view.result.current.chat.sendMessage('Typed after Stop');
+    });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    act(() => calls[1].finish());
+    await waitFor(() => expect(view.result.current.chat.loading).toBe(false));
+    expect(calls).toHaveLength(2);
+    expect(view.result.current.chat.queue.map((item) => item.content)).toEqual(['Held']);
+  });
+
+  it('keeps queued messages, held, when a new chat fails before it was saved', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const { id, call, pending } = await startNewChat('First');
+    const view = renderHook(() => useChat(id), { wrapper });
+    act(() => view.result.current.queueMessage('Still wanted'));
+    act(() => call.fail(new Error('Rate limited')));
+    await act(() => pending);
+
+    expect(state().queues[id]).toBeUndefined();
+    expect(state().queues.new.map((item) => item.content)).toEqual(['Still wanted']);
+    expect(state().queuesPaused.new).toBe(true);
+  });
+
+  it('leaves a message queued if it cannot be sent yet', async () => {
+    const { view, pending } = await streamingChat();
+    act(() => view.result.current.chat.queueMessage('Keep me'));
+    act(() => view.result.current.chat.stopGenerating());
+    await act(() => pending);
+    useAppStore.setState({ user: null });
+    act(() => view.result.current.chat.steerQueuedMessage(view.result.current.chat.queue[0].id));
+    expect(calls).toHaveLength(1);
+    expect(view.result.current.chat.queue.map((item) => item.content)).toEqual(['Keep me']);
   });
 });

@@ -2,6 +2,7 @@ import { getQdrantClient } from '@/src/lib/qdrant';
 import { HybridSearchResult, RetrievalContext } from './types';
 import { generateEmbedding } from './openrouter';
 import { generateSparseVector } from './sparse';
+import { captureError } from '@/src/lib/observability/capture';
 
 
 const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
@@ -75,7 +76,7 @@ async function retrieveContext(params: {
       shortTermContext: shortTermMessages.slice(-8), // Last 4-8 turns
     };
   } catch (error) {
-    console.error('Retrieval error:', error);
+    captureError(error, { route: 'rag/retrieve', stage: 'hybrid-search' });
     // Fallback: return only short-term context
     return {
       chunks: [],
@@ -223,7 +224,7 @@ export async function retrieveContextWithFallback(params: {
     // Try full RAG retrieval
     return await retrieveContext(params);
   } catch (error) {
-    console.error('RAG retrieval failed, using short-term memory only:', error);
+    captureError(error, { route: 'rag/retrieve', stage: 'fallback' });
     
     // Fallback: return only short-term context
     return {

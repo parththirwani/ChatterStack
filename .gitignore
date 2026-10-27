@@ -13,6 +13,8 @@ bun.lockb
 out/
 build/
 dist/
+# TypeScript incremental build artifact (generated, do not commit)
+tsconfig.tsbuildinfo
 
 
 # ==============================
@@ -84,6 +86,7 @@ docker-compose.override.yml
 .vercel
 .env*
 .cora-cli/
+.codemate-vm.local.md
 
 # ==============================
 # Tests

@@ -1,4 +1,5 @@
 import { SSEData } from "@/src/types/chat.types";
+import { captureError } from '@/src/lib/observability/capture';
 
 export interface SSEStream {
   /** Sends an event; does nothing once the client has gone away. */
@@ -38,7 +39,8 @@ export function createSSEStream(
       try {
         await onStream({ send, signal: abort.signal });
       } catch (error) {
-        console.error('[SSE] Stream handler failed:', error);
+        // Whatever the client sees is this single event; report it once here.
+        captureError(error, { route: 'sse', stage: 'stream' });
         send({ error: error instanceof Error ? error.message : 'Unknown error' });
       } finally {
         write('data: [DONE]\n\n');

@@ -138,9 +138,53 @@ describe('document storage rules', () => {
       .mockResolvedValueOnce({ blobs: [{ pathname: 'users/recent', uploadedAt: recent }], hasMore: false });
     db.document.findMany.mockImplementation(async ({ where }: { where: { id?: { in: string[] }; userId?: string; storageKey?: { in: string[] } } }) =>
       [...records.values()].filter((row) => where.storageKey?.in.includes(String(row.storageKey))));
-    expect(await cleanupUnconfirmedUploads(new Date('2026-10-27T12:00:00Z'))).toBe(1);
+    expect((await cleanupUnconfirmedUploads(new Date('2026-10-27T12:00:00Z')))).toEqual({ removed: 1, hasMore: false, cursor: null });
     expect(storage.list).toHaveBeenNthCalledWith(2, 'next');
     expect(storage.delete).toHaveBeenCalledTimes(1);
     expect(storage.delete).toHaveBeenCalledWith('users/orphan');
+  });
+
+  it('bounds the work per run and reports hasMore with a resume cursor', async () => {
+    const old = new Date('2026-10-20T00:00:00Z');
+    const pages = [
+      { blobs: [{ pathname: 'users/orphan-1', uploadedAt: old }], hasMore: true, cursor: 'c2' },
+      { blobs: [{ pathname: 'users/orphan-2', uploadedAt: old }], hasMore: true, cursor: 'c3' },
+      { blobs: [{ pathname: 'users/orphan-3', uploadedAt: old }], hasMore: true, cursor: 'c4' },
+      { blobs: [{ pathname: 'users/orphan-4', uploadedAt: old }], hasMore: true, cursor: 'c5' },
+    ];
+    pages.forEach((page) => storage.list.mockResolvedValueOnce(page));
+    db.document.findMany.mockImplementation(async () => []);
+
+    const run = await cleanupUnconfirmedUploads(new Date('2026-10-27T12:00:00Z'), { maxPages: 3 });
+    expect(run).toEqual({ removed: 3, hasMore: true, cursor: 'c4' });
+    expect(storage.list).toHaveBeenCalledTimes(3);
+    expect(storage.delete).toHaveBeenCalledTimes(3);
+  });
+
+  it('resumes from the cursor of the previous run', async () => {
+    const old = new Date('2026-10-20T00:00:00Z');
+    storage.list.mockReset();
+    storage.list.mockResolvedValue({ blobs: [{ pathname: 'users/orphan-b', uploadedAt: old }], hasMore: false });
+    db.document.findMany.mockImplementation(async () => []);
+
+    const run = await cleanupUnconfirmedUploads(new Date('2026-10-27T12:00:00Z'), { cursor: 'page-2' });
+    expect(run).toEqual({ removed: 1, hasMore: false, cursor: null });
+    expect(storage.list).toHaveBeenCalledTimes(1);
+    expect(storage.list).toHaveBeenCalledWith('page-2');
+    expect(storage.delete).toHaveBeenCalledWith('users/orphan-b');
+  });
+
+  it('also stops on the time budget with a resume cursor', async () => {
+    const old = new Date('2026-10-20T00:00:00Z');
+    let elapsed = 0;
+    vi.spyOn(Date, 'now').mockImplementation(() => 1_000 + (elapsed += 15_000));
+    storage.list.mockReset();
+    storage.list.mockResolvedValue({ blobs: [{ pathname: 'users/orphan-t', uploadedAt: old }], hasMore: true, cursor: 'next-t' });
+    db.document.findMany.mockImplementation(async () => []);
+
+    const run = await cleanupUnconfirmedUploads(new Date('2026-10-27T12:00:00Z'), { maxPages: 100, timeBudgetMs: 10_000 });
+    expect(run.hasMore).toBe(true);
+    expect(run.cursor).toBe('next-t');
+    expect(storage.list).toHaveBeenCalledTimes(1);
   });
 });
