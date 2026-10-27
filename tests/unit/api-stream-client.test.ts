@@ -62,6 +62,27 @@ describe('ApiService.sendMessage stream parsing', () => {
     ]);
   });
 
+  it('hands over the completion analytics before the stream ends', async () => {
+    const analytics = {
+      durationMs: 4200,
+      inputTokens: 120,
+      outputTokens: 340,
+      totalTokens: 460,
+      timings: [{ model: 'openai/gpt-6.1-sol', stage: 'stage1', durationMs: 4100 }],
+    };
+    fetchMock.mockResolvedValue(sseResponse([{ chunk: 'Answer' }, { analytics }, { done: true }, '[DONE]']));
+
+    const log: string[] = [];
+    await ApiService.sendMessage(request, {
+      onChunk: () => log.push('chunk'),
+      onAnalytics: (value) => log.push('analytics:' + value.totalTokens + ':' + value.timings?.[0]?.model),
+      onDone: () => log.push('done'),
+    });
+
+    // Both the done event and the closing [DONE] end the stream.
+    expect(log).toEqual(['chunk', 'analytics:460:openai/gpt-6.1-sol', 'done', 'done']);
+  });
+
   it('surfaces a server error instead of silently ignoring it', async () => {
     fetchMock.mockResolvedValue(sseResponse([{ chunk: 'partial' }, { error: 'Rate limited' }, '[DONE]']));
     await expect(ApiService.sendMessage(request, {})).rejects.toThrow('Rate limited');

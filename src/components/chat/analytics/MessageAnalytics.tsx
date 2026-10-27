@@ -13,9 +13,8 @@ const STAGE_NAMES: Record<string, string> = {
 
 export function formatDuration(ms: number): string {
   const seconds = ms / 1000;
-  if (seconds < 1) return `${Math.round(ms)}ms`;
-  if (seconds < 10) return `${seconds.toFixed(1)}s`;
-  if (seconds < 60) return `${Math.round(seconds)}s`;
+  if (seconds < 1) return Math.round(ms) + 'ms';
+  if (seconds < 60) return seconds.toFixed(1) + 's';
   const minutes = Math.floor(seconds / 60);
   return `${minutes}m ${Math.round(seconds % 60)}s`;
 }
@@ -62,10 +61,8 @@ const MessageAnalytics: React.FC<MessageAnalyticsProps> = ({ analytics }) => {
         onClick={() => setPinned((value) => !value)}
         className="flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-[12px] text-[#a9a5a0] transition-colors hover:bg-white/[0.07] hover:text-white focus-visible:outline-2 focus-visible:outline-white"
       >
-        <span className="tabular-nums">{formatTokens(analytics.totalTokens)} tokens</span>
-        <span aria-hidden="true">·</span>
-        <span className="tabular-nums">{formatDuration(analytics.durationMs)}</span>
-        <ChevronDown className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} strokeWidth={1.8} aria-hidden="true" />
+        <span className="tabular-nums">{formatTokens(analytics.totalTokens) + ' tokens · ' + formatDuration(analytics.durationMs)}</span>
+        <ChevronDown className={'h-3 w-3 shrink-0 transition-transform' + (open ? ' rotate-180' : '')} strokeWidth={1.8} aria-hidden="true" />
       </button>
 
       <span
@@ -74,7 +71,7 @@ const MessageAnalytics: React.FC<MessageAnalyticsProps> = ({ analytics }) => {
         className="absolute bottom-full left-0 z-30 mb-1 w-64 rounded-lg border border-white/10 bg-[#232323] p-2.5 text-left shadow-xl"
       >
         <span className="block text-[12px] text-[#e6e3de]">
-          <span className="tabular-nums">{analytics.inputTokens.toLocaleString()}</span> sent · <span className="tabular-nums">{analytics.outputTokens.toLocaleString()}</span> returned
+          {analytics.inputTokens.toLocaleString() + ' sent · ' + analytics.outputTokens.toLocaleString() + ' returned'}
         </span>
         {models.length > 0 && (
           <span className="mt-1.5 block border-t border-white/10 pt-1.5">
@@ -84,7 +81,7 @@ const MessageAnalytics: React.FC<MessageAnalyticsProps> = ({ analytics }) => {
                 <span key={group.model} className="flex items-center gap-2 py-0.5 text-[12px] text-[#a9a5a0]">
                   {model && <Image src={model.logo} alt="" width={12} height={12} className={`h-3 w-3 shrink-0 ${model.invert ? 'invert brightness-0' : ''}`} />}
                   <span className="min-w-0 flex-1 truncate text-[#e6e3de]">{model?.name ?? group.model}</span>
-                  <span className="shrink-0 tabular-nums">{group.calls.map((call) => `${STAGE_NAMES[call.stage] ?? call.stage} ${formatDuration(call.durationMs)}`).join(' · ')}</span>
+                  <span className="shrink-0 tabular-nums">{group.calls.map((call) => (STAGE_NAMES[call.stage] ?? call.stage) + ' ' + formatDuration(call.durationMs)).join(' · ')}</span>
                 </span>
               );
             })}

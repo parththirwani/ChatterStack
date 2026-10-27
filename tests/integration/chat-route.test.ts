@@ -44,6 +44,12 @@ const db = {
       log.push(`db:messages:${data.map((m) => `${m.role}=${m.content}`).join('|')}`);
       return { count: data.length };
     }),
+    // What a retry removes: the question row and the answer saved after it.
+    findFirst: vi.fn(async () => ({ createdAt: new Date('2026-01-01T00:00:00Z') })),
+    deleteMany: vi.fn(async () => {
+      log.push('db:deleteExchange');
+      return { count: 2 };
+    }),
   },
   $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
 };
@@ -92,6 +98,8 @@ beforeEach(() => {
   Object.values(db.conversation).forEach((fn) => fn.mockClear());
   db.message.createMany.mockClear();
   db.message.findMany.mockClear();
+  db.message.findFirst.mockClear();
+  db.message.deleteMany.mockClear();
   redis.get.mockReset().mockImplementation(async () => []);
   redis.set.mockReset().mockImplementation(async () => {});
   redis.delete.mockReset().mockImplementation(async () => {});
@@ -572,5 +580,91 @@ describe('POST /api/chat, history cache', () => {
       redis.get.mockReset().mockImplementation(async () => []);
       redis.set.mockReset().mockImplementation(async () => {});
     }
+  });
+});
+
+describe('POST /api/chat, completion analytics', () => {
+  it('reports the tokens and time of the finished answer, before the stream ends', async () => {
+    const events = await readEvents(
+      await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true })
+    );
+    // countTokens is stubbed as the character count in this file.
+    const analytics = events.find((e) => e !== '[DONE]' && 'analytics' in e) as {
+      analytics: { inputTokens: number; outputTokens: number; totalTokens: number; durationMs: number; timings?: unknown[] };
+    };
+    expect(analytics.analytics.inputTokens).toBe('Explain TCP'.length);
+    expect(analytics.analytics.outputTokens).toBe('Slow start doubles cwnd.'.length);
+    expect(analytics.analytics.totalTokens).toBe('Explain TCP'.length + 'Slow start doubles cwnd.'.length);
+    expect(analytics.analytics.durationMs).toBeTypeOf('number');
+    // One model call: nothing to break the total down into.
+    expect(analytics.analytics.timings).toBeUndefined();
+
+    const analyticsAt = events.findIndex((e) => e !== '[DONE]' && 'analytics' in e);
+    const doneAt = events.findIndex((e) => e !== '[DONE]' && (e as { done?: boolean }).done === true);
+    // The client stops reading at done, so the numbers have to arrive first.
+    expect(analyticsAt).toBeLessThan(doneAt);
+  });
+
+  it('breaks a council run down per model call', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const eventsPromise = readEvents(await post({
+        message: 'Compare REST and gRPC',
+        selectedModel: 'council',
+        conversationId: NEW_ID,
+        council: { members: ['openai/gpt-6.1-sol', 'anthropic/claude-sonnet-5.5'], chair: 'anthropic/claude-sonnet-5.5' },
+      }));
+      await vi.runAllTimersAsync();
+      const events = await eventsPromise;
+
+      const analytics = events.find((e) => e !== '[DONE]' && 'analytics' in e) as {
+        analytics: { timings: Array<{ model: string; stage: string; durationMs: number }> };
+      };
+      const calls = analytics.analytics.timings.map((t) => t.stage + ':' + t.model);
+      expect(calls).toContain('stage1:openai/gpt-6.1-sol');
+      expect(calls).toContain('stage2:anthropic/claude-sonnet-5.5');
+      expect(calls).toContain('stage3:anthropic/claude-sonnet-5.5');
+      // Answers + reviews from both members, then the chair writing the answer.
+      expect(calls).toHaveLength(5);
+      expect(analytics.analytics.timings.every((t) => typeof t.durationMs === 'number')).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('POST /api/chat, retry', () => {
+  const history = [
+    { role: 'user', content: 'Explain TCP' },
+    { role: 'assistant', content: 'An answer the user did not like.' },
+  ];
+
+  it('drops the replaced answer from the prompt and saves the new pair in its place', async () => {
+    redis.get.mockImplementation(async () => history);
+    try {
+      const events = await readEvents(
+        await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, retry: true })
+      );
+      expect(events.some((e) => e !== '[DONE]' && 'analytics' in e)).toBe(true);
+    } finally {
+      redis.get.mockImplementation(async () => []);
+    }
+
+    const sent = openRouterBodies()[0].messages.map((m: { content: string }) => m.content);
+    // The question is asked once, and the answer it replaces is never shown again.
+    expect(sent.filter((content: string) => content === 'Explain TCP')).toHaveLength(1);
+    expect(sent).not.toContain('An answer the user did not like.');
+
+    expect(log).toContain('db:deleteExchange');
+    expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start doubles cwnd.');
+    const saved = redis.set.mock.calls.at(-1)![1] as Array<{ content: string }>;
+    expect(saved.map((m) => m.content)).toEqual(['Explain TCP', 'Slow start doubles cwnd.']);
+  });
+
+  it('replaces nothing when the chat is brand new', async () => {
+    await readEvents(await post({
+      message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true, retry: true,
+    }));
+    expect(db.message.deleteMany).not.toHaveBeenCalled();
   });
 });

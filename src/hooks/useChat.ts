@@ -269,9 +269,7 @@ async function sendToConversation(
     if (abortController.signal.aborted) {
       outcome = 'aborted';
       // User stopped generation: keep whatever was streamed so far.
-    flushNow();
-    // The reply is final now: attach the tokens it used and how long it took.
-    if (analytics) patchStreamingMessage(() => ({ analytics }));
+      flushNow();
     } else {
       outcome = 'error';
       const fresh = useAppStore.getState();
@@ -304,6 +302,8 @@ async function sendToConversation(
       flushTimer = null;
     }
     flushNow();
+    // The reply is final now: attach the tokens it used and how long it took.
+    if (analytics) patchStreamingMessage(() => ({ analytics }));
 
     const fresh = useAppStore.getState();
     if (fresh.chatState[key]) {

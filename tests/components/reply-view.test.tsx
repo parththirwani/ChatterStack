@@ -6,7 +6,8 @@ import { PendingIndicator, ThinkingBlock } from '@/src/components/chat/messages/
 import CouncilProgressIndicator from '@/src/components/council/progress/ProgressIndicator';
 import { CouncilSummary } from '@/src/components/council/summary/CouncilSummary';
 import AIMessage from '@/src/components/chat/messages/AIMessage/AIMessage';
-import type { CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
+import MessageAnalytics from '@/src/components/chat/analytics/MessageAnalytics';
+import type { CompletionAnalytics, CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
 
 const GPT = 'openai/gpt-6.1-sol';
 const GEMINI = 'google/gemini-4-argon';
@@ -190,5 +191,80 @@ describe('AI message', () => {
   it('shows the pending orb before any token arrives', () => {
     render(<AIMessage content="" modelId={CLAUDE} loading isLastMessage />);
     expect(screen.getByRole('status')).toHaveTextContent('Thinking');
+  });
+});
+
+describe('completion analytics', () => {
+  const single: CompletionAnalytics = {
+    durationMs: 4200,
+    inputTokens: 120,
+    outputTokens: 340,
+    totalTokens: 460,
+  };
+  const council: CompletionAnalytics = {
+    ...single,
+    totalTokens: 5060,
+    durationMs: 41_000,
+    timings: [
+      { model: GPT, stage: 'stage1', durationMs: 12_000 },
+      { model: CLAUDE, stage: 'stage1', durationMs: 9_000 },
+      { model: GPT, stage: 'stage2', durationMs: 8_000 },
+      { model: CLAUDE, stage: 'stage2', durationMs: 6_000 },
+      { model: CLAUDE, stage: 'stage3', durationMs: 6_000 },
+    ],
+  };
+
+  it('shows the tokens and the time the answer took', () => {
+    render(<MessageAnalytics analytics={single} />);
+    expect(screen.getByRole('button', { name: /460 tokens · 4.2s/ })).toBeInTheDocument();
+  });
+
+  it('splits prompt and completion on hover', async () => {
+    const user = userEvent.setup();
+    render(<MessageAnalytics analytics={single} />);
+    const trigger = screen.getByRole('button');
+    expect(screen.queryByText(/sent/)).not.toBeVisible();
+    await user.hover(trigger);
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/120 sent · 340 returned/)).toBeVisible();
+    await user.unhover(trigger);
+    expect(screen.queryByText(/sent/)).not.toBeVisible();
+  });
+
+  it('says which model took how long, next to the total in council mode', async () => {
+    const user = userEvent.setup();
+    render(<MessageAnalytics analytics={council} />);
+    const trigger = screen.getByRole('button');
+    await user.hover(trigger);
+    const panel = document.getElementById(trigger.getAttribute('aria-controls')!)!;
+
+    // A member that both answered and reviewed shows both of its calls.
+    expect(panel.textContent).toContain('Answer 12.0s · Review 8.0s');
+    expect(panel.textContent).toContain('Answer 9.0s · Review 6.0s · Final answer 6.0s');
+    // The model that took longest overall (Claude: 9 + 6 + 6) is listed first.
+    expect(panel.textContent!.indexOf('Claude Sonnet 5.5')).toBeLessThan(panel.textContent!.indexOf('GPT-6.1 Sol'));
+  });
+
+  it('opens for keyboard users too', async () => {
+    const user = userEvent.setup();
+    render(<MessageAnalytics analytics={single} />);
+    await user.tab();
+    expect(screen.getByRole('button')).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText(/120 sent · 340 returned/)).toBeVisible();
+    await user.tab();
+    expect(screen.queryByText(/120 sent · 340 returned/)).not.toBeVisible();
+  });
+});
+
+describe('retry', () => {
+  it('offers Retry on the reply it is wired to, and only there', async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    const { rerender } = render(<AIMessage content="Answer" modelId={CLAUDE} />);
+    expect(screen.queryByRole('button', { name: 'Retry message' })).toBeNull();
+
+    rerender(<AIMessage content="Answer" modelId={CLAUDE} onRetry={onRetry} />);
+    await user.click(screen.getByRole('button', { name: 'Retry message' }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 });

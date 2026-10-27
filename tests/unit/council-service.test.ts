@@ -96,6 +96,33 @@ describe('runCouncilProcess', () => {
     );
   });
 
+  it('reports how long every model call took, so the total can be broken down', async () => {
+    const onTiming = vi.fn();
+    await run({ members: [GPT, GEMINI], chair: GPT }, { onTiming });
+
+    const seen = onTiming.mock.calls.map(([timing]) => timing.stage + ':' + timing.model).sort();
+    expect(seen).toEqual([
+      'stage1:' + GEMINI, 'stage1:' + GPT,
+      'stage2:' + GEMINI, 'stage2:' + GPT,
+      'stage3:' + GPT,
+    ]);
+    expect(onTiming.mock.calls.every(([timing]) => typeof timing.durationMs === 'number')).toBe(true);
+  });
+
+  it('does not report a time for a member that never answered', async () => {
+    const base = streamCompletion.getMockImplementation()!;
+    streamCompletion.mockImplementation(async (messages: Msg[], model: string, options?: StreamOptions) => {
+      if (model === DEEPSEEK && stageOf(messages) === 'stage1') throw new Error('overloaded');
+      return base(messages, model, options);
+    });
+    const onTiming = vi.fn();
+    await run({ members: [GPT, GEMINI, DEEPSEEK], chair: GPT }, { onTiming });
+
+    const seen = onTiming.mock.calls.map(([timing]) => timing.stage + ':' + timing.model);
+    expect(seen).not.toContain('stage1:' + DEEPSEEK);
+    expect(seen).toContain('stage1:' + GPT);
+  });
+
   it('marks a failing member as skipped and leaves it out of peer review', async () => {
     const base = streamCompletion.getMockImplementation()!;
     streamCompletion.mockImplementation(async (messages: Msg[], model: string, options?: StreamOptions) => {

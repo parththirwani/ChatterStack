@@ -395,3 +395,112 @@ describe('queue review fixes', () => {
     expect(view.result.current.chat.queue.map((item) => item.content)).toEqual(['Keep me']);
   });
 });
+
+describe('finishing a completion', () => {
+  it('attaches the token and time report to the answer it belongs to', async () => {
+    const { call, id, pending } = await startNewChat();
+    act(() => call.handlers.onConversationCreated?.(id));
+    act(() => {
+      call.handlers.onChunk?.('Slow start.');
+      call.handlers.onAnalytics?.({ durationMs: 4200, inputTokens: 120, outputTokens: 340, totalTokens: 460 });
+      call.handlers.onDone?.();
+      call.finish();
+    });
+    await act(() => pending);
+    const reply = state().chatState[id].messages.at(-1)!;
+    expect(reply.content).toBe('Slow start.');
+    expect(reply.analytics).toEqual({ durationMs: 4200, inputTokens: 120, outputTokens: 340, totalTokens: 460 });
+  });
+
+  it('reports no analytics for a reply that was stopped', async () => {
+    const { call, id, pending } = await startNewChat();
+    act(() => call.handlers.onConversationCreated?.(id));
+    act(() => call.handlers.onChunk?.('Half an answer'));
+    const view = renderHook(() => useChat(id), { wrapper });
+    act(() => view.result.current.stopGenerating());
+    await act(() => pending);
+    expect(state().chatState[id].messages.at(-1)?.analytics).toBeUndefined();
+  });
+});
+
+describe('retrying the last answer', () => {
+  async function answeredOnce(text = 'Explain TCP congestion control') {
+    const started = await startNewChat(text);
+    act(() => started.call.handlers.onConversationCreated?.(started.id));
+    act(() => {
+      started.call.handlers.onChunk?.('An answer the user did not like.');
+      started.call.handlers.onDone?.();
+      started.call.finish();
+    });
+    await act(() => started.pending);
+    return started;
+  }
+
+  it('sends the question again, asking the server to replace the saved pair', async () => {
+    const { id } = await answeredOnce();
+    const view = renderHook(() => useChat(id), { wrapper });
+
+    act(() => { void view.result.current.retryLastReply(); });
+    await waitFor(() => expect(calls).toHaveLength(2));
+
+    expect(calls[1].request.message).toBe('Explain TCP congestion control');
+    expect(calls[1].request.retry).toBe(true);
+    expect(calls[1].request.newConversation).toBeUndefined();
+    expect(calls[1].request.conversationId).toBe(id);
+  });
+
+  it('shows the new reply in place of the old one', async () => {
+    const { id } = await answeredOnce();
+    const view = renderHook(() => useChat(id), { wrapper });
+    const contents = () => state().chatState[id].messages.map((item) => item.content);
+    expect(contents()).toEqual(['Explain TCP congestion control', 'An answer the user did not like.']);
+
+    act(() => { void view.result.current.retryLastReply(); });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    // The replaced answer disappears as soon as the retry starts.
+    expect(contents()).toEqual(['Explain TCP congestion control', '']);
+
+    act(() => {
+      calls[1].handlers.onChunk?.('A better answer.');
+      calls[1].handlers.onDone?.();
+      calls[1].finish();
+    });
+    await waitFor(() => expect(state().chatState[id].loading).toBe(false));
+    expect(contents()).toEqual(['Explain TCP congestion control', 'A better answer.']);
+  });
+
+  it('replays the model, thinking level and council the answer came from', async () => {
+    localStorage.setItem('councilSettings', JSON.stringify({
+      enabled: true, members: ['openai/gpt-6.1-sol', 'google/gemini-4-argon'], chair: 'google/gemini-4-argon',
+    }));
+    const { id } = await answeredOnce();
+    expect(calls[0].request.selectedModel).toBe('council');
+
+    // The user reconfigures the council before hitting Retry.
+    localStorage.setItem('councilSettings', JSON.stringify({
+      enabled: false, members: ['deepseek/deepseek-v4.1-flash-1017', 'anthropic/claude-sonnet-5.5'], chair: 'anthropic/claude-sonnet-5.5',
+    }));
+    const next = renderHook(() => useChat(id), { wrapper });
+    await waitFor(() => expect(next.result.current.retryLastReply).toBeTypeOf('function'));
+
+    act(() => { void next.result.current.retryLastReply(); });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(calls[1].request.selectedModel).toBe('council');
+    expect(calls[1].request.council).toEqual({ members: ['openai/gpt-6.1-sol', 'google/gemini-4-argon'], chair: 'google/gemini-4-argon' });
+    calls[1].finish();
+  });
+
+  it('does nothing while a reply is still streaming', async () => {
+    const { id } = await startNewChat();
+    const view = renderHook(() => useChat(id), { wrapper });
+    act(() => { void view.result.current.retryLastReply(); });
+    expect(calls).toHaveLength(1);
+    calls[0].finish();
+  });
+
+  it('does nothing when the chat has no answer to replace', async () => {
+    const view = renderHook(() => useChat('0e7ba32e-05b0-477d-8e30-2bf0a849649e'), { wrapper });
+    act(() => { void view.result.current.retryLastReply(); });
+    expect(calls).toHaveLength(0);
+  });
+});
