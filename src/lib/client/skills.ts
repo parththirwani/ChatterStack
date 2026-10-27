@@ -7,6 +7,8 @@ import { useAppStore } from '@/src/store/rootStore';
 
 /** Fired after any change to the user's skills, so every list refreshes. */
 export const SKILLS_CHANGED_EVENT = 'chatterstack:skills-changed';
+/** Replaces the open composer's text: `detail` is the new text. */
+export const COMPOSE_EVENT = 'chatterstack:compose';
 /** Opens the create-skill dialog, optionally prefilled (Save as skill). */
 export const OPEN_SKILL_EDITOR_EVENT = 'chatterstack:open-skill-editor';
 
@@ -131,12 +133,18 @@ export function resetSkillsCache() {
 function startChat(text: string, { replace = false } = {}) {
   const store = useAppStore.getState();
   const existing = replace ? '' : (store.drafts.new ?? '').trim();
-  store.setDraft('new', existing ? `${text}${existing}` : text);
+  const composed = existing ? `${text}${existing}` : text;
+  store.setDraft('new', composed);
   window.dispatchEvent(new Event('chatterstack:new-chat'));
+  // After the switch to the new chat renders, so the text can't be saved as
+  // the draft of the chat that was open before.
   window.setTimeout(() => {
-    const input = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
-    input?.focus();
-    input?.setSelectionRange(input.value.length, input.value.length);
+    window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: composed }));
+    window.requestAnimationFrame(() => {
+      const input = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
+      input?.focus();
+      input?.setSelectionRange(input.value.length, input.value.length);
+    });
   }, 50);
 }
 

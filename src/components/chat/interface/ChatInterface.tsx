@@ -15,7 +15,7 @@ import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import type { SkillTag } from '@/src/types/skill.types';
-import { useSkills } from '@/src/lib/client/skills';
+import { COMPOSE_EVENT, useSkills } from '@/src/lib/client/skills';
 import { MAX_SKILLS_PER_MESSAGE } from '@/src/lib/skills/skill-file';
 import { skillsInText } from '@/src/lib/skills/slash';
 
@@ -266,6 +266,16 @@ const ChatComposer = memo(function ChatComposer({
   const { skills: allSkills } = useSkills(userId);
 
   useEffect(() => setAttachments([]), [conversationKey]);
+
+  // Customize's Try in chat / Create with AI fill the composer.
+  useEffect(() => {
+    const compose = (event: Event) => {
+      const text = (event as CustomEvent<string>).detail;
+      if (typeof text === 'string') setMessage(text);
+    };
+    window.addEventListener(COMPOSE_EVENT, compose);
+    return () => window.removeEventListener(COMPOSE_EVENT, compose);
+  }, [setMessage]);
 
   // Skills are tagged inline as `/name` tokens; the first few turned-on ones apply.
   const tagsIn = useCallback((text: string): SkillTag[] =>

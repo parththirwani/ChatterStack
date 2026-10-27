@@ -15,6 +15,7 @@ export interface ChatBody {
   selectedModel: string;
   thinkingLevel?: string;
   council?: { members: string[]; chair: string };
+  skills?: string[];
 }
 
 export interface Stream {
@@ -119,8 +120,8 @@ export async function sendMessage(page: Page, text: string) {
 
 export const sidebar = {
   pinned: (page: Page) => page.getByRole('region', { name: 'Pinned chats', exact: true }),
-  chats: (page: Page) => page.getByRole('region', { name: 'Chats', exact: true }),
-  titles: (page: Page, section: 'Pinned chats' | 'Chats') =>
+  chats: (page: Page) => page.getByRole('region', { name: 'Recents', exact: true }),
+  titles: (page: Page, section: 'Pinned chats' | 'Recents') =>
     page.getByRole('region', { name: section, exact: true }).locator('li > div > button:first-child span:first-child'),
   row: (page: Page, title: string | RegExp) => page.locator('section li').filter({ hasText: title }),
 };
