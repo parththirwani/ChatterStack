@@ -13,6 +13,8 @@ bun.lockb
 out/
 build/
 dist/
+# TypeScript incremental build artifact (generated, do not commit)
+tsconfig.tsbuildinfo
 
 
 # ==============================
