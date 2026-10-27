@@ -108,7 +108,8 @@ describe('GET /api/conversations', () => {
     const response = await list.GET(new Request('http://localhost/api/conversations') as unknown as NextRequest);
     const query = db.conversation.findMany.mock.calls[0][0];
 
-    expect(query.where).toEqual({ userId: 'user-1' });
+    // Scheduled task runs are listed on their task's page, not in Recents.
+    expect(query.where).toEqual({ userId: 'user-1', scheduledTaskId: null });
     expect(query.orderBy).toEqual([{ pinnedAt: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }]);
     expect((await response.json()).conversations[0].pinnedAt).toBe(pinnedAt.toISOString());
   });
@@ -165,7 +166,7 @@ describe('list and single-chat shapes', () => {
     expect(fromList).toEqual(conversation);
     expect(ssr.initialConversation).toEqual(conversation);
     expect(conversation).toEqual({
-      id: 'c1', pinnedAt: null, userId: 'user-1', createdAt: updatedAt.toISOString(), updatedAt: updatedAt.toISOString(),
+      id: 'c1', pinnedAt: null, scheduledTaskId: null, userId: 'user-1', createdAt: updatedAt.toISOString(), updatedAt: updatedAt.toISOString(),
       messages: [{ id: 'm1', role: 'user', content: 'Hi', createdAt: updatedAt.toISOString(), updatedAt: updatedAt.toISOString() }],
     });
   });

@@ -97,7 +97,9 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
   }, [onLogoutClick]);
 
   const filteredChats = useMemo(() => {
-    const sorted = sortConversations(conversations);
+    // A scheduled task's run chats are opened from the task's page; opening
+    // one adds it to the store, but it stays out of Recents.
+    const sorted = sortConversations(conversations.filter((chat) => !chat.scheduledTaskId));
     const query = searchQuery.trim().toLowerCase();
     if (!query) return sorted;
 

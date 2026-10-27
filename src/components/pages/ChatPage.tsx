@@ -14,7 +14,8 @@ import { usePathname, useRouter } from 'next/navigation';
 import { X } from 'lucide-react';
 
 import { useAppStore } from '@/src/store/rootStore';
-import { appViewFromPath, isAppPagePath, navigateTo, showConversation, skillsPath } from '@/src/lib/navigation';
+import { appViewFromPath, isAppPagePath, navigateTo, scheduledPath, showConversation, skillsPath } from '@/src/lib/navigation';
+import type { SidebarPage } from '@/src/components/sidebar/actions/SidebarActionButton';
 import AppPages from '@/src/components/pages/AppPages';
 import SkillEditorHost from '@/src/components/customize/SkillEditorHost';
 import type { User } from '@/src/types/user.types';
@@ -243,9 +244,9 @@ const ChatPage: React.FC<ChatPageProps> = ({
     showConversation(undefined);
   }, []);
 
-  const handleOpenPage = useCallback((page: 'resources' | 'skills') => {
+  const handleOpenPage = useCallback((page: SidebarPage) => {
     setMobileMenuOpen(false);
-    navigateTo(page === 'resources' ? '/resources' : skillsPath.discover);
+    navigateTo(page === 'resources' ? '/resources' : page === 'scheduled' ? scheduledPath.list : skillsPath.discover);
   }, []);
 
   useEffect(() => {

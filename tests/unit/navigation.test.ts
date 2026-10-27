@@ -7,6 +7,8 @@ const parse = (path: string) => appPageFromSegments(path.split('/').filter(Boole
 describe('appPageFromSegments', () => {
   it('reads every app page', () => {
     expect(parse('/resources')).toEqual({ kind: 'resources' });
+    expect(parse('/scheduled')).toEqual({ kind: 'scheduled' });
+    expect(parse(`/scheduled/${ID}`)).toEqual({ kind: 'scheduled', taskId: ID });
     expect(parse('/customize')).toEqual({ kind: 'skills', tab: 'discover' });
     expect(parse('/customize/skills')).toEqual({ kind: 'skills', tab: 'discover' });
     expect(parse('/customize/skills/yours')).toEqual({ kind: 'skills', tab: 'yours' });
@@ -18,6 +20,7 @@ describe('appPageFromSegments', () => {
   it.each([
     '/resources/x', '/resources/a/b/c', '/customize/foo', '/customize/skills/yours/x', '/customize/skills/new',
     '/customize/skills/not-an-id', `/customize/skills/${ID}/other`, `/customize/skills/${ID}/contents/x`,
+    '/scheduled/not-an-id', `/scheduled/${ID}/x`,
   ])('has no page for %s (a 404)', (path) => {
     expect(parse(path)).toBeNull();
   });

@@ -25,6 +25,7 @@ interface ConversationRow {
   id: string;
   title: string | null;
   pinnedAt: Date | null;
+  scheduledTaskId?: string | null;
   userId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -61,6 +62,7 @@ function serializeConversation(conversation: ConversationRow, present?: Present)
     id: conversation.id,
     title: conversation.title ?? undefined,
     pinnedAt: conversation.pinnedAt?.toISOString() ?? null,
+    scheduledTaskId: conversation.scheduledTaskId ?? null,
     userId: conversation.userId,
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
@@ -68,13 +70,19 @@ function serializeConversation(conversation: ConversationRow, present?: Present)
   };
 }
 
+/**
+ * Recents filter: a scheduled task's run chats are listed on the task's page
+ * instead, so an hourly task doesn't flood the sidebar.
+ */
+export const recentsWhere = (userId: string) => ({ userId, scheduledTaskId: null });
+
 /** The sidebar list: pinned first (most recently pinned on top), then by activity, each with its first message. */
 export async function listConversations(
   userId: string,
   { limit = 50, offset = 0 }: { limit?: number; offset?: number } = {}
 ): Promise<Conversation[]> {
   const conversations = await prisma.conversation.findMany({
-    where: { userId },
+    where: recentsWhere(userId),
     include: { messages: { orderBy: { createdAt: 'asc' }, take: 1, select: {
       id: true, role: true, content: true, modelId: true, createdAt: true, updatedAt: true,
     } } },

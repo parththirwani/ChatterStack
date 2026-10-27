@@ -17,7 +17,7 @@ test.beforeEach(() => {
 test('the sidebar has rows, not tabs, and Customize opens the Skills page', async ({ page }) => {
   await openApp(page);
   const nav = page.getByRole('navigation', { name: 'Main' });
-  await expect(nav.getByRole('button')).toHaveText(['New chat', /Search/, 'Resources', 'Customize']);
+  await expect(nav.getByRole('button')).toHaveText(['New chat', /Search/, 'Resources', 'Scheduled', 'Customize']);
   await expect(page.getByRole('tab')).toHaveCount(0);
   await nav.getByRole('button', { name: 'Customize' }).click();
   await expect(page).toHaveURL(/\/customize\/skills$/);
