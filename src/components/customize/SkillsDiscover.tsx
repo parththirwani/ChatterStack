@@ -26,7 +26,7 @@ function useCatalogActions(skills: Skill[]) {
   // "Try" adds the skill (if needed) and opens a chat with it tagged.
   const tryIt = async (entry: CatalogSkill) => {
     const skill = await add(entry);
-    if (skill) trySkillInChat(skill);
+    if (skill) await trySkillInChat(skill);
   };
 
   return { added, busy, error, add, tryIt };

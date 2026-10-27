@@ -58,7 +58,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   const pickerOpen = signedIn && !!slash && dismissedAt !== slash.start;
   const options = useMemo((): SlashOption[] => {
     if (!pickerOpen || !slash) return [];
-    const tagged = new Set(skillsInText(message, enabledSkills).map((skill) => skill.id));
+    // Skills already in the text, not counting the `/query` being typed.
+    const tagged = new Set(skillsInText(removeSlashQuery(message, slash).text, enabledSkills).map((skill) => skill.id));
     const actions = 'add files'.includes(slash.query.replace(/-/g, ' ')) ? [FILES_OPTION] : [];
     const skills = matchSkills(enabledSkills.filter((skill) => !tagged.has(skill.id)), slash.query, 8)
       .map((skill): SlashOption => ({ kind: 'skill', key: skill.id, id: skill.id, name: skill.name, description: skill.description }));
@@ -97,7 +98,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
       fileInputRef.current?.click();
       return;
     }
-    if (skillsInText(message, enabledSkills).length >= MAX_SKILLS_PER_MESSAGE) {
+    if (skillsInText(text, enabledSkills).length >= MAX_SKILLS_PER_MESSAGE) {
       setFileError(`Use up to ${MAX_SKILLS_PER_MESSAGE} skills per message.`);
       setDismissedAt(slash.start);
       return;

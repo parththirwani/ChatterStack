@@ -122,6 +122,16 @@ describe('the / menu in the composer', () => {
     expect(onSend).toHaveBeenCalledOnce();
   });
 
+  it('keeps an exactly typed skill on offer, ahead of longer names', async () => {
+    vi.mocked(fetch).mockImplementation(async () => Response.json({ skills: [skill('writer', 'Long form', 5), skill('write', 'Short form', 6)] }));
+    const user = userEvent.setup();
+    render(<Composer />);
+    await user.type(textbox(), '/write');
+    await waitFor(() => expect(optionNames()).toEqual(['write', 'writer']));
+    await user.keyboard('{Enter}');
+    expect(latest.message).toBe('/write ');
+  });
+
   it('picks with a click', async () => {
     const user = userEvent.setup();
     render(<Composer initial="Hello " />);

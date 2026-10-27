@@ -160,6 +160,16 @@ describe('skill routes', () => {
     expect(rows.size).toBe(1);
     expect((await addFromCatalog(json('skills/catalog', { id: 'nope' }))).status).toBe(404);
   });
+
+  it('adds a Discover skill under a free name when the user has one with its name', async () => {
+    const { body: mine } = await createOne({ ...skill, name: 'skill-creator' });
+    const added = await (await addFromCatalog(json('skills/catalog', { id: 'skill-creator' }))).json();
+    expect(added.skill).toMatchObject({ name: 'skill-creator-2', catalogId: 'skill-creator' });
+    expect(rows.get(mine.skill.id)!.name).toBe('skill-creator');
+    // Adding again finds the copy by catalog id, whatever it's called.
+    const again = await (await addFromCatalog(json('skills/catalog', { id: 'skill-creator' }))).json();
+    expect(again.skill.id).toBe(added.skill.id);
+  });
 });
 
 describe('upload and download', () => {
@@ -238,5 +248,19 @@ describe('upload and download', () => {
     const { results } = await (await upload(uploadRequest([['r.zip', archive]], body.skill.id))).json();
     expect(results[0].skill).toMatchObject({ id: body.skill.id, description: 'Newer.', instructions: 'New body', version: 2 });
     expect(rows.size).toBe(1);
+  });
+
+  it('reports a replaced skill that no longer exists as an error', async () => {
+    const md = '---\nname: gone\ndescription: d\n---\nx';
+    const missing = await upload(uploadRequest([['SKILL.md', md]], crypto.randomUUID()));
+    expect(missing.status).toBe(400);
+    expect((await missing.json()).results[0]).toMatchObject({ error: 'Skill not found' });
+
+    // Deleted between the read and the write.
+    const { body } = await createOne();
+    db.skill.update.mockRejectedValueOnce(Object.assign(new Error('Record not found'), { code: 'P2025' }));
+    const raced = await (await upload(uploadRequest([['SKILL.md', md]], body.skill.id))).json();
+    expect(raced.results[0]).toMatchObject({ error: 'Skill not found' });
+    expect(raced.results[0].skill).toBeUndefined();
   });
 });

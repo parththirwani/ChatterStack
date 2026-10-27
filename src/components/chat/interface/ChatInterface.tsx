@@ -15,7 +15,7 @@ import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import type { SkillTag } from '@/src/types/skill.types';
-import { COMPOSE_EVENT, useSkills } from '@/src/lib/client/skills';
+import { COMPOSE_EVENT, currentSkills } from '@/src/lib/client/skills';
 import { MAX_SKILLS_PER_MESSAGE } from '@/src/lib/skills/skill-file';
 import { skillsInText } from '@/src/lib/skills/slash';
 
@@ -262,26 +262,51 @@ const ChatComposer = memo(function ChatComposer({
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [attachments, setAttachments] = useState<DocumentAttachment[]>([]);
   const initializeUser = useAppStore((state) => state.initializeUser);
-  const userId = useAppStore((state) => state.user?.id);
-  const { skills: allSkills } = useSkills(userId);
 
   useEffect(() => setAttachments([]), [conversationKey]);
 
-  // Customize's Try in chat / Create with AI fill the composer.
+  // Customize's Try in chat / Create with AI fill the new chat's composer.
+  // Another chat's composer ignores it: switching to the new chat loads the
+  // text from the stored draft.
+  const focusAfterCompose = useRef(false);
   useEffect(() => {
     const compose = (event: Event) => {
+      focusAfterCompose.current = true;
       const text = (event as CustomEvent<string>).detail;
-      if (typeof text === 'string') setMessage(text);
+      if (conversationKey === 'new' && typeof text === 'string') setMessage(text);
     };
     window.addEventListener(COMPOSE_EVENT, compose);
     return () => window.removeEventListener(COMPOSE_EVENT, compose);
-  }, [setMessage]);
+  }, [setMessage, conversationKey]);
 
-  // Skills are tagged inline as `/name` tokens; the first few turned-on ones apply.
-  const tagsIn = useCallback((text: string): SkillTag[] =>
-    skillsInText(text, allSkills.filter((skill) => skill.enabled))
+  // Focus once the composer is showing: it's hidden while a page is open,
+  // and the page closes in a render this memoized composer may not share.
+  useEffect(() => {
+    if (!focusAfterCompose.current) return;
+    focusAfterCompose.current = false;
+    let frame = 0;
+    let tries = 0;
+    const focus = () => {
+      const input = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
+      if (input && input.getClientRects().length > 0) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      } else if (++tries < 30) {
+        frame = window.requestAnimationFrame(focus);
+      }
+    };
+    focus();
+    return () => window.cancelAnimationFrame(frame);
+  }, [message, conversationKey]);
+
+  // Skills are tagged inline as `/name` tokens; the first few turned-on ones
+  // apply. Read at send time, after any load or refresh still in flight.
+  const tagsIn = useCallback(async (text: string): Promise<SkillTag[]> => {
+    const skills = await currentSkills(useAppStore.getState().user?.id);
+    return skillsInText(text, skills.filter((skill) => skill.enabled))
       .slice(0, MAX_SKILLS_PER_MESSAGE)
-      .map(({ id, name }) => ({ id, name })), [allSkills]);
+      .map(({ id, name }) => ({ id, name }));
+  }, []);
 
   useEffect(() => {
     const add = (event: Event) => {
@@ -334,7 +359,7 @@ const ChatComposer = memo(function ChatComposer({
     const filesToSend = attachments;
     clearDraft();
     setAttachments([]);
-    await sendNow(messageToSend, filesToSend, tagsIn(messageToSend));
+    await sendNow(messageToSend, filesToSend, await tagsIn(messageToSend));
   }, [message, attachments, loading, sendNow, clearDraft, tagsIn]);
 
   // Restore a pending message that was saved before the full-page OAuth
@@ -398,7 +423,7 @@ const ChatComposer = memo(function ChatComposer({
         const filesToSend = attachments;
         clearDraft();
         setAttachments([]);
-        await sendNow(textToSend, filesToSend, tagsIn(textToSend));
+        await sendNow(textToSend, filesToSend, await tagsIn(textToSend));
         setPendingMessage('');
       }
     },

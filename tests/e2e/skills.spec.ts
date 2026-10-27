@@ -1,5 +1,5 @@
 import { strToU8, zipSync, unzipSync, strFromU8 } from 'fflate';
-import { expect, openApp, test } from './support/fixtures';
+import { deferred, expect, openApp, sendMessage, test } from './support/fixtures';
 import { E2E_USER_ID, literal, sql } from './support/db';
 
 const SKILL_ID = '5b1f6c2a-7d3e-4f1a-9c2b-1e2d3c4b5a69';
@@ -161,4 +161,39 @@ test('Create with AI starts a chat with skill-creator, and Save as skill keeps t
   await dialog.getByRole('button', { name: 'Create' }).click();
   await expect(page.getByRole('heading', { name: 'haiku-writer' })).toBeVisible();
   expect(skillRows()).toBe('haiku-writer:generated:true\nskill-creator:catalog:true');
+});
+
+test('an open chat, even one still answering, is kept while Customize is open', async ({ page, mockChat }) => {
+  await openApp(page);
+  const done = deferred();
+  mockChat.next(async (stream) => {
+    stream.createConversation();
+    stream.send({ chunk: 'First half, ' });
+    await done.promise;
+    stream.send({ chunk: 'second half.' });
+    stream.saveMessages('First half, second half.');
+    stream.end();
+  });
+  await sendMessage(page, 'Tell me something');
+  await expect(page.getByText('First half,')).toBeVisible();
+  await expect(page).toHaveURL(/\/[0-9a-f-]{36}$/);
+  const chatUrl = page.url();
+
+  await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Customize' }).click();
+  await expect(page.getByRole('heading', { name: 'Customize', level: 1 })).toBeVisible();
+  // Like claude.ai, no chat is highlighted while a page is open.
+  await expect(page.locator('#chat-sidebar [aria-current="page"]')).toHaveText('Customize');
+  done.resolve();
+
+  await page.goBack();
+  await expect(page).toHaveURL(chatUrl);
+  await expect(page.getByText('First half, second half.')).toBeVisible();
+  await expect(page.getByRole('paragraph').filter({ hasText: 'Tell me something' })).toBeVisible();
+});
+
+test('unknown Customize and Resources paths are 404s', async ({ page }) => {
+  for (const path of ['/customize/foo', '/resources/a/b', '/customize/skills/new', '/customize/skills/not-an-id']) {
+    expect((await page.goto(path))?.status(), path).toBe(404);
+  }
+  expect((await page.goto(`/customize/skills/${SKILL_ID}/contents`))?.status()).toBe(200);
 });

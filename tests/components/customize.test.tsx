@@ -40,7 +40,11 @@ beforeEach(() => {
     }
     if (url === '/api/skills/catalog') {
       const { id } = JSON.parse(init!.body as string);
-      const skill = { ...added, id: `catalog-${id}`, name: id, catalogId: id };
+      const existing = skills.find((skill) => skill.catalogId === id);
+      if (existing) return Response.json({ skill: existing });
+      // Like the server: the user's own skill keeps the name.
+      const name = skills.some((skill) => skill.name === id) ? `${id}-2` : id;
+      const skill = { ...added, id: `catalog-${id}`, name, catalogId: id };
       skills = [...skills, skill];
       return Response.json({ skill });
     }
@@ -134,6 +138,27 @@ describe('Customize → Skills → Yours', () => {
     } finally {
       window.removeEventListener('chatterstack:new-chat', newChat);
     }
+  });
+});
+
+describe('starting a chat from a skill', () => {
+  it('Create with AI tags skill-creator by the name it was added under', async () => {
+    skills.push({ ...base, id: 'f00d0000-0000-4000-8000-000000000000', name: 'skill-creator' });
+    const user = userEvent.setup();
+    render(<SkillsPage view={{ kind: 'skills', tab: 'yours' }} />);
+    await user.click(screen.getByRole('button', { name: 'Add skill' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Create with AI' }));
+    await waitFor(() => expect(useAppStore.getState().drafts.new).toBe("Let's create a skill together using /skill-creator-2. First ask me what the skill should do."));
+  });
+
+  it('Try in chat turns a turned-off skill on, so the tag applies', async () => {
+    skills = [{ ...base, enabled: false }];
+    const user = userEvent.setup();
+    render(<SkillsPage view={{ kind: 'skills', tab: 'skill', skillId: base.id, section: 'overview' }} />);
+    await user.click(await screen.findByRole('button', { name: 'More options for unslop' }));
+    await user.click(screen.getByRole('menuitem', { name: 'Try in chat' }));
+    await waitFor(() => expect(useAppStore.getState().drafts.new).toBe('/unslop '));
+    expect(bodyOf(calls('PATCH', `/api/skills/${base.id}`)[0])).toEqual({ enabled: true });
   });
 });
 

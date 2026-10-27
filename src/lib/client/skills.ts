@@ -7,7 +7,7 @@ import { useAppStore } from '@/src/store/rootStore';
 
 /** Fired after any change to the user's skills, so every list refreshes. */
 export const SKILLS_CHANGED_EVENT = 'chatterstack:skills-changed';
-/** Replaces the open composer's text: `detail` is the new text. */
+/** Fills the new chat's composer, if it's the one open: `detail` is the text. */
 export const COMPOSE_EVENT = 'chatterstack:compose';
 /** Opens the create-skill dialog, optionally prefilled (Save as skill). */
 export const OPEN_SKILL_EDITOR_EVENT = 'chatterstack:open-skill-editor';
@@ -71,7 +71,6 @@ interface SkillsState { skills: Skill[]; loading: boolean; error: string }
 let state: SkillsState = { skills: [], loading: true, error: '' };
 // The user the list belongs to, so a different sign-in never sees it.
 let loadedFor: string | null = null;
-let inFlight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
 function setState(next: Partial<SkillsState>) {
@@ -79,22 +78,52 @@ function setState(next: Partial<SkillsState>) {
   listeners.forEach((listener) => listener());
 }
 
-// Bumped when the user changes, so a response for the previous user is dropped.
-let generation = 0;
+// Each refresh gets a number and only the newest one's answer is kept, so a
+// list fetched before a later change never replaces one fetched after it.
+// Changing user also bumps it, dropping the previous user's responses.
+let latestRequest = 0;
+
+let latestRefresh: Promise<void> = Promise.resolve();
 
 export function refreshSkills() {
-  const requested = generation;
-  inFlight ??= request<{ skills: Skill[] }>('/api/skills')
-    .then(({ skills }) => { if (requested === generation) setState({ skills, loading: false, error: '' }); })
-    .catch((error: Error) => { if (requested === generation) setState({ loading: false, error: error.message }); })
-    .finally(() => { if (requested === generation) inFlight = null; });
-  return inFlight;
+  const requested = ++latestRequest;
+  latestRefresh = request<{ skills: Skill[] }>('/api/skills')
+    .then(({ skills }) => { if (requested === latestRequest) setState({ skills, loading: false, error: '' }); })
+    .catch((error: Error) => { if (requested === latestRequest) setState({ loading: false, error: error.message }); });
+  return latestRefresh;
+}
+
+/** Starts loading `userId`'s list unless it's the one already held. */
+function loadSkillsFor(userId: string) {
+  if (loadedFor === userId) return;
+  loadedFor = userId;
+  latestRequest += 1;
+  setState({ skills: [], loading: true, error: '' });
+  void refreshSkills();
+}
+
+/**
+ * The user's skills as of now, waiting for a load or refresh in progress,
+ * so a message sent right after sign-in or a change still gets its skills.
+ */
+export async function currentSkills(userId: string | undefined): Promise<Skill[]> {
+  if (!userId || userId === 'guest') return [];
+  loadSkillsFor(userId);
+  let waited: Promise<void>;
+  do {
+    waited = latestRefresh;
+    await waited;
+  } while (waited !== latestRefresh);
+  return loadedFor === userId ? state.skills : [];
 }
 
 function subscribe(listener: () => void) {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
+
+let watchers = 0;
+const onSkillsChanged = () => void refreshSkills();
 
 const SERVER_STATE: SkillsState = { skills: [], loading: true, error: '' };
 
@@ -104,17 +133,13 @@ export function useSkills(userId?: string | null) {
   const current = useSyncExternalStore(subscribe, () => state, () => SERVER_STATE);
 
   useEffect(() => {
-    if (!enabled) return;
-    if (loadedFor !== userId) {
-      loadedFor = userId;
-      generation += 1;
-      inFlight = null;
-      setState({ skills: [], loading: true, error: '' });
-      void refreshSkills();
-    }
-    const onChange = () => void refreshSkills();
-    window.addEventListener(SKILLS_CHANGED_EVENT, onChange);
-    return () => window.removeEventListener(SKILLS_CHANGED_EVENT, onChange);
+    if (!enabled || !userId) return;
+    loadSkillsFor(userId);
+    // One refresh per change, however many components use the list.
+    if (watchers++ === 0) window.addEventListener(SKILLS_CHANGED_EVENT, onSkillsChanged);
+    return () => {
+      if (--watchers === 0) window.removeEventListener(SKILLS_CHANGED_EVENT, onSkillsChanged);
+    };
   }, [enabled, userId]);
 
   const refresh = useCallback(() => refreshSkills(), []);
@@ -125,40 +150,46 @@ export function useSkills(userId?: string | null) {
 export function resetSkillsCache() {
   state = { skills: [], loading: true, error: '' };
   loadedFor = null;
-  inFlight = null;
-  generation += 1;
+  latestRequest += 1;
+  latestRefresh = Promise.resolve();
 }
 
-/** Opens a new chat whose composer holds `text` (kept ahead of any existing new-chat draft). */
+/**
+ * Opens a new chat whose composer holds `text` (kept ahead of any existing
+ * new-chat draft). The text goes in the new chat's stored draft, which the
+ * composer loads when it switches to that chat; COMPOSE_EVENT covers a
+ * composer that is already on the new chat and so won't reload it.
+ */
 function startChat(text: string, { replace = false } = {}) {
   const store = useAppStore.getState();
   const existing = replace ? '' : (store.drafts.new ?? '').trim();
   const composed = existing ? `${text}${existing}` : text;
   store.setDraft('new', composed);
+  window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: composed }));
   window.dispatchEvent(new Event('chatterstack:new-chat'));
-  // After the switch to the new chat renders, so the text can't be saved as
-  // the draft of the chat that was open before.
-  window.setTimeout(() => {
-    window.dispatchEvent(new CustomEvent(COMPOSE_EVENT, { detail: composed }));
-    window.requestAnimationFrame(() => {
-      const input = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
-      input?.focus();
-      input?.setSelectionRange(input.value.length, input.value.length);
-    });
-  }, 50);
+}
+
+/** Turns a skill on if needed: the composer only applies skills that are on. */
+async function ensureEnabled(skill: Pick<Skill, 'id' | 'enabled'>) {
+  if (!skill.enabled) await updateSkill(skill.id, { enabled: true });
 }
 
 /** "Try in chat": a new chat with `/name ` ready to use. */
-export const trySkillInChat = (skill: Pick<Skill, 'name'>) => startChat(`/${skill.name} `);
+export async function trySkillInChat(skill: Pick<Skill, 'id' | 'name' | 'enabled'>) {
+  await ensureEnabled(skill);
+  startChat(`/${skill.name} `);
+}
 
 /** "Create with AI": a chat with skill-creator, which drafts a SKILL.md to save. */
 export async function createSkillWithAI() {
-  await addCatalogSkill(SKILL_CREATOR_ID);
-  startChat("Let's create a skill together using /skill-creator. First ask me what the skill should do.", { replace: true });
+  // The user's copy may have another name (renamed, or theirs took the name).
+  const creator = await addCatalogSkill(SKILL_CREATOR_ID);
+  startChat(`Let's create a skill together using /${creator.name}. First ask me what the skill should do.`, { replace: true });
 }
 
 /** "Edit with AI": skill-creator plus the skill itself, so the model sees its text. */
-export async function editSkillWithAI(skill: Pick<Skill, 'name'>) {
-  await addCatalogSkill(SKILL_CREATOR_ID);
-  startChat(`Use /skill-creator to help me improve my /${skill.name} skill. Ask me what I want to change, then show the full updated SKILL.md.`, { replace: true });
+export async function editSkillWithAI(skill: Pick<Skill, 'id' | 'name' | 'enabled'>) {
+  const creator = await addCatalogSkill(SKILL_CREATOR_ID);
+  await ensureEnabled(skill);
+  startChat(`Use /${creator.name} to help me improve my /${skill.name} skill. Ask me what I want to change, then show the full updated SKILL.md.`, { replace: true });
 }

@@ -39,6 +39,11 @@ describe('matchSkills', () => {
     expect(matchSkills(skills, 'changelog').map((skill) => skill.name)).toEqual(['release-notes']);
     expect(matchSkills(skills, '', 2)).toHaveLength(2);
   });
+
+  it('puts an exact name first', () => {
+    const similar = [{ name: 'writer', description: '' }, { name: 'write', description: '' }];
+    expect(matchSkills(similar, 'write').map((skill) => skill.name)).toEqual(['write', 'writer']);
+  });
 });
 
 describe('skill tokens in text', () => {

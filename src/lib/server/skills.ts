@@ -55,6 +55,10 @@ export function skillMeta(skill: SkillRow): Skill {
 const isUniqueViolation = (error: unknown) =>
   typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
 
+// The row was deleted after we read it.
+const isMissingRow = (error: unknown) =>
+  typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2025';
+
 const nameTaken = (name: string) => new SkillError(`A skill named "${name}" already exists.`, 409);
 
 export interface SkillContent extends ParsedSkill {
@@ -127,6 +131,7 @@ export async function updateSkill(userId: string, id: string, patch: SkillPatch)
     });
     return skillMeta(updated);
   } catch (error) {
+    if (isMissingRow(error)) return null;
     if (isUniqueViolation(error)) throw nameTaken(merged.name);
     throw error;
   }
@@ -142,12 +147,14 @@ export async function deleteSkill(userId: string, id: string) {
   return removed.count > 0;
 }
 
-/** A free name based on `base`: base-copy, base-copy-2, … */
-async function freeName(userId: string, base: string) {
+const copySuffix = (index: number) => (index === 1 ? '-copy' : `-copy-${index}`);
+
+/** A name based on `base` that the user doesn't have yet: base-copy, base-copy-2, … by default. */
+async function freeName(userId: string, base: string, suffix: (index: number) => string = copySuffix) {
   const taken = new Set((await prisma.skill.findMany({ where: { userId }, select: { name: true } })).map((skill) => skill.name));
   for (let index = 1; ; index += 1) {
-    const suffix = index === 1 ? '-copy' : `-copy-${index}`;
-    const name = `${base.slice(0, MAX_SKILL_NAME - suffix.length).replace(/-+$/, '')}${suffix}`;
+    const end = suffix(index);
+    const name = `${base.slice(0, MAX_SKILL_NAME - end.length).replace(/-+$/, '')}${end}`;
     if (!taken.has(name)) return name;
   }
 }
@@ -158,7 +165,7 @@ export async function duplicateSkill(userId: string, id: string) {
   return createSkill(userId, { ...skill, name: await freeName(userId, skill.name) }, skill.source === 'catalog' ? 'created' : skill.source, { categories: skill.categories });
 }
 
-/** Adds a Discover skill. Adding it again returns the existing copy. */
+/** Adds a Discover skill. Adding it again returns the existing copy (turned back on). */
 export async function addCatalogSkill(userId: string, catalogId: string) {
   const entry = findCatalogSkill(catalogId);
   if (!entry) throw new SkillError('That skill is not in the catalog.', 404);
@@ -167,7 +174,10 @@ export async function addCatalogSkill(userId: string, catalogId: string) {
     if (!existing.enabled) return skillMeta(await prisma.skill.update({ where: { id: existing.id }, data: { enabled: true } }));
     return skillMeta(existing);
   }
-  return createSkill(userId, entry, 'catalog', { categories: entry.categories, catalogId });
+  // A skill of the user's own may already have the catalog name: keep theirs
+  // and add this one as name-2 (the caller tags whatever name comes back).
+  const name = await freeName(userId, entry.name, (index) => (index === 1 ? '' : `-${index}`));
+  return createSkill(userId, { ...entry, name }, 'catalog', { categories: entry.categories, catalogId });
 }
 
 /**

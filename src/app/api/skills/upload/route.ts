@@ -1,4 +1,4 @@
-import { createSkill, getSkill, SkillError, updateSkill } from '@/src/lib/server/skills';
+import { createSkill, SkillError, updateSkill } from '@/src/lib/server/skills';
 import { MAX_UPLOAD_SIZE, parseSkillUpload, SkillBundleError } from '@/src/lib/server/skill-bundle';
 import { sessionUserId, unauthorized } from '@/src/lib/server/skill-routes';
 import type { SkillUploadResult } from '@/src/types/skill.types';
@@ -30,8 +30,9 @@ export async function POST(request: Request) {
       result.warnings = bundle.warnings;
       const content = { ...bundle.skill, files: bundle.files };
       if (typeof replaceId === 'string') {
-        if (!await getSkill(userId, replaceId)) throw new SkillError('Skill not found', 404);
-        result.skill = (await updateSkill(userId, replaceId, { frontmatter: undefined, ...content }))!;
+        const replaced = await updateSkill(userId, replaceId, { frontmatter: undefined, ...content });
+        if (!replaced) throw new SkillError('Skill not found', 404);
+        result.skill = replaced;
       } else {
         result.skill = await createSkill(userId, content, 'uploaded');
       }

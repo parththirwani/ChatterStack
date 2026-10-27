@@ -143,13 +143,16 @@ const ChatPage: React.FC<ChatPageProps> = ({
   // usePathname without a server round-trip or remounting this page. This
   // effect covers the other direction (first load, back/forward), and runs
   // before paint so the previous chat never shows for a frame.
+  // App pages (Customize, Resources) leave the open chat as it is, so it's
+  // still there, streaming or not, when the user comes back to it.
+  const onAppPage = view.kind !== 'chat';
   useLayoutEffect(() => {
     const state = useAppStore.getState();
-    if (state.currentConversationId !== urlConversationId) {
+    if (!onAppPage && state.currentConversationId !== urlConversationId) {
       state.setCurrentConversationId(urlConversationId);
     }
     setUrlSynced(true);
-  }, [urlConversationId]);
+  }, [urlConversationId, onAppPage]);
 
   // A chat that isn't in memory yet (not server-rendered, not visited, not
   // prefetched on hover) loads from the API; a skeleton shows meanwhile.
@@ -292,7 +295,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
       user,
       onConversationSelect: handleConversationSelect,
       onNewChat: handleNewChat,
-      currentConversationId: activeConversationId,
+      // Like claude.ai, no chat is highlighted while a page is open.
+      currentConversationId: onAppPage ? undefined : activeConversationId,
       activePage: view.kind === 'chat' ? undefined : view.kind,
       onOpenPage: handleOpenPage,
       onLoginClick: handleLoginClick,
@@ -305,6 +309,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
       handleConversationSelect,
       handleNewChat,
       activeConversationId,
+      onAppPage,
       handleLoginClick,
       handleLogoutClick,
       firstServerPayload,

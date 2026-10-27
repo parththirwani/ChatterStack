@@ -27,11 +27,12 @@ export function removeSlashQuery(text: string, { start, end }: SlashQuery) {
   return { text: joined, caret: start };
 }
 
-/** Skills matching the query: name prefix first, then name or description contains. */
+/** Skills matching the query: exact name, then name prefix, then name or description contains. */
 export function matchSkills<T extends { name: string; description: string }>(skills: T[], query: string, limit = 6): T[] {
   const q = query.toLowerCase();
   if (!q) return skills.slice(0, limit);
-  const prefix = skills.filter((skill) => skill.name.startsWith(q));
+  const prefix = skills.filter((skill) => skill.name.startsWith(q))
+    .sort((a, b) => Number(b.name === q) - Number(a.name === q));
   const contains = skills.filter((skill) => !skill.name.startsWith(q) &&
     (skill.name.includes(q) || skill.description.toLowerCase().includes(q)));
   return [...prefix, ...contains].slice(0, limit);

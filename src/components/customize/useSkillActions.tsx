@@ -53,7 +53,7 @@ export function useSkillActions(onRemoved?: () => void) {
   const toggle = (skill: Skill) => run(() => updateSkill(skill.id, { enabled: !skill.enabled }));
 
   const items = (skill: Skill, { full = true } = {}): MenuItem[] => full ? [
-    { label: 'Try in chat', icon: <MessageSquare className="h-4 w-4" />, onSelect: () => trySkillInChat(skill) },
+    { label: 'Try in chat', icon: <MessageSquare className="h-4 w-4" />, onSelect: () => run(() => trySkillInChat(skill)) },
     { label: 'Edit with AI', icon: <Sparkles className="h-4 w-4" />, onSelect: () => run(() => editSkillWithAI(skill)) },
     { label: 'Edit', icon: <PenLine className="h-4 w-4" />, onSelect: () => openSkillEditor({ id: skill.id, name: skill.name, description: skill.description, instructions: skill.instructions, files: skill.files, frontmatter: skill.frontmatter }) },
     { label: 'Replace', icon: <RefreshCw className="h-4 w-4" />, onSelect: () => { replacing.current = skill; replaceInput.current?.click(); } },
