@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Camera, Trash2, LoaderCircle } from 'lucide-react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
 
@@ -85,7 +86,9 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, profile, o
     onClose();
   };
 
-  return (
+  // The sidebar's aside sets a CSS `translate`, which would capture this
+  // fixed overlay; portal it to the body like the account menu does.
+  return createPortal(
     <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
@@ -247,7 +250,8 @@ const ProfileModal: React.FC<ProfileModalProps> = ({ isOpen, onClose, profile, o
           </div>
         </form>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
