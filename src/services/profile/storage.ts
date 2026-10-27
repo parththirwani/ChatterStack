@@ -1,15 +1,20 @@
 import { prisma } from '@/src/lib/prisma';
 import { Prisma } from '@prisma/client';
 
-export type TechnicalLevel = 'beginner' | 'intermediate' | 'advanced' | 'expert';
+export const TECHNICAL_LEVELS = ['beginner', 'intermediate', 'advanced', 'expert'] as const;
 
-export type ExplanationStyle =
-  | 'concise'
-  | 'detailed'
-  | 'example-heavy'
-  | 'analogy-heavy'
-  | 'code-first'
-  | 'bullet-points';
+export type TechnicalLevel = (typeof TECHNICAL_LEVELS)[number];
+
+export const EXPLANATION_STYLES = [
+  'concise',
+  'detailed',
+  'example-heavy',
+  'analogy-heavy',
+  'code-first',
+  'bullet-points',
+] as const;
+
+export type ExplanationStyle = (typeof EXPLANATION_STYLES)[number];
 
 export interface UserProfile {
   userId: string;
