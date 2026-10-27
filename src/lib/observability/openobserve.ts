@@ -55,6 +55,12 @@ export interface OpenObserveConfig {
   traces: boolean;
   /** OpenObserve traces stream, sent as the `stream-name` header. */
   traceStream: string;
+  /**
+   * Attach the user's message and the model's answer to trace spans
+   * (OPENOBSERVE_TRACE_CONTENT). Separate from logContent on purpose: the two
+   * flags store different amounts of user content in different places.
+   */
+  traceContent: boolean;
 }
 
 export const DEFAULT_STREAM = 'llm_calls';
@@ -130,6 +136,7 @@ export function openObserveConfig(): OpenObserveConfig | null {
     logContent: truthy(process.env.OPENOBSERVE_LOG_CONTENT),
     traces: truthy(process.env.OPENOBSERVE_TRACES),
     traceStream: process.env.OPENOBSERVE_TRACE_STREAM?.trim() || DEFAULT_TRACE_STREAM,
+    traceContent: truthy(process.env.OPENOBSERVE_TRACE_CONTENT),
   };
 }
 
@@ -153,13 +160,28 @@ function noteError(): void {
  * the log records below and the OTLP traces in `otlp-traces.ts`: it never
  * throws, gives up after `timeoutMs`, and only counts its own failures.
  */
+export interface DeliveryResult {
+  ok: boolean;
+  /** HTTP status, or 0 when the request never got an answer (network, timeout). */
+  status: number;
+}
+
+/**
+ * True when OpenObserve refused this exact payload (bad JSON, too large, wrong
+ * stream). Resending it cannot help, so the batch is dropped instead of being
+ * retried forever. 408/429 are about timing, not the payload, and are retried.
+ */
+export function isPermanentRejection(result: DeliveryResult): boolean {
+  return result.status >= 400 && result.status < 500 && result.status !== 408 && result.status !== 429;
+}
+
 export async function postToOpenObserve(
   path: string,
   body: unknown,
   { headers = {}, timeoutMs = FLUSH_TIMEOUT_MS }: { headers?: Record<string, string>; timeoutMs?: number } = {}
-): Promise<boolean> {
+): Promise<DeliveryResult> {
   const config = openObserveConfig();
-  if (!config) return false;
+  if (!config) return { ok: false, status: 0 };
 
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -188,11 +210,11 @@ export async function postToOpenObserve(
     ]);
     state().flushes += 1;
     if (!response.ok) noteError();
-    return response.ok;
+    return { ok: response.ok, status: response.status };
   } catch {
     state().flushes += 1;
     noteError();
-    return false;
+    return { ok: false, status: 0 };
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
@@ -203,15 +225,20 @@ export async function postToOpenObserve(
  * testable; production code goes through `enqueueLlmCallRecord`.
  */
 export async function sendBatch(records: LlmCallRecord[], timeoutMs = FLUSH_TIMEOUT_MS): Promise<boolean> {
+  return (await deliverBatch(records, timeoutMs)).ok;
+}
+
+async function deliverBatch(records: LlmCallRecord[], timeoutMs = FLUSH_TIMEOUT_MS): Promise<DeliveryResult> {
   const config = openObserveConfig();
-  if (!config || records.length === 0) return false;
+  if (!config || records.length === 0) return { ok: false, status: 0 };
   return postToOpenObserve(`${config.stream}/_json`, records, { timeoutMs });
 }
 
 /**
  * Sends everything buffered. Safe to call repeatedly and never throws. Records
- * are only forgotten once OpenObserve accepted them, and only one send runs at a
- * time, so a broken endpoint backs off instead of retrying on every request.
+ * are only forgotten once OpenObserve accepted them (or refused that exact
+ * payload for good), and only one send runs at a time; records queued during a
+ * send go out in the same flush, so nothing waits for the next request.
  */
 export async function flushObservability(): Promise<void> {
   const current = state();
@@ -220,27 +247,26 @@ export async function flushObservability(): Promise<void> {
     current.buffer.length = 0;
     return;
   }
-  if (Date.now() < current.retryAfter) return;
 
-  const batch = current.buffer.slice();
   current.inFlight = true;
-  let accepted = false;
   try {
-    accepted = await sendBatch(batch);
+    while (current.buffer.length > 0 && Date.now() >= current.retryAfter) {
+      const batch = current.buffer.slice();
+      const result = await deliverBatch(batch);
+      const sent = new Set<LlmCallRecord>(batch);
+      if (result.ok || isPermanentRejection(result)) {
+        if (!result.ok) current.dropped += batch.length;
+        current.buffer = current.buffer.filter((item) => !sent.has(item));
+        continue;
+      }
+      // Temporary failure: the batch stays buffered. Back off so a broken
+      // endpoint cannot turn into a retry storm; the cap in the enqueue path
+      // decides which records survive while OpenObserve is unreachable.
+      current.retryAfter = Date.now() + FAILURE_BACKOFF_MS;
+    }
   } finally {
     current.inFlight = false;
   }
-
-  if (accepted) {
-    const sent = new Set<LlmCallRecord>(batch);
-    current.buffer = current.buffer.filter((item) => !sent.has(item));
-    return;
-  }
-
-  // The batch is still in the buffer - nothing was taken out of it. Back off so
-  // a broken endpoint cannot turn into a retry storm; the cap in the enqueue
-  // path decides which records survive while OpenObserve is unreachable.
-  current.retryAfter = Date.now() + FAILURE_BACKOFF_MS;
 }
 
 /**
@@ -266,8 +292,43 @@ export function enqueueLlmCallRecord(record: LlmCallRecord): void {
     current.dropped += 1;
   }
 
-  if (current.buffer.length >= FLUSH_THRESHOLD) void flushObservability();
+  if (current.buffer.length >= FLUSH_THRESHOLD) flushNowAndKeepAlive(flushObservability);
   else scheduleFlush();
+}
+
+/**
+ * A full buffer is sent right away, and the same promise is handed to after()
+ * so a serverless function stays alive until the send finishes instead of
+ * being frozen mid-POST.
+ */
+export function flushNowAndKeepAlive(flush: () => Promise<void>): void {
+  const pending = flush();
+  try {
+    after(() => pending);
+  } catch {
+    // Outside a request scope there is nothing to keep alive.
+  }
+}
+
+/**
+ * One-line, bounded description of a failure for telemetry. Collapses
+ * whitespace, strips data URLs / base64 / bearer tokens and caps the length, so
+ * an error that echoes request data (a DB or HTTP error) cannot carry much of
+ * it. Used for every error that leaves the process via OpenObserve.
+ */
+export const MAX_ERROR_MESSAGE_LENGTH = 300;
+export function describeError(error: unknown): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const cleaned = raw
+    .replace(/data:[^\s,"']+/gi, '[redacted data url]')
+    .replace(/[a-zA-Z0-9+/=]{120,}/g, '[redacted base64]')
+    .replace(/\b(Bearer|Basic)\s+[^\s,;"']+/gi, '$1 [redacted]')
+    .replace(/\b(authorization|api[_-]?key|token|password|secret)(["']?\s*[:=]\s*["']?)(?!Bearer\b|Basic\b)[^\s,;"']+/gi, '$1$2[redacted]')
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, '[redacted key]')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!cleaned) return 'unknown error';
+  return cleaned.length > MAX_ERROR_MESSAGE_LENGTH ? `${cleaned.slice(0, MAX_ERROR_MESSAGE_LENGTH)}...` : cleaned;
 }
 
 /** What is still waiting to be sent (diagnostics and tests). */

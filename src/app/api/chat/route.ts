@@ -13,7 +13,7 @@ import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
-import { recordRequestSpan } from '@/src/lib/observability/otlp-traces';
+import { recordRequestSpan, traceStep } from '@/src/lib/observability/otlp-traces';
 import { AnalyticsEvents, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
 import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { ChatRequestSchema } from '@/src/types/chat.types';
@@ -79,19 +79,41 @@ async function historyAttachmentParts(userId: string, files: Array<ChatAttachmen
 }
 
 export async function POST(request: NextRequest) {
+  // One id for every model call this request makes, so the council stages and the
+  // embedding calls can be joined back together in OpenObserve.
+  const traceId = crypto.randomUUID();
+  const requestStartedAt = Date.now();
+  const traced: { userId?: string; model?: string; council?: boolean; conversationId?: string } = {};
+  // A request answered without streaming (rejected, or failed before the stream)
+  // still gets a root-only trace, so throttled and refused requests are visible.
+  const finish = (response: Response, error?: unknown) => {
+    recordRequestSpan({
+      traceId,
+      startedAt: requestStartedAt,
+      status: response.status >= 500 ? 'error' : 'rejected',
+      httpStatus: response.status,
+      error,
+      ...traced,
+    });
+    return response;
+  };
+
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return jsonError('Unauthorized', 401);
+      return finish(jsonError('Unauthorized', 401));
     }
 
     const userId = session.user.id;
-    const body = await request.json();
+    traced.userId = userId;
+    // A body that is not JSON is the client's mistake, not a server error.
+    const body = await request.json().catch(() => undefined);
+    if (body === undefined) return finish(jsonError('Request body must be valid JSON', 400));
 
     const { success, data, error: validationError } =
       ChatRequestSchema.safeParse(body);
     if (!success) {
-      return new Response(
+      return finish(new Response(
         JSON.stringify({
           message: 'Incorrect inputs',
           errors: validationError?.issues,
@@ -100,7 +122,7 @@ export async function POST(request: NextRequest) {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         }
-      );
+      ));
     }
 
     // New chats normally arrive with a client-generated id so the client can
@@ -111,15 +133,15 @@ export async function POST(request: NextRequest) {
     const isCouncilMode = selectedModel === 'council';
     const thinkingLevel = data.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
     const attachments = data.attachments ?? [];
-    // One id for every model call this request makes, so the council stages and the
-    // embedding calls can be joined back together in OpenObserve.
-    const traceId = crypto.randomUUID();
+    traced.model = selectedModel;
+    traced.council = isCouncilMode;
+    traced.conversationId = conversationId;
     let currentParts;
     try {
       const resolved = await resolveDocuments(userId, attachments);
       currentParts = await attachmentParts(resolved);
     } catch (error) {
-      return jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400);
+      return finish(jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400));
     }
 
     // Check (or claim) the conversation before streaming anything: the id
@@ -130,7 +152,7 @@ export async function POST(request: NextRequest) {
         where: { id: conversationId, userId },
         select: { id: true },
       });
-      if (!owned) return jsonError('Conversation not found', 404);
+      if (!owned) return finish(jsonError('Conversation not found', 404));
     }
 
     // The limit is estimated from the full prompt the model will see:
@@ -151,7 +173,7 @@ export async function POST(request: NextRequest) {
           limit: rateLimitCheck.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
         });
       }
-      return rateLimitCheck; // Returns 429 (or 503) with detailed token info
+      return finish(rateLimitCheck); // Returns 429 (or 503) with detailed token info
     }
 
     captureServerEvent(userId, AnalyticsEvents.ChatMessageSent, chatMessageSentProps({
@@ -171,7 +193,7 @@ export async function POST(request: NextRequest) {
       } catch (error) {
         if (isUniqueViolation(error)) {
           await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
-          return jsonError('Conversation already exists', 409);
+          return finish(jsonError('Conversation already exists', 409));
         }
         await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
         throw error;
@@ -183,10 +205,9 @@ export async function POST(request: NextRequest) {
       // dangling: whichever path `respond` exits through, usage is recorded.
       let usageRecorded = false;
       // The request's root span in OpenObserve traces: question, answer, outcome.
-      const requestStartedAt = Date.now();
       let requestAnswer = '';
       let requestStatus: 'ok' | 'error' | 'aborted' = 'error';
-      let requestError: string | undefined;
+      let requestError: unknown;
       let requestRagUsed = false;
       try {
       send({ status: 'starting' });
@@ -245,7 +266,7 @@ export async function POST(request: NextRequest) {
                 chair: data.council?.chair,
                 thinkingLevel,
                 signal,
-                trace: { traceId, inRequest: true, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
+                trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
               },
               {
                 onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
@@ -264,6 +285,7 @@ export async function POST(request: NextRequest) {
               trace: {
                 traceId,
                 inRequest: true,
+                contentPrompt: data.message,
                 span: 'completion',
                 userId,
                 conversationId,
@@ -276,7 +298,7 @@ export async function POST(request: NextRequest) {
         send({ done: true });
       } catch (error) {
         outcome = signal.aborted ? 'stopped' : 'error';
-        requestError = error instanceof Error ? error.message : String(error);
+        requestError = error;
         if (!signal.aborted) {
           captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'model-call', userId });
           send({
@@ -313,14 +335,16 @@ export async function POST(request: NextRequest) {
         { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
-      if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
-        await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
-      } else {
-        await redisStore.delete(conversationId);
-      }
       try {
-        await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
-        await markDocumentsUsed(userId, attachments);
+        await traceStep(traceId, 'db.persist', async () => {
+          if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
+            await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+          } else {
+            await redisStore.delete(conversationId);
+          }
+          await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
+          await markDocumentsUsed(userId, attachments);
+        });
       } catch (error) {
         captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'persist', userId });
         throw error;
@@ -332,7 +356,9 @@ export async function POST(request: NextRequest) {
       // Usually finished long before the answer; bounded by the title timeout.
       await titleTask;
       } catch (error) {
-        requestError ??= error instanceof Error ? error.message : String(error);
+        // Anything that fails after the answer (saving, ingestion) fails the turn.
+        requestStatus = 'error';
+        requestError ??= error;
         throw error;
       } finally {
         recordRequestSpan({
@@ -343,9 +369,9 @@ export async function POST(request: NextRequest) {
           council: isCouncilMode,
           userId,
           conversationId,
-          question: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}`,
+          question: data.message || undefined,
           answer: requestAnswer,
-          errorMessage: requestError,
+          error: requestError,
           attributes: {
             'chatterstack.thinking_level': thinkingLevel,
             'chatterstack.attachment_count': attachments.length,
@@ -375,7 +401,7 @@ export async function POST(request: NextRequest) {
     }, request.signal);
   } catch (error) {
     captureError(error, { route: '/api/chat', stage: 'request' });
-    return new Response(
+    return finish(new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error occurred',
       }),
@@ -383,6 +409,6 @@ export async function POST(request: NextRequest) {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       }
-    );
+    ), error);
   }
 }

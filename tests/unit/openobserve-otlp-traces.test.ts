@@ -1,19 +1,22 @@
 /**
- * OTLP traces: one trace per chat request, nested model-call spans, GenAI
- * attributes, and the rule that prompts and answers are attached only when
- * content logging is on. Off entirely unless OPENOBSERVE_TRACES=true.
+ * OTLP traces: one trace per chat request, nested spans, GenAI attributes,
+ * delivery that cannot get stuck, and the content rules - content is opt-in
+ * through its own flag and limited to the user's message and the answer.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+const afterCalls: Array<() => unknown> = [];
+let insideRequest = false;
 vi.mock('next/server', () => ({
-  after: () => {
-    throw new Error('"after" was called outside a request scope');
+  after: (callback: () => unknown) => {
+    if (!insideRequest) throw new Error('"after" was called outside a request scope');
+    afterCalls.push(callback);
   },
 }));
 
 const traces = await import('@/src/lib/observability/otlp-traces');
 const { traceLlmCall } = await import('@/src/lib/observability/trace-llm-call');
-const { resetObservability } = await import('@/src/lib/observability/openobserve');
+const { describeError, resetObservability } = await import('@/src/lib/observability/openobserve');
 
 type OtlpSpan = {
   traceId: string;
@@ -24,21 +27,31 @@ type OtlpSpan = {
   attributes: Array<{ key: string; value: Record<string, unknown> }>;
   status: { code: number; message?: string };
 };
-
-type OtlpBody = { resourceSpans: Array<{ resource: { attributes: unknown[] }; scopeSpans: Array<{ spans: OtlpSpan[] }> }> };
+type OtlpBody = {
+  resourceSpans: Array<{ resource: { attributes: Array<{ key: string; value: Record<string, unknown> }> }; scopeSpans: Array<{ spans: OtlpSpan[] }> }>;
+};
 
 let requests: Array<{ url: string; headers: Record<string, string>; body: OtlpBody }> = [];
+let respond: () => Response = () => new Response(null, { status: 200 });
+/** When set, trace POSTs wait for it (log-record POSTs never do). */
+let traceGate: Promise<void> | null = null;
 const fetchMock = vi.fn(async (url: string, init: RequestInit) => {
   requests.push({ url, headers: init.headers as Record<string, string>, body: JSON.parse(init.body as string) });
-  return new Response(null, { status: 200 });
+  if (traceGate && url.endsWith('/v1/traces')) {
+    const gate = traceGate;
+    traceGate = null;
+    await gate;
+  }
+  return respond();
 });
 
-const configure = ({ traces: on = 'true', content }: { traces?: string; content?: string } = {}) => {
+const configure = ({ traces: on = 'true', content, logContent }: { traces?: string; content?: string; logContent?: string } = {}) => {
   vi.stubEnv('OPENOBSERVE_URL', 'https://observe.example.com');
   vi.stubEnv('OPENOBSERVE_ORG', 'acme');
   vi.stubEnv('OPENOBSERVE_AUTH', 'cmVhZABjb21wYW55OnNlY3JldA==');
   vi.stubEnv('OPENOBSERVE_TRACES', on);
-  if (content !== undefined) vi.stubEnv('OPENOBSERVE_LOG_CONTENT', content);
+  if (content !== undefined) vi.stubEnv('OPENOBSERVE_TRACE_CONTENT', content);
+  if (logContent !== undefined) vi.stubEnv('OPENOBSERVE_LOG_CONTENT', logContent);
 };
 
 const traceRequests = () => requests.filter((request) => request.url.endsWith('/v1/traces'));
@@ -59,7 +72,7 @@ const drain = async () => {
 
 const TRACE_ID = '6f1d2f2c-1111-4000-8000-000000000001';
 
-const modelCall = (overrides: Partial<Parameters<typeof traceLlmCall>[0]> = {}) =>
+const modelCall = (overrides: Partial<Parameters<typeof traceLlmCall>[0]> = {}, answer = 'A telemetry protocol.') =>
   traceLlmCall(
     {
       traceId: TRACE_ID,
@@ -68,18 +81,17 @@ const modelCall = (overrides: Partial<Parameters<typeof traceLlmCall>[0]> = {}) 
       inRequest: true,
       userId: 'user-42',
       conversationId: 'conv-7',
-      messages: [
-        { role: 'system', content: 'You are helpful.' },
-        { role: 'user', content: [{ type: 'text', text: 'What is OTLP?' }, { type: 'file', file: { file_data: 'data:x' } }] },
-      ],
+      // The assembled prompt: system prompt, history, memory and file text.
+      prompt: 'system: SECRET SYSTEM PROMPT\nuser: earlier turn\nuser: Context from past conversations: OTHER CHAT\nFile: notes.txt\n\nPRIVATE FILE TEXT',
+      contentPrompt: 'What is OTLP?',
       ...overrides,
     },
     async (metrics) => {
       metrics.firstToken();
       metrics.usage({ prompt_tokens: 12, completion_tokens: 5 });
       metrics.finishReason('stop');
-      metrics.completion('A telemetry protocol.');
-      return 'A telemetry protocol.';
+      metrics.completion(answer);
+      return answer;
     }
   );
 
@@ -87,6 +99,10 @@ beforeEach(() => {
   resetObservability();
   traces.resetTraces();
   requests = [];
+  respond = () => new Response(null, { status: 200 });
+  traceGate = null;
+  afterCalls.length = 0;
+  insideRequest = false;
   fetchMock.mockClear();
   vi.stubGlobal('fetch', fetchMock);
 });
@@ -96,11 +112,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe('OTLP traces', () => {
+describe('OTLP traces: switching on', () => {
   it('sends nothing to the traces endpoint unless OPENOBSERVE_TRACES=true', async () => {
     configure({ traces: '' });
     await modelCall();
-    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'm', council: false, question: 'q' });
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'm', question: 'q' });
     await drain();
     expect(traceRequests()).toHaveLength(0);
     expect(traces.peekBufferedSpans()).toHaveLength(0);
@@ -118,12 +134,14 @@ describe('OTLP traces', () => {
     expect(request.headers['stream-name']).toBe('llm');
     expect(request.body.resourceSpans[0].resource.attributes).toContainEqual({ key: 'service.name', value: { stringValue: 'chatterstack' } });
   });
+});
 
-  it('nests a request\'s model calls under its root span in one trace', async () => {
+describe('OTLP traces: shape', () => {
+  it("nests a request's model calls under its root span in one trace", async () => {
     configure();
     await modelCall();
     await modelCall({ span: 'title-generation', model: 'openai/gpt-5.6-luna' });
-    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now() - 50, status: 'ok', model: 'openai/gpt-6.1-sol', council: false, question: 'What is OTLP?', answer: 'A telemetry protocol.' });
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now() - 50, status: 'ok', model: 'openai/gpt-6.1-sol', question: 'What is OTLP?', answer: 'A telemetry protocol.' });
     await drain();
 
     const spans = sentSpans();
@@ -138,7 +156,20 @@ describe('OTLP traces', () => {
     }
   });
 
-  it('records GenAI attributes: model, tokens, finish reason, cost', async () => {
+  it('nests model calls made inside a step under that step, not the root', async () => {
+    configure();
+    await traces.traceStep(TRACE_ID, 'rag.retrieve', () =>
+      modelCall({ span: 'embedding', model: 'openai/text-embedding-3-small', operation: 'embeddings' })
+    );
+    await drain();
+
+    const embedding = sentSpans().find((span) => span.name.startsWith('embedding'))!;
+    const step = sentSpans().find((span) => span.name === 'rag.retrieve')!;
+    expect(step.parentSpanId).toBe(traces.requestSpanId(TRACE_ID));
+    expect(embedding.parentSpanId).toBe(step.spanId);
+  });
+
+  it('records GenAI attributes: model, tokens, finish reason, cost (computed once, shared)', async () => {
     configure();
     await modelCall();
     await drain();
@@ -156,10 +187,30 @@ describe('OTLP traces', () => {
     expect(span.status).toEqual({ code: 1 });
   });
 
-  it('keeps prompts and answers out of spans unless content logging is on', async () => {
+  it('names council requests "council" (the model is the pseudo-id council)', async () => {
     configure();
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'council', council: true, question: 'q' });
+    await drain();
+    expect(sentSpans()[0].name).toBe('council');
+  });
+
+  it('records a rejected request as status rejected with its HTTP code, not as an error', async () => {
+    configure();
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'rejected', httpStatus: 429, model: 'm' });
+    await drain();
+    const [root] = sentSpans();
+    expect(root.status).toEqual({ code: 1 });
+    expect(attr(root, 'chatterstack.status')).toBe('rejected');
+    expect(attr(root, 'http.response.status_code')).toBe(429);
+  });
+});
+
+describe('OTLP traces: content', () => {
+  it('keeps prompts and answers out of spans unless OPENOBSERVE_TRACE_CONTENT=true', async () => {
+    // The log-record flag alone must not put content into traces.
+    configure({ logContent: 'true' });
     await modelCall();
-    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'm', council: false, question: 'What is OTLP?', answer: 'A telemetry protocol.' });
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'm', question: 'What is OTLP?', answer: 'A telemetry protocol.' });
     await drain();
 
     const body = JSON.stringify(traceRequests().map((request) => request.body));
@@ -168,26 +219,44 @@ describe('OTLP traces', () => {
     expect(body).not.toContain('gen_ai.input.messages');
   });
 
-  it('attaches prompts and answers when content logging is on, without file bytes', async () => {
+  it("attaches only the user's own message and the answer, in one layout", async () => {
     configure({ content: 'true' });
     await modelCall();
     await drain();
 
     const [span] = sentSpans();
-    expect(attr(span, 'gen_ai.prompt.0.role')).toBe('system');
-    expect(attr(span, 'gen_ai.prompt.1.content')).toBe('What is OTLP?\n[+1 file part(s)]');
-    expect(attr(span, 'gen_ai.completion.0.content')).toBe('A telemetry protocol.');
+    expect(JSON.parse(attr(span, 'gen_ai.input.messages') as string)).toEqual([
+      { role: 'user', parts: [{ type: 'text', content: 'What is OTLP?' }] },
+    ]);
     expect(JSON.parse(attr(span, 'gen_ai.output.messages') as string)).toEqual([
       { role: 'assistant', parts: [{ type: 'text', content: 'A telemetry protocol.' }] },
     ]);
-    expect(JSON.stringify(span)).not.toContain('data:x');
+    const body = JSON.stringify(span);
+    for (const leaked of ['SECRET SYSTEM PROMPT', 'earlier turn', 'OTHER CHAT', 'PRIVATE FILE TEXT']) {
+      expect(body).not.toContain(leaked);
+    }
+    expect(span.attributes.some((entry) => entry.key.startsWith('gen_ai.prompt.') || entry.key.startsWith('gen_ai.completion.'))).toBe(false);
   });
 
-  it('marks failures as errors, and a user Stop as not an error', async () => {
+  it('never attaches embedding inputs, and caps content length', async () => {
+    configure({ content: 'true' });
+    await modelCall({ span: 'embeddings', model: 'openai/text-embedding-3-small', operation: 'embeddings', contentPrompt: 'stored memory text' });
+    await modelCall({}, 'x'.repeat(traces.MAX_TRACE_CONTENT_LENGTH + 500));
+    await drain();
+
+    const [embedding, long] = sentSpans();
+    expect(JSON.stringify(embedding)).not.toContain('stored memory text');
+    const output = JSON.parse(attr(long, 'gen_ai.output.messages') as string)[0].parts[0].content as string;
+    expect(output.length).toBe(traces.MAX_TRACE_CONTENT_LENGTH + 3);
+  });
+});
+
+describe('OTLP traces: errors', () => {
+  it('marks failures as errors with a cleaned message, and a user Stop as not an error', async () => {
     configure();
     await expect(
       traceLlmCall({ traceId: TRACE_ID, span: 'completion', model: 'm', inRequest: true }, async () => {
-        throw new Error('OpenRouter API error: 502');
+        throw new Error('OpenRouter API error: 502\n  Authorization: Bearer sk-or-v1-abcdef');
       })
     ).rejects.toThrow('502');
     const controller = new AbortController();
@@ -196,38 +265,119 @@ describe('OTLP traces', () => {
     await drain();
 
     const [failed, stopped] = sentSpans();
-    expect(failed.status).toEqual({ code: 2, message: 'OpenRouter API error: 502' });
+    expect(failed.status.code).toBe(2);
+    expect(failed.status.message).toBe('OpenRouter API error: 502 Authorization: Bearer [redacted]');
+    expect(failed.status.message).not.toContain('sk-or');
     expect(attr(failed, 'error.type')).toBe('Error');
     expect(stopped.status).toEqual({ code: 1 });
     expect(attr(stopped, 'chatterstack.stopped')).toBe(true);
   });
 
-  it('names council requests "council" (the model is the pseudo-id council)', async () => {
+  it('cleans root and step error messages the same way as model calls', async () => {
     configure();
-    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'council', council: true, question: 'q' });
+    const echoed = new Error(`Invalid prisma.message.createMany() invocation:\n\n${'Q'.repeat(2000)}`);
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'error', model: 'm', error: echoed });
+    await expect(traces.traceStep(TRACE_ID, 'db.persist', async () => { throw echoed; })).rejects.toThrow();
     await drain();
-    expect(sentSpans()[0].name).toBe('council');
+
+    for (const span of sentSpans()) {
+      expect(span.status.message).toBe(describeError(echoed));
+      expect(span.status.message!.length).toBeLessThanOrEqual(303);
+    }
   });
 
-  it('times non-LLM steps under the request and rethrows their errors', async () => {
+  it('times non-LLM steps, and fails a step whose result reports a failure', async () => {
     configure();
     const found = await traces.traceStep(TRACE_ID, 'rag.retrieve', async () => ['chunk'], (r) => ({ 'chatterstack.rag_chunks': r.length }));
     expect(found).toEqual(['chunk']);
+    await traces.traceStep(TRACE_ID, 'rag.ingest', async () => 'failed', undefined, (outcome) => outcome === 'failed');
     await expect(traces.traceStep(TRACE_ID, 'rag.retrieve', async () => { throw new Error('qdrant down'); })).rejects.toThrow('qdrant down');
     await drain();
 
-    const [ok, failed] = sentSpans();
+    const [ok, reported, thrown] = sentSpans();
     expect(ok.parentSpanId).toBe(traces.requestSpanId(TRACE_ID));
     expect(attr(ok, 'chatterstack.rag_chunks')).toBe(1);
-    expect(failed.status).toEqual({ code: 2, message: 'qdrant down' });
+    expect(reported.status.code).toBe(2);
+    expect(thrown.status).toEqual({ code: 2, message: 'qdrant down' });
   });
+});
 
-  it('keeps spans buffered when OpenObserve rejects them, and never throws', async () => {
+describe('describeError', () => {
+  it('redacts credentials, data URLs and base64, and stays one bounded line', () => {
+    const message = describeError(new Error(
+      `fetch failed\n  Authorization: Bearer abc.def\n  api_key=sk-or-v1-0123456789abcdef password: hunter2 ` +
+      `data:image/png;base64,AAAA ${'Q'.repeat(200)} ${'tail '.repeat(100)}`
+    ));
+    expect(message).not.toMatch(/abc\.def|0123456789abcdef|hunter2|data:image|QQQQ/);
+    expect(message).not.toContain('\n');
+    expect(message.length).toBeLessThanOrEqual(303);
+  });
+});
+
+describe('OTLP traces: delivery', () => {
+  it('keeps spans buffered on a temporary failure, and never throws', async () => {
     configure();
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 500 })));
+    respond = () => new Response(null, { status: 503 });
     await modelCall();
     await drain();
     expect(traces.peekBufferedSpans()).toHaveLength(1);
+  });
+
+  it('drops a batch OpenObserve refuses outright, so later traces still get through', async () => {
+    configure();
+    respond = () => new Response('payload too large', { status: 413 });
+    await modelCall();
+    await drain();
+    expect(traces.peekBufferedSpans()).toHaveLength(0);
+    expect(traces.traceStats().dropped).toBe(1);
+
+    respond = () => new Response(null, { status: 200 });
+    await modelCall();
+    await drain();
+    const last = traceRequests().at(-1)!;
+    expect(last.body.resourceSpans[0].scopeSpans[0].spans).toHaveLength(1);
+    // The loss is reported with the next successful send.
+    expect(last.body.resourceSpans[0].resource.attributes).toContainEqual({ key: 'chatterstack.spans_dropped', value: { intValue: '1' } });
+  });
+
+  it('sends a large buffer in bounded chunks', async () => {
+    configure();
+    for (let i = 0; i < traces.MAX_SPANS_PER_REQUEST + 30; i++) {
+      traces.recordRequestSpan({ traceId: `t-${i}`, startedAt: Date.now(), status: 'ok', model: 'm' });
+    }
+    await drain();
+    const sizes = traceRequests().map((request) => request.body.resourceSpans[0].scopeSpans[0].spans.length);
+    expect(Math.max(...sizes)).toBeLessThanOrEqual(traces.MAX_SPANS_PER_REQUEST);
+    expect(sizes.reduce((a, b) => a + b, 0)).toBe(traces.MAX_SPANS_PER_REQUEST + 30);
+    expect(traces.peekBufferedSpans()).toHaveLength(0);
+  });
+
+  it('sends spans queued during an in-flight send in the same flush', async () => {
+    configure();
+    let release!: () => void;
+    traceGate = new Promise<void>((resolve) => { release = resolve; });
+    await modelCall(); // starts a background flush, whose trace POST now hangs
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(traceRequests()).toHaveLength(1);
+    await modelCall(); // queued while that POST is still open
+    release();
+    // No further flush is triggered: the open flush must pick the span up itself.
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(sentSpans()).toHaveLength(2);
+    expect(traces.peekBufferedSpans()).toHaveLength(0);
+  });
+
+  it('keeps the function alive for a threshold flush inside a request', async () => {
+    configure();
+    insideRequest = true;
+    for (let i = 0; i < traces.SPAN_FLUSH_THRESHOLD; i++) {
+      traces.recordRequestSpan({ traceId: `t-${i}`, startedAt: Date.now(), status: 'ok', model: 'm' });
+    }
+    // The eager send started, and its promise was handed to after().
+    expect(fetchMock).toHaveBeenCalled();
+    const waited = afterCalls.map((callback) => callback());
+    expect(waited.some((value) => value instanceof Promise)).toBe(true);
+    await Promise.all(waited);
   });
 
   it('maps any trace id to a valid 32-hex OTLP id', () => {
