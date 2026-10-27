@@ -17,6 +17,9 @@ Rules used to build the list:
 - Include a model only when its OpenRouter slug resolves in the live catalog.
 - Keep one entry per OpenRouter slug, even when t3.chat exposes several names
   for the same model.
+- Include a model only when a live one-prompt check routes to it. OpenRouter
+  lists `openai/o3-mini` and `openai/o4-mini`, but its OpenAI provider returns
+  `model_not_found` for both (checked 2026-10-27), so they are omitted.
 - Exclude image-generation models (Nano Banana, GPT Image, Imagen). ChatterStack
   streams text responses and accepts images as input, but does not generate
   images.
@@ -24,7 +27,7 @@ Rules used to build the list:
 
 | Company | Models |
 | --- | ---: |
-| OpenAI | 24 |
+| OpenAI | 22 |
 | Anthropic | 15 |
 | DeepSeek | 11 |
 | Z.ai | 11 |
@@ -35,7 +38,7 @@ Rules used to build the list:
 | Qwen | 5 |
 | xAI | 5 |
 | Xiaomi | 2 |
-| **Total** | **97** |
+| **Total** | **95** |
 
 ## Updating
 
