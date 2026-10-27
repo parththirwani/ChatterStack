@@ -1,7 +1,6 @@
 import { formatMessagesWithSystemContext } from '@/src/services/prompt/promptService';
 import {
   effectiveThinkingLevel,
-  getModel,
   modelSupportsReasoning,
   type ThinkingLevel,
 } from '@/src/config/models';
@@ -13,6 +12,7 @@ import {
 } from '@/src/lib/observability/trace-llm-call';
 import type { OpenRouterPart } from './attachments';
 import type { ParsedSkill } from '@/src/lib/skills/skill-file';
+import { outputTokenCap } from './prompt-budget';
 
 type ChatMessage = { role: string; content: string | OpenRouterPart[] };
 
@@ -30,16 +30,8 @@ export interface StreamOptions {
 }
 
 // Reasoning tokens count against max_tokens, so higher effort needs more room
-// or the visible answer gets cut off.
-const MAX_TOKENS: Record<ThinkingLevel, number> = {
-  off: 4000,
-  low: 8000,
-  medium: 12000,
-  high: 20000,
-  xhigh: 32000,
-  max: 64000,
-};
-
+// or the visible answer gets cut off. The cap table lives in prompt-budget so
+// the context budget and the request agree.
 // OpenRouter's name for "no reasoning" is the effort 'none'.
 function reasoningParam(level: ThinkingLevel) {
   return { effort: level === 'off' ? 'none' : level };
@@ -48,8 +40,7 @@ function reasoningParam(level: ThinkingLevel) {
 // Never ask a model for more output than its provider allows, or OpenRouter
 // rejects the whole request.
 function maxTokensFor(model: string, level: ThinkingLevel): number {
-  const limit = getModel(model)?.maxOutputTokens;
-  return limit ? Math.min(MAX_TOKENS[level], limit) : MAX_TOKENS[level];
+  return outputTokenCap(model, level);
 }
 
 const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';

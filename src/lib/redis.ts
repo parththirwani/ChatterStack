@@ -1,10 +1,13 @@
 import { createClient } from 'redis';
 
 interface Message {
+  /** The saved Message row id, used as a stable compaction boundary. */
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
   attachments?: Array<import('@/src/types/chat.types').DocumentAttachment | import('@/src/types/chat.types').ChatAttachment>;
+  createdAt?: string;
 }
 
 class RedisStore {

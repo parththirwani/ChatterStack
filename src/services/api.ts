@@ -2,6 +2,7 @@ import { Conversation, User } from "../types";
 import type {
   ChatRequest,
   CompletionAnalytics,
+  ContextCompactionInfo,
   CouncilAnswer,
   CouncilProgress,
   CouncilRanking,
@@ -23,6 +24,8 @@ export interface ChatStreamHandlers {
   onCouncilRankings?: (rankings: CouncilRanking[]) => void;
   /** Tokens and timing of the finished completion, sent just before done. */
   onAnalytics?: (analytics: CompletionAnalytics) => void;
+  /** This reply used a summary of older turns. */
+  onContextCompacted?: (info: ContextCompactionInfo) => void;
 }
 
 interface UserProfileResponse {
@@ -200,6 +203,9 @@ export class ApiService {
       }
       if (parsed.analytics) {
         handlers.onAnalytics?.(parsed.analytics);
+      }
+      if (parsed.contextCompacted) {
+        handlers.onContextCompacted?.(parsed.contextCompacted);
       }
       if (parsed.reasoning) {
         handlers.onReasoning?.(parsed.reasoning);

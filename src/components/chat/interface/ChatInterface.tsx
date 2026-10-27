@@ -204,6 +204,7 @@ const MessageList = memo(function MessageList({
             reasoningStartedAt={msg.reasoningStartedAt}
             reasoningDurationMs={msg.reasoningDurationMs}
             analytics={msg.analytics}
+            contextCompacted={msg.contextCompacted}
             onRetry={isLastMessage && !loading ? onRetry : undefined}
             council={msg.council}
             councilProgress={isLastMessage ? councilProgress : undefined}

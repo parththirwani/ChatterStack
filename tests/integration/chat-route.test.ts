@@ -15,6 +15,7 @@ const PDF_ID = 'a36e8a04-5967-43dd-aa7a-cab1497813ee';
 const SKILL_ID = '5b1f6c2a-7d3e-4f1a-9c2b-1e2d3c4b5a69';
 const skillRows = new Map<string, { id: string; userId: string; name: string; description: string; instructions: string; source: string; enabled: boolean; categories: string[]; files: unknown; metadata: unknown; version: number; catalogId: string | null; createdAt: Date; updatedAt: Date }>();
 const documentRows = new Map<string, { id: string; userId: string; name: string; mimeType: string; size: number; storageKey: string }>();
+const snapshotRows = new Map<string, Record<string, unknown>>();
 
 const db = {
   skill: {
@@ -50,6 +51,25 @@ const db = {
       log.push('db:deleteExchange');
       return { count: 2 };
     }),
+  },
+  conversationContextSnapshot: {
+    findUnique: vi.fn(async ({ where }: { where: { conversationId: string } }) => snapshotRows.get(where.conversationId) ?? null),
+    create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
+      const row = { id: 'snapshot-1', version: 1, schemaVersion: 1, createdAt: new Date(), updatedAt: new Date(), ...data };
+      snapshotRows.set(String(data.conversationId), row);
+      log.push('db:snapshot:create');
+      return row;
+    }),
+    updateMany: vi.fn(async ({ where, data }: { where: { conversationId: string; version: number }; data: Record<string, unknown> }) => {
+      const row = snapshotRows.get(where.conversationId);
+      if (!row || row.version !== where.version) return { count: 0 };
+      Object.assign(row, data);
+      log.push('db:snapshot:update');
+      return { count: 1 };
+    }),
+    deleteMany: vi.fn(async ({ where }: { where: { conversationId: string } }) => ({
+      count: snapshotRows.delete(where.conversationId) ? 1 : 0,
+    })),
   },
   $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
 };
@@ -89,6 +109,7 @@ beforeEach(() => {
   log.length = 0;
   documentRows.clear();
   skillRows.clear();
+  snapshotRows.clear();
   storage.read.mockClear();
   db.document.findMany.mockClear();
   db.document.updateMany.mockClear();
@@ -551,6 +572,101 @@ describe('POST /api/chat, when the user steers', () => {
       redis.get.mockImplementation(async () => []);
       redis.set.mockImplementation(async () => {});
     }
+  });
+});
+
+describe('POST /api/chat, auto compaction', () => {
+  const history = [
+    { id: 'm1', role: 'user', content: 'First question. ' + 'alpha '.repeat(100), createdAt: '2026-01-01T00:00:00.000Z' },
+    { id: 'm2', role: 'assistant', content: 'First answer. ' + 'beta '.repeat(100), modelId: 'openai/gpt-6.1-sol', createdAt: '2026-01-01T00:00:01.000Z' },
+    { id: 'm3', role: 'user', content: 'Second question. ' + 'gamma '.repeat(100), createdAt: '2026-01-01T00:00:02.000Z' },
+    { id: 'm4', role: 'assistant', content: 'Second answer. ' + 'delta '.repeat(100), modelId: 'openai/gpt-6.1-sol', createdAt: '2026-01-01T00:00:03.000Z' },
+    { id: 'm5', role: 'user', content: 'Third question. ' + 'epsilon '.repeat(100), createdAt: '2026-01-01T00:00:04.000Z' },
+    { id: 'm6', role: 'assistant', content: 'Third answer. ' + 'zeta '.repeat(100), modelId: 'openai/gpt-6.1-sol', createdAt: '2026-01-01T00:00:05.000Z' },
+  ];
+
+  const goodSummary = `## Current goal
+Keep working on the TCP task.
+
+## Durable instructions and preferences
+Use TypeScript and short answers.
+
+## Established facts
+The first exchange is complete.
+
+## Decisions and rationale
+Keep the existing API.
+
+## Unresolved work
+Verify the last two exchanges.
+
+## Exact details
+Port 3000.`;
+
+  const installFetch = (summary: string) => {
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      if (body.model === 'openai/gpt-5.6-luna') {
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'TCP' } }] }));
+      }
+      if (body.model === 'openai/gpt-4o-mini') {
+        log.push('openrouter:summary');
+        return sseResponse([delta({ content: summary }), '[DONE]']);
+      }
+      return sseResponse([delta({ content: 'Fresh answer.' }), '[DONE]']);
+    });
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('CHAT_COMPACTION_MODE', 'on');
+    vi.stubEnv('COMPACTION_TRIGGER_MAX_TOKENS', '200');
+    vi.stubEnv('COMPACTION_RECENT_EXCHANGES', '2');
+  });
+
+  it('summarizes older turns, keeps the last two exchanges, and leaves the transcript alone', async () => {
+    redis.get.mockResolvedValue(history);
+    installFetch(goodSummary);
+
+    const events = await readEvents(
+      await post({ message: 'And now?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID })
+    );
+
+    const snapshot = snapshotRows.get(NEW_ID);
+    expect(snapshot).toMatchObject({ throughMessageId: 'm2', summaryModelId: 'openai/gpt-4o-mini', version: 1 });
+    expect(log).toContain('db:snapshot:create');
+    // The full exchange is still persisted: compaction is only a model view.
+    expect(log).toContain('db:messages:user=And now?|assistant=Fresh answer.');
+    expect(events).toContainEqual(expect.objectContaining({
+      contextCompacted: expect.objectContaining({ throughMessageId: 'm2', summaryTokens: expect.any(Number) }),
+    }));
+
+    const sent = openRouterBodies().find((body) => body.model === 'openai/gpt-6.1-sol').messages;
+    expect(sent[2].content).toContain('## Earlier conversation summary');
+    expect(sent[2].content).toContain('## Current goal');
+    expect(sent.slice(3, 7).map((message: { content: string }) => message.content)).toEqual([
+      'Second question. ' + 'gamma '.repeat(100),
+      'Second answer. ' + 'delta '.repeat(100),
+      'Third question. ' + 'epsilon '.repeat(100),
+      'Third answer. ' + 'zeta '.repeat(100),
+    ]);
+    expect(sent.at(-1).content).toBe('And now?');
+  });
+
+  it('keeps the full history when the summary is malformed', async () => {
+    redis.get.mockResolvedValue(history);
+    installFetch('not a summary');
+
+    await readEvents(
+      await post({ message: 'And now?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID })
+    );
+
+    expect(snapshotRows.has(NEW_ID)).toBe(false);
+    expect(log).not.toContain('db:snapshot:create');
+    const sent = openRouterBodies().find((body) => body.model === 'openai/gpt-6.1-sol').messages;
+    expect(sent.some((message: { content: string }) => message.content.includes('## Earlier conversation summary'))).toBe(false);
+    expect(sent.map((message: { content: string }) => message.content)).toEqual(
+      expect.arrayContaining([history[0].content, history[1].content])
+    );
   });
 });
 

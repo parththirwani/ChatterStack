@@ -189,15 +189,15 @@ export const formatActiveSkills = (skills: readonly (ParsedSkill & { files?: Ski
 };
 
 /**
- * Format messages with system context and security policy
+ * The system and developer messages prepended to every chat completion.
+ * Exported so the token budget measures exactly what is sent.
  */
-export const formatMessagesWithSystemContext = (
-  messages: Array<{ role: string; content: string | OpenRouterPart[] }>,
+export const buildSystemContext = (
   modelId?: string,
   skills: readonly ParsedSkill[] = []
-): Array<{ role: string; content: string | OpenRouterPart[] }> => {
+): Array<{ role: string; content: string }> => {
   const systemPrompt = getChatterStackSystemPrompt(modelId) + formatActiveSkills(skills);
-  
+
   return [
     {
       role: 'system',
@@ -207,8 +207,18 @@ export const formatMessagesWithSystemContext = (
       role: 'developer',
       content: SECURITY_POLICY,
     },
-    ...messages,
   ];
+};
+
+/**
+ * Format messages with system context and security policy
+ */
+export const formatMessagesWithSystemContext = (
+  messages: Array<{ role: string; content: string | OpenRouterPart[] }>,
+  modelId?: string,
+  skills: readonly ParsedSkill[] = []
+): Array<{ role: string; content: string | OpenRouterPart[] }> => {
+  return [...buildSystemContext(modelId, skills), ...messages];
 };
 
 /**

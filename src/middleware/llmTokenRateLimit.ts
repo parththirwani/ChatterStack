@@ -451,9 +451,10 @@ function buildStatus(now: number, tokensUsed: number, councilUsed: number, oldes
 async function checkAndReserveLLMTokenLimit(
   userId: string,
   promptText: string,
-  isCouncil: boolean
+  isCouncil: boolean,
+  estimatedTokensOverride?: number
 ): Promise<LimiterDecision> {
-  const estimatedTokens = estimatePromptTokens(promptText, isCouncil);
+  const estimatedTokens = estimatedTokensOverride ?? estimatePromptTokens(promptText, isCouncil);
   const now = Date.now();
 
   try {
@@ -500,15 +501,20 @@ async function checkAndReserveLLMTokenLimit(
 /**
  * Middleware for chat routes. Reserves the estimate when allowed; the caller
  * must reconcile with recordLLMTokens after the model call.
+ *
+ * `estimatedTokens` lets a caller that already measured the rendered request
+ * (including a compaction call) reserve exactly that amount instead of
+ * re-estimating from text.
  */
 export async function withLLMTokenLimit(
   userId: string,
   promptText: string,
-  isCouncil: boolean
+  isCouncil: boolean,
+  estimatedTokens?: number
 ): Promise<Response | null> {
   let result: LimiterDecision;
   try {
-    result = await checkAndReserveLLMTokenLimit(userId, promptText, isCouncil);
+    result = await checkAndReserveLLMTokenLimit(userId, promptText, isCouncil, estimatedTokens);
   } catch {
     return unavailableResponse(); // Fail closed: no limiter, no paid calls.
   }
