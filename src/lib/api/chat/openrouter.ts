@@ -1,5 +1,10 @@
 import { formatMessagesWithSystemContext } from '@/src/services/prompt/promptService';
-import { effectiveThinkingLevel, type ThinkingLevel } from '@/src/config/models';
+import {
+  effectiveThinkingLevel,
+  getModel,
+  modelSupportsReasoning,
+  type ThinkingLevel,
+} from '@/src/config/models';
 import {
   promptText,
   traceLlmCall,
@@ -40,6 +45,13 @@ function reasoningParam(level: ThinkingLevel) {
   return { effort: level === 'off' ? 'none' : level };
 }
 
+// Never ask a model for more output than its provider allows, or OpenRouter
+// rejects the whole request.
+function maxTokensFor(model: string, level: ThinkingLevel): number {
+  const limit = getModel(model)?.maxOutputTokens;
+  return limit ? Math.min(MAX_TOKENS[level], limit) : MAX_TOKENS[level];
+}
+
 const isAbort = (error: unknown) => error instanceof Error && error.name === 'AbortError';
 
 const idleMetrics: LlmCallMetrics = {
@@ -73,8 +85,10 @@ async function runStream(
       model,
       messages,
       stream: true,
-      max_tokens: MAX_TOKENS[level],
-      reasoning: reasoningParam(level),
+      max_tokens: maxTokensFor(model, level),
+      // Non-reasoning models (GPT-4.1, Llama, Kimi K2, …) reject or ignore a
+      // reasoning request, so only send it when the model actually reasons.
+      ...(modelSupportsReasoning(model) ? { reasoning: reasoningParam(level) } : {}),
     }),
     signal,
   });

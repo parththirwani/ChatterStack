@@ -4,7 +4,15 @@ ChatterStack is a Next.js chat app with single-model conversations and a four-mo
 
 ## Models
 
-The current OpenRouter choices are DeepSeek V4.1 Flash, Gemini 4 Argon, GPT-6.1 Sol, and Claude Sonnet 5.5. The same four models participate in AI Council. Model IDs and displayed metadata live in [`src/config/models.ts`](src/config/models.ts). OpenRouter availability and pricing can change; check [its model catalog](https://openrouter.ai/models) before deployment.
+ChatterStack mirrors the models offered by [t3.chat](https://t3.chat) that are also available on OpenRouter. The registry in [`src/config/models.ts`](src/config/models.ts) lists every OpenRouter chat model t3.chat offers, with display name, company, logo, context limit, maximum output, pricing, image support and reasoning levels. The composer, `/api/models`, cost estimates and council pickers all read from that one list. See [`docs/model-registry.md`](docs/model-registry.md) for the inclusion rules and update process.
+
+The four original defaults (DeepSeek V4.1 Flash, Gemini 4 Argon, GPT-6.1 Sol, and Claude Sonnet 5.5) still participate in AI Council. To verify that a registered model actually routes on OpenRouter, run the opt-in smoke test; it sends one short prompt to every model:
+
+```bash
+OPENROUTER_API_KEY=sk-or-... npm run test:models
+```
+
+OpenRouter availability and pricing can change; check [its model catalog](https://openrouter.ai/models) before deployment.
 
 ## Run with Docker
 

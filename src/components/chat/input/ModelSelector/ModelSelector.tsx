@@ -7,9 +7,7 @@ import { usePopover } from './usePopover';
 
 // Memoized: the composer re-renders on every keystroke.
 export const ModelSelector = memo(function ModelSelector() {
-  const { isOpen, placement, close, returnFocus, triggerProps, rootProps } = usePopover(
-    '[role="option"][aria-selected="true"], [role="checkbox"]'
-  );
+  const { isOpen, placement, close, returnFocus, triggerProps, rootProps } = usePopover('input[type="search"]');
   const { selectedModel, getModelInfo, councilMode } = useModelSelection();
   const label = councilMode ? 'Members' : getModelInfo(selectedModel)?.name || 'Select model';
 

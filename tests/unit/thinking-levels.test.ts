@@ -50,8 +50,11 @@ describe('thinking levels', () => {
     }
   );
 
-  it('covers every chat model', () => {
-    expect(CHAT_MODELS.map((model) => model.id).sort()).toEqual(Object.keys(OPENROUTER_SUPPORTED_EFFORTS).sort());
+  it('covers every chat model with a valid, non-empty level set', () => {
+    for (const model of CHAT_MODELS) {
+      expect(model.thinkingLevels.length).toBeGreaterThan(0);
+      for (const level of model.thinkingLevels) expect(THINKING_LEVELS).toContain(level);
+    }
   });
 
   it('only lets models that support "none" turn thinking off', () => {

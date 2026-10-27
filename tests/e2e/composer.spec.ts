@@ -25,7 +25,9 @@ test.describe('thinking level', () => {
     await modelButton(page).click();
     const modelMenu = page.getByRole('dialog', { name: 'Model settings' });
     await expect(modelMenu).toBeVisible();
-    await expect(modelMenu.getByText(/thinking/i)).toHaveCount(0);
+    // No thinking control in the model menu (model descriptions may still mention thinking).
+    await expect(modelMenu.getByRole('listbox', { name: /thinking/i })).toHaveCount(0);
+    await expect(modelMenu.getByRole('button', { name: /thinking/i })).toHaveCount(0);
     await page.keyboard.press('Escape');
 
     // Side by side, on the same row.
@@ -91,7 +93,10 @@ test.describe('council settings', () => {
 
     await modelButton(page).click();
     const dialog = page.getByRole('dialog', { name: 'Council settings' });
-    await expect(dialog.getByRole('group', { name: 'Council members' }).getByRole('checkbox')).toHaveCount(4);
+    // Any model can join; the four defaults start checked.
+    const members = dialog.getByRole('group', { name: 'Council members' });
+    await expect(members.getByRole('checkbox', { checked: true })).toHaveCount(4);
+    expect(await members.getByRole('checkbox').count()).toBeGreaterThan(4);
     await expect(dialog.getByRole('button', { name: /Chair/ })).toBeVisible();
   });
 
