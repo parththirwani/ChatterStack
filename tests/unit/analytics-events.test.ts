@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AnalyticsEvents,
+  chatMessageRetriedProps,
   chatMessageSentProps,
   chatResponseCompletedProps,
   councilRunCompletedProps,
@@ -13,6 +14,7 @@ describe('event names', () => {
     expect(Object.values(AnalyticsEvents)).toEqual([
       'sign_in_started',
       'chat_message_sent',
+      'chat_message_retried',
       'chat_response_completed',
       'council_run_completed',
       'conversation_created',
@@ -79,6 +81,20 @@ describe('property builders', () => {
       thinking_level: 'high',
       attachment_count: 2,
       message_length_bucket: '100-499',
+    });
+  });
+
+  it('says which message was regenerated, without quoting it', () => {
+    expect(
+      chatMessageRetriedProps({
+        modelId: 'council',
+        council: true,
+        thinkingLevel: 'medium',
+      })
+    ).toEqual({
+      model_id: 'council',
+      council: true,
+      thinking_level: 'medium',
     });
   });
 
