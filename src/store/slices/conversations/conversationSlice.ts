@@ -38,6 +38,11 @@ export interface ConversationsSlice {
 
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
+  /**
+   * Forks a chat at one saved message and makes the copy the active chat.
+   * Resolves with the conversation the server created.
+   */
+  forkConversation: (conversationId: string, messageId: string) => Promise<Conversation>;
 
   loadConversations: (force?: boolean) => Promise<void>;
   /**
@@ -60,6 +65,7 @@ interface StoreWithChat {
   conversationsLoading: boolean;
   chatState: Record<string, ChatState>;
   setChatState: (id: string, state: Partial<ChatState>) => void;
+  setCurrentConversationId: (id: string | undefined) => void;
   clearChatState: (id: string) => void;
   clearQueue: (id: string) => void;
 }
@@ -148,6 +154,17 @@ export const createConversationsSlice: StateCreator<
       get().updateConversation(id, { pinnedAt: previous.pinnedAt ?? null });
       throw error;
     }
+  },
+
+  forkConversation: async (conversationId, messageId) => {
+    // Nothing is created client-side: the saved rows are the answer, so the
+    // fork only appears once the server has written them.
+    const conversation = await ApiService.forkConversation(conversationId, messageId);
+    // hydrateConversation puts it in Recents and seeds its messages, and leaves
+    // any chat that is streaming right now exactly as it is.
+    get().hydrateConversation({ ...conversation, messages: sortMessages(conversation.messages ?? []) });
+    (get() as unknown as StoreWithChat).setCurrentConversationId(conversation.id);
+    return conversation;
   },
 
   loadConversations: async (force = false) => {

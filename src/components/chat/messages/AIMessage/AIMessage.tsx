@@ -26,6 +26,10 @@ interface AIMessageProps {
   analytics?: CompletionAnalytics;
   /** Set on the reply that can be regenerated (the last one). */
   onRetry?: () => void;
+  /** Saved reply: its id goes into the More actions menu. */
+  messageId?: string;
+  onFork?: (messageId: string) => void;
+  forking?: boolean;
   council?: CouncilDetails;
   councilProgress?: CouncilProgress[];
 }
@@ -43,6 +47,9 @@ const AIMessage: React.FC<AIMessageProps> = ({
   reasoningDurationMs,
   analytics,
   onRetry,
+  messageId,
+  onFork,
+  forking = false,
   council,
   councilProgress = [],
 }) => {
@@ -95,6 +102,9 @@ const AIMessage: React.FC<AIMessageProps> = ({
                   showCopy={showCopy}
                   showDownload={showDownload}
                   onRetry={onRetry}
+                  messageId={messageId}
+                  onFork={onFork}
+                  forking={forking}
                 />
                 {analytics && <MessageAnalytics analytics={analytics} />}
               </div>
@@ -117,6 +127,9 @@ export default memo(AIMessage, (prev, next) => {
     prev.reasoningDurationMs === next.reasoningDurationMs &&
     prev.analytics === next.analytics &&
     prev.onRetry === next.onRetry &&
+    prev.messageId === next.messageId &&
+    prev.onFork === next.onFork &&
+    prev.forking === next.forking &&
     prev.council === next.council &&
     prev.councilProgress === next.councilProgress
   );

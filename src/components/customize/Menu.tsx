@@ -6,6 +6,8 @@ export interface MenuItem {
   icon?: React.ReactNode;
   onSelect: () => void;
   danger?: boolean;
+  /** Stays in the menu, but does nothing while its request is in flight. */
+  disabled?: boolean;
 }
 
 interface MenuProps {
@@ -15,16 +17,23 @@ interface MenuProps {
   items: MenuItem[];
   triggerClassName?: string;
   align?: 'start' | 'end';
+  /** Keeps the menu closed (e.g. while one of its actions is still running). */
+  disabled?: boolean;
 }
 
 /** A small dropdown menu: button + role=menu, with arrow keys and Escape. */
-export default function Menu({ label, trigger, items, triggerClassName, align = 'end' }: MenuProps) {
+export default function Menu({ label, trigger, items, triggerClassName, align = 'end', disabled = false }: MenuProps) {
   const [open, setOpen] = useState(false);
   const [focused, setFocused] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const menuId = useId();
+
+  // A trigger disabled mid-flight must not leave an open menu behind.
+  useEffect(() => {
+    if (disabled) setOpen(false);
+  }, [disabled]);
 
   useEffect(() => {
     if (!open) return;
@@ -61,11 +70,17 @@ export default function Menu({ label, trigger, items, triggerClassName, align = 
         type="button"
         aria-label={label}
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={disabled ? false : open}
+        aria-disabled={disabled || undefined}
         aria-controls={open ? menuId : undefined}
-        onClick={(event) => { event.stopPropagation(); setFocused(0); setOpen((value) => !value); }}
-        onKeyDown={(event) => { if (event.key === 'ArrowDown' && !open) { event.preventDefault(); setFocused(0); setOpen(true); } }}
-        className={triggerClassName}
+        onClick={(event) => {
+          event.stopPropagation();
+          if (disabled) return;
+          setFocused(0);
+          setOpen((value) => !value);
+        }}
+        onKeyDown={(event) => { if (event.key === 'ArrowDown' && !open && !disabled) { event.preventDefault(); setFocused(0); setOpen(true); } }}
+        className={`${triggerClassName ?? ''}${disabled ? ' opacity-50' : ''}`}
       >
         {trigger}
       </button>
@@ -78,8 +93,14 @@ export default function Menu({ label, trigger, items, triggerClassName, align = 
               type="button"
               role="menuitem"
               tabIndex={index === focused ? 0 : -1}
-              onClick={(event) => { event.stopPropagation(); setOpen(false); item.onSelect(); }}
-              className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm focus:bg-white/[0.08] focus:outline-none hover:bg-white/[0.08] ${item.danger ? 'text-red-300' : 'text-[#e5e2de]'}`}
+              aria-disabled={item.disabled || undefined}
+              onClick={(event) => {
+                event.stopPropagation();
+                setOpen(false);
+                if (item.disabled) return;
+                item.onSelect();
+              }}
+              className={`flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm focus:bg-white/[0.08] focus:outline-none hover:bg-white/[0.08] ${item.danger ? 'text-red-300' : 'text-[#e5e2de]'} ${item.disabled ? 'cursor-default opacity-50 hover:bg-transparent' : ''}`}
             >
               {item.icon && <span className="flex h-4 w-4 items-center justify-center text-[#aaa6a2]">{item.icon}</span>}
               {item.label}

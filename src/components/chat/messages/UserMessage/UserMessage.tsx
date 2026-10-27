@@ -1,6 +1,7 @@
 import React, { memo, useMemo, useState } from 'react';
 import { splitSkillTokens } from '@/src/lib/skills/slash';
 import AttachmentTile from '@/src/components/chat/attachments/AttachmentTile';
+import MessageMenu from '@/src/components/chat/actions/MessageMenu';
 import DocumentPreview from '@/src/components/sidebar/resources/DocumentPreview';
 import type { AttachmentMeta } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
@@ -9,9 +10,13 @@ interface UserMessageProps {
   content: string;
   attachments?: AttachmentMeta[];
   skills?: SkillTag[];
+  /** Saved question: its id goes into the More actions menu. */
+  messageId?: string;
+  onFork?: (messageId: string) => void;
+  forking?: boolean;
 }
 
-const UserMessage: React.FC<UserMessageProps> = ({ content, attachments = [], skills = [] }) => {
+const UserMessage: React.FC<UserMessageProps> = ({ content, attachments = [], skills = [], messageId, onFork, forking = false }) => {
   const [preview, setPreview] = useState<{ id: string; name: string; mimeType: string } | null>(null);
   // Skills tagged on the message are shown inline, highlighted like in the composer.
   const parts = useMemo(() => {
@@ -43,6 +48,11 @@ const UserMessage: React.FC<UserMessageProps> = ({ content, attachments = [], sk
                   : <React.Fragment key={index}>{part.text}</React.Fragment>) : content}
               </p>}
             </div>
+            {messageId && onFork && (
+              <div className="mt-1 flex justify-end">
+                <MessageMenu messageId={messageId} onFork={onFork} forking={forking} />
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -53,5 +63,6 @@ const UserMessage: React.FC<UserMessageProps> = ({ content, attachments = [], sk
 
 // Memoize to prevent unnecessary re-renders
 export default memo(UserMessage, (prev, next) => {
-  return prev.content === next.content && prev.attachments === next.attachments && prev.skills === next.skills;
+  return prev.content === next.content && prev.attachments === next.attachments && prev.skills === next.skills
+    && prev.messageId === next.messageId && prev.onFork === next.onFork && prev.forking === next.forking;
 });
