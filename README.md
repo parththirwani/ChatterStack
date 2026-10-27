@@ -103,6 +103,39 @@ bundled files or run scripts, and skills run only when tagged (Claude can also
 pick skills automatically). Each user can keep 50 skills. Apply the Prisma
 schema (`npx prisma db push`) before deploying this version.
 
+## Scheduled tasks
+
+A scheduled task is a saved prompt that runs on a schedule, such as a morning
+news brief every weekday at 9:00. The UI follows Claude's scheduled tasks.
+
+- **Find:** the sidebar's **Scheduled** row lists your tasks with their
+  schedule, next run and an Active/Paused switch. **New task** opens a dialog
+  with name, instructions, model and frequency (Manual, Hourly, Daily,
+  Weekdays or Weekly, at a time in your browser's time zone).
+- **Task page:** **Run now**, the Active/Paused switch, **Edit** and
+  **Delete** (in the menu next to the name), and **History**. Each run is a
+  new chat titled with the task name; click a run to open it and carry on.
+  Run chats stay out of Recents. Deleting a task keeps them as ordinary chats.
+- **Runs:** each run sends the saved prompt, with the run's local date and
+  time, to the chosen model. Runs count toward the daily token limit; a run
+  that doesn't fit is skipped and History says why. Missed runs catch up
+  once, and a run is skipped while the previous one is still going.
+
+Something has to wake the scheduler every minute:
+
+- **Docker / `npm run start`:** set `SCHEDULED_TASKS_TICKER=true` (Compose
+  already does). The server then runs due tasks itself.
+- **Vercel:** call `GET` or `POST /api/cron/scheduled-tasks` every minute with
+  `Authorization: Bearer <CRON_SECRET>`. Vercel's Hobby plan only allows daily
+  crons, so use an external scheduler (for example Upstash QStash or
+  cron-job.org); on Pro, add `{ "path": "/api/cron/scheduled-tasks",
+  "schedule": "* * * * *" }` to `vercel.json`.
+
+Several schedulers or instances can call it at once: each due task is claimed
+by exactly one of them. Apply the Prisma schema (`npx prisma db push`) before
+deploying this version. See [docs/scheduled-tasks-plan.md](docs/scheduled-tasks-plan.md)
+for the design.
+
 ## Environments in Sentry, PostHog and OpenObserve
 
 All three tag what they send with the same value, so local testing never mixes
