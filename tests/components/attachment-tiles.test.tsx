@@ -175,6 +175,56 @@ describe('previewing a file that was just uploaded', () => {
   });
 });
 
+describe('zooming an image preview', () => {
+  const openImage = async () => {
+    const user = userEvent.setup();
+    uploadMock.mockResolvedValue({ documentId: 'doc-1', name: 'cat.png', mimeType: 'image/png', size: 3 });
+    render(<Composer />);
+    await chooseFiles(user, file('cat.png', 'image/png'));
+    await user.click(await screen.findByRole('button', { name: 'Preview cat.png' }));
+    await screen.findByRole('toolbar', { name: 'Zoom' });
+    return user;
+  };
+
+  it('zooms in and out from the toolbar and fits back to the window', async () => {
+    const user = await openImage();
+    const image = screen.getAllByAltText('cat.png').at(-1)!;
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fit to window' })).toBeDisabled();
+
+    await user.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(screen.getByLabelText('Zoom 125%')).toBeInTheDocument();
+    expect(image.style.transform).toContain('scale(1.25)');
+
+    await user.click(screen.getByRole('button', { name: 'Zoom out' }));
+    await user.click(screen.getByRole('button', { name: 'Zoom out' }));
+    expect(screen.getByLabelText('Zoom 80%')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Fit to window' }));
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+  });
+
+  it('supports the keyboard and stops at the limits', async () => {
+    const user = await openImage();
+    await user.keyboard('+');
+    expect(screen.getByLabelText('Zoom 125%')).toBeInTheDocument();
+    await user.keyboard('0');
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+    for (let press = 0; press < 12; press++) await user.keyboard('+');
+    expect(screen.getByLabelText('Zoom 800%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom in' })).toBeDisabled();
+  });
+
+  it('toggles between fit and 200% on double-click', async () => {
+    const user = await openImage();
+    const frame = screen.getByTestId('image-viewer-frame');
+    await user.dblClick(frame);
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
+    await user.dblClick(frame);
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+  });
+});
+
 describe('attachments on a sent message', () => {
   it('renders image attachments as thumbnails that open the document preview', async () => {
     const user = userEvent.setup();
