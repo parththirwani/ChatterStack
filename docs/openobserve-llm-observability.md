@@ -211,6 +211,34 @@ The panels worth having first, in this order: p50/p95 latency per model, error
 rate per model per day, tokens and cost per day, council stage breakdown, and
 time to first token.
 
+## Traces
+
+`OPENOBSERVE_TRACES=true` adds OTLP traces next to the records: one trace per
+chat request in OpenObserve → Traces (stream `OPENOBSERVE_TRACE_STREAM`,
+default `default`). The trace id is the request's `trace_id` with the dashes
+removed, so a record and its trace can be matched.
+
+```
+chat <model> | council <model>      root: question, final answer, outcome
+├─ rag.retrieve                     duration, rag_chunks, rag_context_found
+├─ completion <model>               or council-member-answer / council-ranking / council-chair
+├─ title-generation <model>
+└─ embedding | embeddings <model>
+```
+
+Span attributes: `gen_ai.operation.name`, `gen_ai.provider.name`,
+`gen_ai.request.model`, `gen_ai.usage.input_tokens`,
+`gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`,
+`gen_ai.conversation.id`, `user.id`, and `chatterstack.*` for cost, time to
+first token, stage, thinking level, RAG use, Stop and answer length. A user's
+Stop has span status OK with `chatterstack.stopped=true`; failures have status
+ERROR with the provider's message.
+
+With `OPENOBSERVE_LOG_CONTENT=true`, spans also carry the content:
+`gen_ai.input.messages` / `gen_ai.output.messages` (JSON) and the flattened
+`gen_ai.prompt.N.role|content`, `gen_ai.completion.0.role|content`. Each message
+is cut to 16,000 characters; file parts appear as `[+N file part(s)]`.
+
 ## Privacy
 
 Records hold ids, counts, durations and costs only. Prompts and answers are
@@ -218,4 +246,5 @@ never included unless `OPENOBSERVE_LOG_CONTENT=true`, in which case each side is
 truncated to 2,000 characters and stored in that OpenObserve stream - treat the
 stream as holding user content. File parts are described as a count
 (`attachment_count`) and, in a logged prompt, as `[+N file part(s)]`: attachment
-bytes are never written. `user_id` is the NextAuth id, not an email.
+bytes are never written. `user_id` is the NextAuth id, not an email. The same
+flag controls content in traces (16,000 characters per message there).
