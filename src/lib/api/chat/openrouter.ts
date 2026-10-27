@@ -7,6 +7,7 @@ import {
   type LlmTraceContext,
 } from '@/src/lib/observability/trace-llm-call';
 import type { OpenRouterPart } from './attachments';
+import type { ParsedSkill } from '@/src/lib/skills/skill-file';
 
 type ChatMessage = { role: string; content: string | OpenRouterPart[] };
 
@@ -198,9 +199,9 @@ export async function streamCompletion(
 export async function createCompletion(
   messages: ChatMessage[],
   model: string,
-  options: StreamOptions = {}
+  { skills, ...options }: StreamOptions & { skills?: readonly ParsedSkill[] } = {}
 ): Promise<string> {
-  const formatted = formatMessagesWithSystemContext(messages, model);
+  const formatted = formatMessagesWithSystemContext(messages, model, skills);
   if (!options.trace) return runStream(formatted, model, options, idleMetrics);
 
   return traceLlmCall(traceContext(options.trace, model, options.signal, formatted), (metrics) =>

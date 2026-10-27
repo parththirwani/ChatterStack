@@ -198,7 +198,7 @@ describe('chat history', () => {
   it('shows a Pinned section above the other chats', () => {
     renderHistory([conv('p', 'Pinned one', '2026-10-26T09:00:00Z'), conv('a', 'Recent one'), conv('b', 'Older one')]);
     const sections = screen.getAllByRole('region');
-    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Pinned chats', 'Chats']);
+    expect(sections.map((s) => s.getAttribute('aria-label'))).toEqual(['Pinned chats', 'Recents']);
     expect(within(sections[0]).getAllByRole('listitem')).toHaveLength(1);
     expect(within(sections[0]).getByRole('button', { name: 'Pinned one' })).toBeInTheDocument();
     expect(within(sections[1]).getAllByRole('button', { name: /^(Recent|Older) one$/ }).map((b) => b.textContent)).toEqual(['Recent one', 'Older one']);

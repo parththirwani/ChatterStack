@@ -26,7 +26,7 @@ async function openActions(page: Page, title: string) {
 
 test('lists chats by recent activity', async ({ page }) => {
   await openApp(page);
-  await expect(sidebar.titles(page, 'Chats')).toHaveText(['Recent chat', 'Older chat', 'Oldest chat']);
+  await expect(sidebar.titles(page, 'Recents')).toHaveText(['Recent chat', 'Older chat', 'Oldest chat']);
   await expect(sidebar.pinned(page)).toHaveCount(0);
 });
 
@@ -35,7 +35,7 @@ test('pins a chat to the top and keeps it there after a reload', async ({ page }
   await (await openActions(page, 'Oldest chat')).getByRole('menuitem', { name: 'Pin' }).click();
 
   await expect(sidebar.titles(page, 'Pinned chats')).toHaveText(['Oldest chat']);
-  await expect(sidebar.titles(page, 'Chats')).toHaveText(['Recent chat', 'Older chat']);
+  await expect(sidebar.titles(page, 'Recents')).toHaveText(['Recent chat', 'Older chat']);
   await expect.poll(() => conversationRow(IDS.oldest)?.pinned).toBe(true);
 
   await page.reload();
@@ -55,7 +55,7 @@ test('the most recently pinned chat goes first, and unpinning puts it back', asy
 
   await page.reload();
   await expect(sidebar.titles(page, 'Pinned chats')).toHaveText(['Oldest chat']);
-  await expect(sidebar.titles(page, 'Chats')).toHaveText(['Recent chat', 'Older chat']);
+  await expect(sidebar.titles(page, 'Recents')).toHaveText(['Recent chat', 'Older chat']);
 });
 
 test('renames a chat from the menu and the new title persists', async ({ page }) => {

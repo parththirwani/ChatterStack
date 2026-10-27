@@ -22,6 +22,8 @@ import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments'
 import type { ChatAttachment } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import { markDocumentsUsed, resolveDocuments } from '@/src/lib/server/documents';
+import { resolveSkills, SkillError, skillTags } from '@/src/lib/server/skills';
+import { formatActiveSkills } from '@/src/services/prompt/promptService';
 
 interface RedisMessage {
   role: 'user' | 'assistant';
@@ -143,6 +145,15 @@ export async function POST(request: NextRequest) {
     } catch (error) {
       return finish(jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400));
     }
+    let skills;
+    try {
+      skills = await resolveSkills(userId, data.skills ?? []);
+    } catch (error) {
+      if (error instanceof SkillError) return finish(jsonError(error.message, error.status));
+      throw error;
+    }
+    // Sent in the system prompt, so it counts toward the limit like the message.
+    const skillText = formatActiveSkills(skills);
 
     // Check (or claim) the conversation before streaming anything: the id
     // comes from the client, so it must belong to this user. Ownership is
@@ -163,6 +174,7 @@ export async function POST(request: NextRequest) {
       ...historyForEstimate.map((m) => m.content),
       data.message,
       ...currentParts.filter((part) => part.type === 'text').map((part) => part.text),
+      skillText,
     ].join('\n');
 
     const rateLimitCheck = await withLLMTokenLimit(userId, estimateText, isCouncilMode);
@@ -266,6 +278,7 @@ export async function POST(request: NextRequest) {
                 chair: data.council?.chair,
                 thinkingLevel,
                 signal,
+                skills,
                 trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
               },
               {
@@ -280,6 +293,7 @@ export async function POST(request: NextRequest) {
           : await createCompletion(messagesForAI, selectedModel, {
               thinkingLevel,
               signal,
+              skills,
               onChunk: (chunk) => send({ chunk }),
               onReasoning: (reasoning) => send({ reasoning }),
               trace: {
@@ -325,7 +339,7 @@ export async function POST(request: NextRequest) {
       // still sent, and skipping this would let Stop bypass the rate limit.
       try {
         usageRecorded = true;
-        const inputTokens = countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
+        const inputTokens = countTokens(skillText) + countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
         await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
       } catch (error) {
         captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-record', userId });
@@ -342,7 +356,7 @@ export async function POST(request: NextRequest) {
           } else {
             await redisStore.delete(conversationId);
           }
-          await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
+          await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           await markDocumentsUsed(userId, attachments);
         });
       } catch (error) {

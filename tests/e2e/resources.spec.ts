@@ -1,6 +1,6 @@
 import { expect, openApp, test } from './support/fixtures';
 
-test('Resources can favourite a file and add it to the active chat', async ({ page }) => {
+test('Resources opens as a page, favourites a file and adds it to a new chat', async ({ page }) => {
   const id = '0e7ba32e-05b0-477d-8e30-2bf0a849649e';
   let favorite: string | null = null;
   await page.route('**/api/documents', async (route) => {
@@ -25,7 +25,9 @@ test('Resources can favourite a file and add it to the active chat', async ({ pa
   });
 
   await openApp(page);
-  await page.getByRole('tab', { name: 'Resources' }).click();
+  await page.getByRole('button', { name: 'Resources' }).click();
+  await expect(page).toHaveURL(/\/resources$/);
+  await expect(page.getByRole('heading', { name: 'Resources' })).toBeVisible();
   await page.getByRole('button', { name: 'Preview plan.md' }).click();
   await expect(page.getByRole('dialog', { name: 'plan.md' })).toBeVisible();
   await expect(page.getByText('# Project plan')).toBeVisible();
@@ -34,9 +36,12 @@ test('Resources can favourite a file and add it to the active chat', async ({ pa
   await page.getByRole('button', { name: 'Favourite plan.md' }).click();
   await expect(page.getByRole('button', { name: 'Unfavourite plan.md' })).toBeVisible();
   await page.getByRole('button', { name: 'Add plan.md to chat' }).click();
+  // Adding takes you back to the chat, with the file in the composer.
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole('button', { name: 'Remove plan.md' })).toBeVisible();
+  await page.getByRole('button', { name: 'Resources' }).click();
   await page.getByRole('button', { name: 'Add plan.md to chat' }).click();
-  await expect(page.locator('#chat-sidebar').getByRole('alert')).toContainText('already has that file');
+  await expect(page.locator('#chat-main').getByRole('alert')).toContainText('already has that file');
 });
 
 test('Resources previews images and PDFs in the dialog', async ({ page }) => {
@@ -54,7 +59,7 @@ test('Resources previews images and PDFs in the dialog', async ({ page }) => {
   });
 
   await openApp(page);
-  await page.getByRole('tab', { name: 'Resources' }).click();
+  await page.getByRole('button', { name: 'Resources' }).click();
   await page.getByRole('button', { name: 'Preview image.png' }).click();
   await expect(page.getByRole('dialog', { name: 'image.png' }).getByRole('img', { name: 'image.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Close preview' }).click();

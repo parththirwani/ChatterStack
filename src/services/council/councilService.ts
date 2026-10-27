@@ -10,6 +10,7 @@ import {
   getCouncilStage1Prompt,
   getCouncilStage2Prompt,
   getCouncilChairmanPrompt,
+  formatActiveSkills,
 } from '../prompt/promptService';
 import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/src/config/models';
 import { streamCompletion } from '@/src/lib/api/chat/openrouter';
@@ -17,6 +18,7 @@ import { captureError } from '@/src/lib/observability/capture';
 import type { StreamTrace } from '@/src/lib/api/chat/openrouter';
 import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
 import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
+import type { ParsedSkill } from '@/src/lib/skills/skill-file';
 
 const COUNCIL_MODELS: readonly string[] = COUNCIL_MODEL_IDS;
 
@@ -53,6 +55,8 @@ export interface CouncilOptions {
   thinkingLevel?: ThinkingLevel;
   /** Stops the deliberation (the user stopped or disconnected). */
   signal?: AbortSignal;
+  /** Skills tagged on this message; members and the chair follow them. */
+  skills?: readonly ParsedSkill[];
   /** Shared trace id + request context, recorded for every stage. */
   trace?: Omit<StreamTrace, 'span' | 'thinkingLevel'>;
 }
@@ -88,10 +92,11 @@ async function stage1_collect_responses(
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
   { onProgress, onAnswer }: CouncilCallbacks,
+  skills: readonly ParsedSkill[],
   trace: CouncilOptions['trace']
 ): Promise<Stage1Result[]> {
 
-  const systemPrompt = getCouncilStage1Prompt();
+  const systemPrompt = getCouncilStage1Prompt() + formatActiveSkills(skills);
 
   const promises = members.map(async (model, index) => {
     try {
@@ -260,6 +265,7 @@ async function stage3_synthesize_final(
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
   { onProgress, onChunk, onReasoning }: CouncilCallbacks,
+  skills: readonly ParsedSkill[],
   trace: CouncilOptions['trace']
 ): Promise<string> {
 
@@ -268,7 +274,7 @@ async function stage3_synthesize_final(
     stage1Results,
     aggregateRankings,
     conversationHistory
-  );
+  ) + formatActiveSkills(skills);
 
   const chairmanMessages = [
     { role: 'system', content: chairmanPrompt },
@@ -305,7 +311,7 @@ async function stage3_synthesize_final(
 export async function runCouncilProcess(
   userQuery: string,
   conversationHistory: Message[] = [],
-  { members = COUNCIL_MODELS, chair = CHAIRMAN_MODEL, thinkingLevel = 'off', signal, trace }: CouncilOptions = {},
+  { members = COUNCIL_MODELS, chair = CHAIRMAN_MODEL, thinkingLevel = 'off', signal, skills = [], trace }: CouncilOptions = {},
   callbacks: CouncilCallbacks = {},
   attachmentContent: OpenRouterPart[] = []
 ): Promise<string> {
@@ -319,6 +325,7 @@ export async function runCouncilProcess(
     thinkingLevel,
     signal,
     callbacks,
+    skills,
     trace
   );
   if (signal?.aborted) return '';
@@ -351,6 +358,7 @@ export async function runCouncilProcess(
     thinkingLevel,
     signal,
     callbacks,
+    skills,
     trace
   );
 }

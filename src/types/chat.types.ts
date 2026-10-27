@@ -1,6 +1,7 @@
 import type { ThinkingLevel } from '@/src/config/models';
 import type { User } from './user.types';
 import type { Conversation } from './conversation.types';
+import type { SkillTag } from './skill.types';
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
@@ -16,6 +17,8 @@ export interface Message {
   reasoningDurationMs?: number;
   council?: CouncilDetails;
   attachments?: AttachmentMeta[];
+  /** Skills tagged on a user message. */
+  skills?: SkillTag[];
 }
 
 export interface AttachmentMeta {
@@ -76,6 +79,8 @@ export interface ChatState {
 export interface ChatRequest {
   message: string;
   attachments?: DocumentAttachment[];
+  /** Ids of the skills tagged on this message. */
+  skills?: string[];
   conversationId?: string;
   selectedModel: string; // single model per request
   thinkingLevel?: ThinkingLevel;
@@ -103,6 +108,7 @@ import {
   THINKING_LEVELS,
   isChatModelId,
 } from '@/src/config/models';
+import { MAX_SKILLS_PER_MESSAGE } from '@/src/lib/skills/skill-file';
 
 export const ChatRequestSchema = z.object({
   conversationId: z.string().uuid().optional(),
@@ -113,6 +119,10 @@ export const ChatRequestSchema = z.object({
     mimeType: z.string().min(1).max(100),
     size: z.number().int().positive().max(5 * 1024 * 1024),
   }).strict()).max(4).optional(),
+  skills: z.array(z.string().uuid())
+    .max(MAX_SKILLS_PER_MESSAGE, `Tag up to ${MAX_SKILLS_PER_MESSAGE} skills`)
+    .refine((ids) => new Set(ids).size === ids.length, 'Duplicate skill')
+    .optional(),
   selectedModel: z.string().refine(
     (id) => id === 'council' || isChatModelId(id),
     'Unsupported model'

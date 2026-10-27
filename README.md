@@ -67,6 +67,42 @@ The Docker app can use the same Blob store when its `.env.local` contains
 `GET /api/cron/cleanup-documents` daily with
 `Authorization: Bearer <CRON_SECRET>`.
 
+## Skills
+
+A skill is a reusable set of instructions you tag on a message, such as a
+code-review checklist or a house writing style. Skills use the Agent Skills
+format (a `SKILL.md` with YAML frontmatter holding `name` and `description`,
+then Markdown instructions, plus optional supporting files). Skills from
+Claude can be uploaded here, and ChatterStack skills download in a layout
+Claude accepts. The UI follows claude.ai's Customize → Skills.
+
+- **Find:** the sidebar's **Customize** row opens Skills. **Yours** lists the
+  skills you made and the ones you added, each with an on/off toggle.
+  **Discover** suggests built-in skills to **Try** or **Add**.
+- **Upload skill:** drag in several `.md`, `.zip` or `.skill` files at once. A
+  `.md` must have the YAML frontmatter; an archive must contain a `SKILL.md` at
+  its root or in one top-level folder. Uploads are checked for a valid
+  SKILL.md, safe relative paths and size limits. Supporting text files are
+  kept, binary files are skipped, and scripts are stored but never run.
+- **Create a skill:** a dialog with name, description, SKILL.md and any extra
+  files (**Add file**).
+- **Create with AI:** opens a chat with the built-in `skill-creator`. When the
+  answer contains a SKILL.md, **Save as skill** under it opens the create
+  dialog prefilled.
+- **Use in chat:** type `/` in the composer to pick **Add files** or one of
+  your turned-on skills. The skill stays in the message as a highlighted
+  `/name` token; up to three apply per message. Their instructions are added
+  to the system prompt for that message only (in single-model and Council
+  chats) and count toward the daily token limit.
+- **Skill page:** Overview and Contents (rendered SKILL.md and files), and
+  Try in chat, Edit with AI, Edit, Replace, Duplicate, Download (`.zip`) and
+  Remove.
+
+Only the SKILL.md body is sent to the model: ChatterStack models can't open
+bundled files or run scripts, and skills run only when tagged (Claude can also
+pick skills automatically). Each user can keep 50 skills. Apply the Prisma
+schema (`npx prisma db push`) before deploying this version.
+
 ## Environments in Sentry, PostHog and OpenObserve
 
 All three tag what they send with the same value, so local testing never mixes

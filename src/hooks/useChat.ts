@@ -6,6 +6,8 @@ import { useModelSelection, type SendSettings } from '../context/ModelSelectionC
 import type { DocumentAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
 import type { ChatState, QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
+import { skillTagsIn } from '@/src/lib/client/skills';
+import type { SkillTag } from '@/src/types/skill.types';
 
 const EMPTY_QUEUE: QueuedMessage[] = [];
 
@@ -45,6 +47,24 @@ async function sendToConversation(
   // Read the user fresh from the store: the render-time closure can be
   // stale right after an OAuth redirect.
   const { activeModelId, thinkingLevel, councilMembers, councilChair } = selection;
+  // Skills tagged as `/name` in the text. Known at once unless the skills
+  // list is still loading (just after sign-in), when this waits for it.
+  const tagged = skillTagsIn(message, useAppStore.getState().user?.id);
+  let skills: SkillTag[];
+  if (Array.isArray(tagged)) {
+    skills = tagged;
+  } else {
+    skills = await tagged;
+    // Another message went out meanwhile: this one waits its turn instead.
+    const latest = useAppStore.getState();
+    if (latest.chatState[conversationKey]?.loading) {
+      if (!latest.queues[conversationKey]?.length) latest.setQueuePaused(conversationKey, false);
+      latest.enqueueMessage(conversationKey, {
+        id: crypto.randomUUID(), content: message, attachments, settings: selection,
+      });
+      return;
+    }
+  }
   const store = useAppStore.getState();
   const freshUser = store.user;
   if ((!message.trim() && attachments.length === 0) || !canSend(conversationKey) || !freshUser?.id) {
@@ -67,6 +87,7 @@ async function sendToConversation(
     role: 'user',
     content: message,
     attachments: attachments.map(({ documentId, name, mimeType, size }) => ({ documentId, name, mimeType, size })),
+    skills: skills.length ? skills : undefined,
     createdAt: now,
   };
   const aiMessage: Message = {
@@ -194,6 +215,7 @@ async function sendToConversation(
       {
         message,
         attachments,
+        skills: skills.length ? skills.map((skill) => skill.id) : undefined,
         conversationId: key,
         newConversation: isNewConversation || undefined,
         selectedModel: activeModelId,

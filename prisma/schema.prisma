@@ -27,6 +27,7 @@ model User {
   sessions       Session[]
   conversations  Conversation[]
   documents      Document[]
+  skills         Skill[]
 
   @@map("users")
 }
@@ -92,6 +93,9 @@ model Message {
   role           String
   modelId        String?
   attachments    Json?
+  // Skills tagged on a user message: [{ id, name }]. References only, so
+  // later edits to a skill don't rewrite history.
+  skills         Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
@@ -119,4 +123,34 @@ model Document {
   @@unique([userId, sha256])
   @@index([userId, lastUsedAt])
   @@map("documents")
+}
+
+model Skill {
+  id           String   @id @default(uuid())
+  userId       String
+  // Kebab-case slug; what the user types after "/" in the composer.
+  name         String
+  description  String
+  // The SKILL.md body (without frontmatter).
+  instructions String   @db.Text
+  // created | generated (from a chat) | uploaded | catalog (added from Discover)
+  source       String   @default("created")
+  // Turned-off skills stay saved but are not offered in chat.
+  enabled      Boolean  @default(true)
+  categories   String[] @default([])
+  // Other text files in the skill: [{ path, content }].
+  files        Json?
+  // Frontmatter keys other than name and description, kept for export.
+  metadata     Json?
+  // Bumped on every content change.
+  version      Int      @default(1)
+  // Discover catalog entry this skill was added from.
+  catalogId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@map("skills")
 }

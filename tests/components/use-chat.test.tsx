@@ -23,6 +23,8 @@ interface Call {
   fail: (error: Error) => void;
 }
 const calls: Call[] = [];
+const skillTagsIn = vi.hoisted(() => vi.fn(() => [] as { id: string; name: string }[]));
+vi.mock('@/src/lib/client/skills', () => ({ skillTagsIn }));
 vi.mock('@/src/services/api', () => ({
   ApiService: {
     sendMessage: (request: ChatRequest, handlers: ChatStreamHandlers, signal: AbortSignal) =>
@@ -43,6 +45,7 @@ const wrapper = ({ children }: { children: React.ReactNode }) => <ModelSelection
 const state = () => useAppStore.getState();
 
 beforeEach(() => {
+  skillTagsIn.mockReturnValue([]);
   calls.length = 0;
   replace.mockReset();
   routerNavigations.mockReset();
@@ -102,6 +105,25 @@ describe('starting a new chat', () => {
     const { call } = await startNewChat();
     expect(call.request.selectedModel).toBe('council');
     expect(call.request.council).toEqual({ members: ['openai/gpt-6.1-sol', 'google/gemini-4-argon'], chair: 'google/gemini-4-argon' });
+    call.finish();
+  });
+
+  it('sends tagged skill ids and shows the tags on the question', async () => {
+    skillTagsIn.mockReturnValueOnce([{ id: 's1', name: 'code-review' }]);
+    const hook = renderHook(() => useChat('new'), { wrapper });
+    act(() => {
+      void hook.result.current.sendMessage('Review this with /code-review');
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0].request.skills).toEqual(['s1']);
+    const id = calls[0].request.conversationId!;
+    expect(state().chatState[id].messages[0].skills).toEqual([{ id: 's1', name: 'code-review' }]);
+    calls[0].finish();
+  });
+
+  it('sends no skills field when none are tagged', async () => {
+    const { call } = await startNewChat();
+    expect(call.request).not.toHaveProperty('skills', expect.anything());
     call.finish();
   });
 

@@ -16,6 +16,7 @@ import { useAppStore } from '@/src/store/rootStore';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import type { QueuedMessage } from '@/src/store/slices/chat/chatSlice';
+import { COMPOSE_EVENT } from '@/src/lib/client/skills';
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_TURNS: Turn[] = [];
@@ -184,7 +185,7 @@ const MessageList = memo(function MessageList({
           // Each question is an anchor the left rail jumps between.
           return (
             <div key={key} data-turn-anchor={index}>
-              <UserMessage content={msg.content} attachments={msg.attachments} />
+              <UserMessage content={msg.content} attachments={msg.attachments} skills={msg.skills} />
             </div>
           );
         }
@@ -272,6 +273,40 @@ const ChatComposer = memo(function ChatComposer({
   const initializeUser = useAppStore((state) => state.initializeUser);
 
   useEffect(() => setAttachments([]), [conversationKey]);
+
+  // Customize's Try in chat / Create with AI fill the new chat's composer.
+  // Another chat's composer ignores it: switching to the new chat loads the
+  // text from the stored draft.
+  const focusAfterCompose = useRef(false);
+  useEffect(() => {
+    const compose = (event: Event) => {
+      focusAfterCompose.current = true;
+      const text = (event as CustomEvent<string>).detail;
+      if (conversationKey === 'new' && typeof text === 'string') setMessage(text);
+    };
+    window.addEventListener(COMPOSE_EVENT, compose);
+    return () => window.removeEventListener(COMPOSE_EVENT, compose);
+  }, [setMessage, conversationKey]);
+
+  // Focus once the composer is showing: it's hidden while a page is open,
+  // and the page closes in a render this memoized composer may not share.
+  useEffect(() => {
+    if (!focusAfterCompose.current) return;
+    focusAfterCompose.current = false;
+    let frame = 0;
+    let tries = 0;
+    const focus = () => {
+      const input = document.querySelector<HTMLTextAreaElement>('textarea[aria-label="Message"]');
+      if (input && input.getClientRects().length > 0) {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      } else if (++tries < 30) {
+        frame = window.requestAnimationFrame(focus);
+      }
+    };
+    focus();
+    return () => window.cancelAnimationFrame(frame);
+  }, [message, conversationKey]);
 
   useEffect(() => {
     const add = (event: Event) => {

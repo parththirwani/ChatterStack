@@ -1,6 +1,8 @@
 "use client";
 import React, { memo, useMemo, useState } from 'react';
-import { Check, Copy } from 'lucide-react';
+import { Check, Copy, Sparkles } from 'lucide-react';
+import { parseSkillFile, SkillInputSchema } from '@/src/lib/skills/skill-file';
+import { openSkillEditor } from '@/src/lib/client/skills';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -16,8 +18,17 @@ function codeText(node: React.ReactNode): string {
   return '';
 }
 
+/** A complete SKILL.md (frontmatter with name and description, then a body), or null. */
+function skillDraft(code: string) {
+  if (!/^\s*---[ \t]*\n/.test(code)) return null;
+  const draft = parseSkillFile(code.trim());
+  return SkillInputSchema.safeParse(draft).success ? draft : null;
+}
+
 const CodeBlock: React.FC<{ language: string; code: string; className?: string; children: React.ReactNode }> = ({ language, code, className, children }) => {
   const [copyState, setCopyState] = useState<'idle' | 'copied' | 'failed'>('idle');
+  // A skill drafted in chat (e.g. with /skill-creator) can be saved directly.
+  const draft = useMemo(() => (/^(markdown|md|yaml|text|code)$/i.test(language) ? skillDraft(code) : null), [language, code]);
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code.replace(/\n$/, ''));
@@ -29,7 +40,10 @@ const CodeBlock: React.FC<{ language: string; code: string; className?: string; 
   };
   return <div className="chat-code-block my-4 overflow-hidden rounded-xl border border-white/10 bg-[#111111]">
     <div className="flex min-h-10 items-center justify-between border-b border-white/10 pl-3 pr-1 text-xs text-[#aaa6a2]">
-      <span>{language}</span>
+      <span className="flex-1">{language}</span>
+      {draft && <button type="button" onClick={() => openSkillEditor({ ...draft, source: 'generated' })} className="flex h-8 items-center gap-1.5 rounded-md px-2 text-[#d9ceff] hover:bg-white/10">
+        <Sparkles className="h-3.5 w-3.5" /> Save as skill
+      </button>}
       <button type="button" aria-label={copyState === 'copied' ? 'Code copied' : copyState === 'failed' ? 'Could not copy code' : 'Copy code'} onClick={handleCopy} className="flex h-10 min-w-10 items-center justify-center gap-1 rounded-md px-2 hover:bg-white/10 hover:text-white">
         {copyState === 'copied' ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
         {copyState !== 'idle' && <span>{copyState === 'copied' ? 'Copied' : 'Failed'}</span>}
