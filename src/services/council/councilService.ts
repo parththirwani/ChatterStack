@@ -14,6 +14,7 @@ import {
 } from '../prompt/promptService';
 import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/src/config/models';
 import { streamCompletion } from '@/src/lib/api/chat/openrouter';
+import { assertPromptFits, ContextBudgetError } from '@/src/lib/api/chat/prompt-budget';
 import { captureError } from '@/src/lib/observability/capture';
 import type { StreamTrace } from '@/src/lib/api/chat/openrouter';
 import type { CouncilAnswer, CouncilRanking, ModelTiming } from '@/src/types/chat.types';
@@ -99,6 +100,7 @@ async function stage1_collect_responses(
 ): Promise<Stage1Result[]> {
 
   const systemPrompt = getCouncilStage1Prompt() + formatActiveSkills(skills);
+  const contextErrors: ContextBudgetError[] = [];
 
   const promises = members.map(async (model, index) => {
     try {
@@ -115,6 +117,8 @@ async function stage1_collect_responses(
         { role: 'user', content: attachmentContent.length ? [{ type: 'text' as const, text: userQuery || 'Please examine the attached file(s).' }, ...attachmentContent] : userQuery },
       ];
 
+      assertPromptFits(model, messages, thinkingLevel, 'This council prompt');
+
       const answerStartedAt = Date.now();
       const response = await streamCompletion(messages, model, {
         thinkingLevel,
@@ -130,6 +134,7 @@ async function stage1_collect_responses(
 
       return { model, response } as Stage1Result;
     } catch (error) {
+      if (error instanceof ContextBudgetError) contextErrors.push(error);
       captureError(error, { route: 'council', model, council: true, stage: 'member-answer' });
       onProgress?.('stage1', model, -1);
       return null;
@@ -137,7 +142,11 @@ async function stage1_collect_responses(
   });
 
   const results = await Promise.all(promises);
-  return results.filter((r): r is Stage1Result => r !== null);
+  const answered = results.filter((r): r is Stage1Result => r !== null);
+  // A context failure on every member is the reason nobody answered; surface
+  // that instead of the generic "no member could answer" message.
+  if (answered.length === 0 && contextErrors.length > 0) throw contextErrors[0];
+  return answered;
 }
 
 function parse_ranking_from_text(text: string): string[] {
@@ -205,6 +214,7 @@ async function stage2_collect_rankings(
       try {
         onProgress?.('stage2', model, 0);
         const rankingMessages = [{ role: 'user', content: rankingPrompt }];
+        assertPromptFits(model, rankingMessages, thinkingLevel, 'The council ranking prompt');
         const rankingStartedAt = Date.now();
         const rankingText = await streamCompletion(rankingMessages, model, {
           thinkingLevel,
@@ -293,6 +303,7 @@ async function stage3_synthesize_final(
 
   try {
     onProgress?.('stage3', chair, 0);
+    assertPromptFits(chair, chairmanMessages, thinkingLevel, "The council's combined answers");
     const chairStartedAt = Date.now();
     const finalResponse = await streamCompletion(chairmanMessages, chair, {
       thinkingLevel,
@@ -307,6 +318,7 @@ async function stage3_synthesize_final(
   } catch (error) {
     captureError(error, { route: 'council', model: chair, council: true, stage: 'chair-synthesis' });
     onProgress?.('stage3', chair, -1);
+    if (error instanceof ContextBudgetError) throw error;
     throw new Error('Failed to synthesize final response');
   }
 }

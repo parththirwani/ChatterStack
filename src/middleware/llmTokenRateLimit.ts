@@ -1,6 +1,6 @@
 // src/middleware/llmTokenRateLimit.ts
 // LLM Token-based 24-hour sliding window rate limiting
-// - 4000 LLM tokens per 24 hours (input + output tokens)
+// - 4000 LLM tokens per 24 hours by default (input + output tokens)
 // - 2 council messages per 24 hours (separate limit)
 //
 // Usage is tracked in Redis (one sorted set per user) so the caps hold
@@ -43,7 +43,10 @@ export interface LimiterDecision {
 
 // Configuration
 const WINDOW_MS = 24 * 60 * 60 * 1000; // 24 hours
-const MAX_LLM_TOKENS = 4000; // 4000 LLM tokens per 24 hours
+const configuredDailyLimit = Number(process.env.LLM_DAILY_TOKEN_LIMIT);
+const MAX_LLM_TOKENS = Number.isSafeInteger(configuredDailyLimit) && configuredDailyLimit > 0
+  ? configuredDailyLimit
+  : 4000;
 const MAX_COUNCIL_MESSAGES = 2; // 2 council messages per 24 hours
 
 const redisKey = (userId: string) => `ratelimit:llm-tokens:${userId}`;
@@ -451,9 +454,10 @@ function buildStatus(now: number, tokensUsed: number, councilUsed: number, oldes
 async function checkAndReserveLLMTokenLimit(
   userId: string,
   promptText: string,
-  isCouncil: boolean
+  isCouncil: boolean,
+  estimatedTokensOverride?: number
 ): Promise<LimiterDecision> {
-  const estimatedTokens = estimatePromptTokens(promptText, isCouncil);
+  const estimatedTokens = estimatedTokensOverride ?? estimatePromptTokens(promptText, isCouncil);
   const now = Date.now();
 
   try {
@@ -500,15 +504,20 @@ async function checkAndReserveLLMTokenLimit(
 /**
  * Middleware for chat routes. Reserves the estimate when allowed; the caller
  * must reconcile with recordLLMTokens after the model call.
+ *
+ * `estimatedTokens` lets a caller that already measured the rendered request
+ * (including a compaction call) reserve exactly that amount instead of
+ * re-estimating from text.
  */
 export async function withLLMTokenLimit(
   userId: string,
   promptText: string,
-  isCouncil: boolean
+  isCouncil: boolean,
+  estimatedTokens?: number
 ): Promise<Response | null> {
   let result: LimiterDecision;
   try {
-    result = await checkAndReserveLLMTokenLimit(userId, promptText, isCouncil);
+    result = await checkAndReserveLLMTokenLimit(userId, promptText, isCouncil, estimatedTokens);
   } catch {
     return unavailableResponse(); // Fail closed: no limiter, no paid calls.
   }

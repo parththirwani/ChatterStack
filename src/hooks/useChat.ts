@@ -262,6 +262,8 @@ async function sendToConversation(
         onAnalytics: (completion) => {
           analytics = completion;
         },
+        onContextCompacted: (info) =>
+          patchStreamingMessage(() => ({ contextCompacted: info })),
       },
       abortController.signal
     );

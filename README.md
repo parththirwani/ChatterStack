@@ -144,6 +144,33 @@ by exactly one of them. Apply the Prisma schema (`npx prisma db push`) before
 deploying this version. See [docs/scheduled-tasks-plan.md](docs/scheduled-tasks-plan.md)
 for the design.
 
+## Long chats and context compaction
+
+ChatterStack keeps every message in the transcript, but a long chat can exceed
+the selected model's context window. Set `CHAT_COMPACTION_MODE=on` to replace
+the model's view of older turns with a structured summary while the last two
+completed exchanges stay verbatim. The summary is a separate user-role block,
+not a system instruction, and the full transcript remains visible and saved.
+
+- `CHAT_COMPACTION_MODE=shadow` measures and logs would-trigger turns without
+  changing a prompt; use it before `on` for a rollout.
+- `COMPACTION_MODEL` defaults to `openai/gpt-4o-mini`. Summaries are capped at
+  1,600 tokens and validated; an empty, malformed or inflated summary leaves
+  the previous context untouched.
+- The 4,000-token daily limit is below the reservation needed for a typical
+  compaction turn. Set `LLM_DAILY_TOKEN_LIMIT` to a value that covers the
+  expected full prompt, summary calls, and answer before enabling `on`.
+- Snapshots live in `conversation_context_snapshots`, keyed by conversation and
+  the last summarized message. Switching models cannot reuse a snapshot that
+  no longer fits: the budget is rebuilt for the new model before the call.
+- Apply the Prisma schema (`npx prisma db push`) before enabling it.
+- `off` is the kill switch: new turns ignore snapshots, but the transcript and
+  stored snapshots are not deleted.
+
+Compaction calls are reserved against the daily token limit before they run.
+See [docs/auto-compaction.md](docs/auto-compaction.md) for the design,
+defaults and known limits.
+
 ## Environments in Sentry, PostHog and OpenObserve
 
 All three tag what they send with the same value, so local testing never mixes

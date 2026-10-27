@@ -87,6 +87,7 @@ model Conversation {
   user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   scheduledTask ScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
   messages      Message[]
+  contextSnapshot ConversationContextSnapshot?
 
   @@index([userId, scheduledTaskId])
   @@map("conversations")
@@ -110,6 +111,34 @@ model Message {
   @@index([modelId])
   @@index([conversationId, modelId])
   @@map("messages")
+}
+
+/**
+ * The portable compaction state for one conversation. Message rows remain the
+ * source of truth and the UI transcript; this row only supplies the summary
+ * the model sees for everything up to `throughMessageId`.
+ */
+model ConversationContextSnapshot {
+  id                String   @id @default(uuid())
+  conversationId    String   @unique
+  summaryText       String   @db.Text
+  // Last message covered by the summary; a completed turn boundary.
+  throughMessageId  String
+  // Hash of the source messages, so a stale snapshot is detectable.
+  sourceHash        String
+  // Optimistic concurrency: bumped on every successful summary update.
+  version           Int      @default(1)
+  schemaVersion     Int      @default(1)
+  summaryModelId    String
+  inputTokensBefore Int
+  inputTokensAfter  Int
+  summaryTokens     Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_context_snapshots")
 }
 
 model Document {

@@ -9,9 +9,13 @@ import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
 import { createSSEStream, type SSEStream } from '@/src/lib/api/chat/sse-helper';
 import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
+import { prepareModelContext } from '@/src/lib/api/chat/model-context';
+import { dropSnapshotIfBoundaryMissing } from '@/src/lib/api/chat/context-snapshot';
+import type { CompactionInfo, ContextMessage } from '@/src/lib/api/chat/model-context';
+import { truncateToTokenBudget } from '@/src/lib/api/chat/prompt-budget';
 import { prisma } from '@/src/lib/prisma';
 
-import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
+import { recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
 import { recordRequestSpan, traceStep } from '@/src/lib/observability/otlp-traces';
 import { AnalyticsEvents, chatMessageRetriedProps, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
@@ -27,10 +31,13 @@ import { resolveSkills, SkillError, skillTags } from '@/src/lib/server/skills';
 import { formatActiveSkills } from '@/src/services/prompt/promptService';
 
 interface RedisMessage {
+  /** The saved Message row id; the compaction boundary refers to it. */
+  id?: string;
   role: 'user' | 'assistant';
   content: string;
   modelId?: string;
   attachments?: Array<ChatAttachment | DocumentAttachment>;
+  createdAt?: string;
 }
 
 function jsonError(error: string, status: number) {
@@ -46,7 +53,19 @@ const isUniqueViolation = (error: unknown) =>
 /** Cached history, falling back to the database (and refilling the cache in one write). */
 async function loadHistory(conversationId: string, dropLastExchange = false): Promise<RedisMessage[]> {
   const cached = await redisStore.get(conversationId);
-  const history = cached.length > 0 ? cached : await readMessages(conversationId);
+  let history: RedisMessage[] = cached.length > 0 ? cached : await readMessages(conversationId);
+
+  // Caches written before compaction existed have no message ids, so they
+  // cannot serve as a stable summary boundary. Refill once from Postgres.
+  if (cached.length > 0 && cached.some((message) => !message.id)) {
+    const fresh = await readMessages(conversationId);
+    if (fresh.length >= cached.length) {
+      history = fresh;
+      if (fresh.every((message) => !message.attachments?.length)) {
+        await redisStore.set(conversationId, fresh);
+      }
+    }
+  }
 
   if (cached.length === 0 && history.length > 0 && history.every((message) => !message.attachments?.length)) {
     // Binary payloads can be several MB each. Keep those conversations in Postgres,
@@ -66,14 +85,16 @@ async function loadHistory(conversationId: string, dropLastExchange = false): Pr
 async function readMessages(conversationId: string): Promise<RedisMessage[]> {
   const rows = await prisma.message.findMany({
     where: { conversationId },
-    orderBy: { createdAt: 'asc' },
-    select: { role: true, content: true, modelId: true, attachments: true },
+    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    select: { id: true, role: true, content: true, modelId: true, attachments: true, createdAt: true },
   });
   return rows.map((m) => ({
+    id: m.id ?? undefined,
     role: m.role === 'user' ? 'user' : 'assistant',
     content: m.content,
     modelId: m.modelId ?? undefined,
     attachments: Array.isArray(m.attachments) ? m.attachments as unknown as Array<ChatAttachment | DocumentAttachment> : undefined,
+    createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : undefined,
   }));
 }
 
@@ -180,70 +201,142 @@ export async function POST(request: NextRequest) {
       if (!owned) return finish(jsonError('Conversation not found', 404));
     }
 
-    // The limit is estimated from the full prompt the model will see:
-    // cached history + the new message + current attachment text. The
-    // reservation is reconciled with the actual usage in `respond` below.
-    const historyForEstimate = isNewConversation ? [] : await loadHistory(conversationId, isRetry);
-    const estimateText = [
-      ...historyForEstimate.map((m) => m.content),
-      data.message,
-      ...currentParts.filter((part) => part.type === 'text').map((part) => part.text),
-      skillText,
-    ].join('\n');
+    // Planning, compaction and the token reservation all need the latest
+    // history, so they run under the conversation turn lock before streaming.
+    // A refusal still gets a normal HTTP status instead of an SSE error.
+    const turn = beginConversationTurn(conversationId);
+    let prepared!: {
+      history: ContextMessage[];
+      rawHistory: RedisMessage[];
+      messageWithRag: string;
+      ragUsed: boolean;
+      estimateText: string;
+      usage: { input: number; output: number };
+      compaction?: CompactionInfo;
+    };
 
-    const rateLimitCheck = await withLLMTokenLimit(userId, estimateText, isCouncilMode);
-    if (rateLimitCheck) {
-      if (rateLimitCheck.status === 429) {
-        captureServerEvent(userId, AnalyticsEvents.RateLimitHit, {
-          council: isCouncilMode,
-          limit: rateLimitCheck.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
-        });
+    try {
+      await turn.ready;
+      const rawHistory = isNewConversation ? [] : await loadHistory(conversationId, isRetry);
+
+      // Retrieval still reads the full saved transcript; only the model view
+      // is compacted. The excerpt is bounded so RAG cannot blow the budget.
+      const ragContext = await retrieveRAGContext(
+        userId,
+        data.message,
+        conversationId,
+        rawHistory,
+        traceId
+      );
+      const ragText = ragContext ? truncateToTokenBudget(ragContext, 4_000) : '';
+      const messageWithRag = ragText
+        ? `Context from past conversations:\n\n${ragText}\n\n---\n\nCurrent question: ${data.message}`
+        : data.message;
+
+      const context = await prepareModelContext({
+        userId,
+        conversationId,
+        history: rawHistory,
+        message: data.message,
+        messageWithRag,
+        currentParts,
+        model: selectedModel,
+        thinkingLevel,
+        isCouncil: isCouncilMode,
+        council: data.council,
+        skills,
+        signal: request.signal,
+        isRetry,
+        trace: { traceId, userId, conversationId },
+      });
+
+      if (!context.ok) {
+        if (context.response) {
+          if (context.response.status === 429) {
+            captureServerEvent(userId, AnalyticsEvents.RateLimitHit, {
+              council: isCouncilMode,
+              limit: context.response.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
+            });
+          }
+          turn.end();
+          return finish(context.response); // 429/503 with the detailed token info
+        }
+
+        // A summarizer call may already have been made; settle what it used.
+        const settled = context.usage.input + context.usage.output || context.reservedTokens || 0;
+        if (settled > 0) {
+          await recordLLMTokens(userId, settled, isCouncilMode).catch((error) =>
+            captureError(error, { route: '/api/chat', stage: 'token-settle', userId })
+          );
+        }
+        turn.end();
+        return finish(jsonError(context.error, context.status));
       }
-      return finish(rateLimitCheck); // Returns 429 (or 503) with detailed token info
-    }
 
-    captureServerEvent(userId, AnalyticsEvents.ChatMessageSent, chatMessageSentProps({
-      modelId: selectedModel,
-      council: isCouncilMode,
-      thinkingLevel,
-      attachmentCount: attachments.length,
-      messageLength: data.message?.length ?? 0,
-    }));
-    if (isRetry) {
-      captureServerEvent(userId, AnalyticsEvents.ChatMessageRetried, chatMessageRetriedProps({
+      prepared = {
+        history: context.history,
+        rawHistory,
+        messageWithRag,
+        ragUsed: Boolean(ragContext),
+        estimateText: context.estimateText,
+        usage: context.usage,
+        compaction: context.compaction,
+      };
+
+      captureServerEvent(userId, AnalyticsEvents.ChatMessageSent, chatMessageSentProps({
         modelId: selectedModel,
         council: isCouncilMode,
         thinkingLevel,
+        attachmentCount: attachments.length,
+        messageLength: data.message?.length ?? 0,
       }));
-    }
-
-    // Claim a new chat only once the budget is reserved; a rejected claim
-    // releases the reservation again (0 tokens) so it is not wasted.
-    if (isNewConversation) {
-      try {
-        await createEmptyConversation(conversationId, userId);
-        captureServerEvent(userId, AnalyticsEvents.ConversationCreated, { council: isCouncilMode });
-      } catch (error) {
-        if (isUniqueViolation(error)) {
-          await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
-          return finish(jsonError('Conversation already exists', 409));
-        }
-        await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
-        throw error;
+      if (isRetry) {
+        captureServerEvent(userId, AnalyticsEvents.ChatMessageRetried, chatMessageRetriedProps({
+          modelId: selectedModel,
+          council: isCouncilMode,
+          thinkingLevel,
+        }));
       }
+
+      // Claim a new chat only once the budget is reserved; a rejected claim
+      // releases the reservation again (0 tokens) so it is not wasted.
+      if (isNewConversation) {
+        try {
+          await createEmptyConversation(conversationId, userId);
+          captureServerEvent(userId, AnalyticsEvents.ConversationCreated, { council: isCouncilMode });
+        } catch (error) {
+          await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
+          turn.end();
+          if (isUniqueViolation(error)) return finish(jsonError('Conversation already exists', 409));
+          throw error;
+        }
+      }
+    } catch (error) {
+      turn.end();
+      throw error;
     }
 
     const respond = async ({ send, signal }: SSEStream) => {
-      // The reservation from withLLMTokenLimit above must never be left
-      // dangling: whichever path `respond` exits through, usage is recorded.
+      // The reservation from prepareModelContext must never be left dangling:
+      // whichever path `respond` exits through, usage is recorded.
       let usageRecorded = false;
       // The request's root span in OpenObserve traces: question, answer, outcome.
       let requestAnswer = '';
       let requestStatus: 'ok' | 'error' | 'aborted' = 'error';
       let requestError: unknown;
-      let requestRagUsed = false;
+      const requestRagUsed = prepared.ragUsed;
       try {
       send({ status: 'starting' });
+      if (prepared.compaction) {
+        send({
+          contextCompacted: {
+            throughMessageId: prepared.compaction.throughMessageId,
+            inputTokensBefore: prepared.compaction.inputTokensBefore,
+            inputTokensAfter: prepared.compaction.inputTokensAfter,
+            summaryTokens: prepared.compaction.summaryTokens,
+          },
+        });
+      }
 
       // A new chat is named in parallel with the answer, so the sidebar can
       // show its real title while it streams.
@@ -258,30 +351,15 @@ export async function POST(request: NextRequest) {
           .catch((err) => captureError(err, { route: '/api/chat', model: TITLE_MODEL, council: isCouncilMode, stage: 'title', userId }));
       }
 
-      const conversationHistory = isNewConversation ? [] : await loadHistory(conversationId, isRetry);
-
-      const ragContext = await retrieveRAGContext(
-        userId,
-        data.message,
-        conversationId,
-        conversationHistory,
-        traceId
-      );
-      requestRagUsed = Boolean(ragContext);
+      const conversationHistory = prepared.history;
 
       const messagesForAI = await Promise.all([
         ...conversationHistory,
-        { role: 'user' as const, content: data.message, attachments },
+        { role: 'user' as const, content: prepared.messageWithRag, attachments },
       ].map(async (m, index) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
-        content: messageContent(m.content, index === conversationHistory.length ? currentParts : await historyAttachmentParts(userId, m.attachments ?? [])),
+        content: messageContent(m.content, index === conversationHistory.length ? currentParts : await historyAttachmentParts(userId, (m.attachments ?? []) as Array<ChatAttachment | DocumentAttachment>)),
       })));
-
-      if (ragContext) {
-        const lastMessage = messagesForAI[messagesForAI.length - 1];
-        const context = `Context from past conversations:\n\n${ragContext}\n\n---\n\nCurrent question: ${data.message}`;
-        lastMessage.content = messageContent(context, currentParts);
-      }
 
       // On Stop/disconnect the model call is cancelled and resolves with the
       // text written so far, which is still saved and counted below.
@@ -296,12 +374,15 @@ export async function POST(request: NextRequest) {
       let measured: { input: number; output: number } | undefined;
       // Counted once and shared by the analytics event and the rate-limit record.
       const measureTokens = () =>
-        measured ??= { input: countTokens(skillText) + countTokens(promptText), output: countTokens(fullContent) };
+        measured ??= {
+          input: countTokens(skillText) + countTokens(promptText) + prepared.usage.input,
+          output: countTokens(fullContent) + prepared.usage.output,
+        };
       let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
           ? await runCouncilProcess(
-              data.message,
+              prepared.messageWithRag,
               // Members see earlier files too; the chair's prompt uses the text.
               conversationHistory.map((m, index) => ({ ...m, parts: messagesForAI[index].content })),
               {
@@ -310,7 +391,7 @@ export async function POST(request: NextRequest) {
                 thinkingLevel,
                 signal,
                 skills,
-                trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
+                trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: requestRagUsed, attachmentCount: attachments.length },
               },
               {
                 onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
@@ -338,7 +419,7 @@ export async function POST(request: NextRequest) {
                 thinkingLevel,
                 messageCount: messagesForAI.length,
                 attachmentCount: attachments.length,
-                ragUsed: Boolean(ragContext),
+                ragUsed: requestRagUsed,
               },
             });
         // Tokens and timing of the reply that just finished, for the client to
@@ -392,7 +473,7 @@ export async function POST(request: NextRequest) {
         captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-record', userId });
       }
 
-      const exchange: RedisMessage[] = [
+      let exchange: RedisMessage[] = [
         { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
@@ -402,14 +483,50 @@ export async function POST(request: NextRequest) {
           // word) leaves the saved exchange untouched: there is nothing to put
           // in its place, so removing it would simply lose the answer.
           if (!isRetry || fullContent) {
-            if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
-              await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+            // The retried answer takes the place of the one it replaces.
+            if (isRetry) await deleteLastExchange(conversationId);
+
+            const saved = await addMessagesToConversation(
+              conversationId,
+              data.message,
+              fullContent,
+              selectedModel,
+              attachments,
+              skillTags(skills)
+            );
+            const userRow = saved.find((message) => message.role === 'user');
+            const assistantRow = saved.find((message) => message.role === 'assistant');
+            exchange = [
+              {
+                id: userRow?.id,
+                role: 'user',
+                content: data.message,
+                attachments,
+                createdAt: userRow?.createdAt?.toISOString(),
+              },
+              ...(fullContent
+                ? [{
+                    id: assistantRow?.id,
+                    role: 'assistant' as const,
+                    content: fullContent,
+                    modelId: selectedModel,
+                    createdAt: assistantRow?.createdAt?.toISOString(),
+                  }]
+                : []),
+            ];
+
+            const cacheHistory = [...prepared.rawHistory, ...exchange];
+            if (isRetry) {
+              await dropSnapshotIfBoundaryMissing(
+                conversationId,
+                cacheHistory.map((message) => message.id).filter((id): id is string => Boolean(id))
+              );
+            }
+            if (cacheHistory.every((message) => !message.attachments?.length)) {
+              await redisStore.set(conversationId, cacheHistory);
             } else {
               await redisStore.delete(conversationId);
             }
-            // The retried answer takes the place of the one it replaces.
-            if (isRetry) await deleteLastExchange(conversationId);
-            await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           }
           await markDocumentsUsed(userId, attachments);
         });
@@ -445,23 +562,27 @@ export async function POST(request: NextRequest) {
             'chatterstack.attachment_count': attachments.length,
             'chatterstack.rag_used': requestRagUsed,
             'chatterstack.new_conversation': isNewConversation,
+            'chatterstack.context_compacted': Boolean(prepared.compaction),
+            'chatterstack.context_tokens_before': prepared.compaction?.inputTokensBefore,
+            'chatterstack.context_tokens_after': prepared.compaction?.inputTokensAfter,
           },
         });
         if (!usageRecorded) {
-          // Failed before the model call (e.g. RAG or attachment setup):
-          // settle the reservation with the estimate so it is not stuck
-          // against the window for 24 hours.
-          await recordLLMTokens(userId, estimatePromptTokens(estimateText, isCouncilMode), isCouncilMode).catch((error) =>
+          // Failed before the model call (e.g. attachment rendering):
+          // settle the reservation so it is not stuck against the window.
+          await recordLLMTokens(
+            userId,
+            estimatePromptTokens(prepared.estimateText, isCouncilMode) + prepared.usage.input + prepared.usage.output,
+            isCouncilMode
+          ).catch((error) =>
             captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-release', userId })
           );
         }
       }
     };
 
-    const turn = beginConversationTurn(conversationId);
     return createSSEStream(async (stream) => {
       try {
-        await turn.ready;
         await respond(stream);
       } finally {
         turn.end();
