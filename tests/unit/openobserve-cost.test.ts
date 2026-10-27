@@ -30,8 +30,8 @@ describe('estimateCostUsd', () => {
   });
 
   it('stays silent about models it has no price for', () => {
-    expect(pricingFor('openai/gpt-5.6-luna')).toBeUndefined();
-    expect(estimateCostUsd('openai/gpt-5.6-luna', 100, 100)).toBeUndefined();
+    expect(pricingFor('openai/gpt-4o')).toBeUndefined();
+    expect(estimateCostUsd('openai/gpt-4o', 100, 100)).toBeUndefined();
     expect(estimateCostUsd('openai/text-embedding-3-small', 100, 0)).toBeUndefined();
   });
 

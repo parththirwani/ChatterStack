@@ -38,7 +38,7 @@ describe('thinking control', () => {
     const user = setup({ selectedModel: GPT });
     await user.click(screen.getByRole('button', { name: /^Model:/ }));
     const modelMenu = screen.getByRole('dialog', { name: 'Model settings' });
-    expect(within(modelMenu).queryByText(/thinking/i)).toBeNull();
+    expect(within(modelMenu).queryByRole('button', { name: /^Thinking:/ })).toBeNull();
     expect(within(modelMenu).queryByRole('radiogroup')).toBeNull();
 
     expect(thinkingButton()).toHaveAttribute('aria-haspopup', 'listbox');
@@ -145,7 +145,7 @@ describe('council mode', () => {
     const group = screen.getByRole('group', { name: 'Council members' });
 
     await user.click(within(group).getByRole('checkbox', { name: /Claude Sonnet 5.5/ }));
-    await user.click(within(group).getByRole('checkbox', { name: /DeepSeek/ }));
+    await user.click(within(group).getByRole('checkbox', { name: /^DeepSeek V4\.1 Flash / }));
     expect(screen.getByText('Minimum 2')).toBeInTheDocument();
 
     const gpt = within(group).getByRole('checkbox', { name: /GPT-6.1 Sol/ });
