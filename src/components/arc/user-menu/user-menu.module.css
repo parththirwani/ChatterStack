@@ -10,6 +10,9 @@
 .chevron { flex: none; margin-left: -2px; color: var(--text-muted); transition: transform var(--duration-spring) var(--ease-spring), color var(--duration-fast) var(--ease-standard); }
 .trigger:hover .chevron, .trigger[data-state="open"] .chevron { color: var(--foreground); }
 .trigger[data-state="open"] .chevron { transform: rotate(180deg); }
+/* A menu that opens upward points its chevron up at rest and flips it down when open. */
+.trigger[data-side="top"] .chevron { transform: rotate(180deg); }
+.trigger[data-side="top"][data-state="open"] .chevron { transform: rotate(0deg); }
 @media (max-width: 639px) {
   .trigger[data-name] { padding-right: 4px; }
   .triggerName, .chevron { display: none; }

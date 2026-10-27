@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { CSSProperties, FocusEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactNode, Ref } from "react";
 import { createPortal } from "react-dom";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
@@ -51,6 +51,8 @@ export interface UserMenuProps {
   onSignOut?: () => void | Promise<unknown>;
   signOutKeys?: string[];
   align?: "start" | "center" | "end";
+  /** Which side of the trigger the desktop panel opens toward. `auto` (default) flips above only when it would clip below. */
+  side?: "top" | "bottom" | "auto";
   /** Shows the name and a chevron beside the avatar from 640px up. */
   showName?: boolean;
   open?: boolean;
@@ -141,7 +143,7 @@ function focusStop(stop: HTMLElement | undefined) {
   target?.focus({ preventScroll: true });
 }
 
-export function UserMenu({ user, status: statusProp, defaultStatus = "available", onStatusChange, theme: themeProp, defaultTheme = "system", onThemeChange, showTheme = true, items = [], onSignOut, signOutKeys, align = "end", showName = false, open: openProp, defaultOpen = false, onOpenChange, portal = true, ref, className }: UserMenuProps) {
+export function UserMenu({ user, status: statusProp, defaultStatus = "available", onStatusChange, theme: themeProp, defaultTheme = "system", onThemeChange, showTheme = true, items = [], onSignOut, signOutKeys, align = "end", side = "auto", showName = false, open: openProp, defaultOpen = false, onOpenChange, portal = true, ref, className }: UserMenuProps) {
   const id = useId();
   const menuId = `${id}-menu`;
   const triggerId = `${id}-trigger`;
@@ -220,7 +222,12 @@ export function UserMenu({ user, status: statusProp, defaultStatus = "available"
         const wanted = align === "start" ? rect.left : align === "center" ? rect.left + rect.width / 2 - width / 2 : rect.right - width;
         left = Math.min(Math.max(12, wanted), window.innerWidth - width - 12);
         const below = rect.bottom + 8;
-        top = below + height > window.innerHeight - 12 && rect.top - 8 - height > 12 ? rect.top - 8 - height : below;
+        const above = rect.top - 8 - height;
+        const fitsBelow = below + height <= window.innerHeight - 12;
+        const fitsAbove = above > 12;
+        if (side === "top") top = fitsAbove || !fitsBelow ? above : below;
+        else if (side === "bottom") top = fitsBelow || !fitsAbove ? below : above;
+        else top = !fitsBelow && fitsAbove ? above : below;
         panel.style.left = `${left}px`;
         panel.style.top = `${top}px`;
       }
@@ -234,7 +241,7 @@ export function UserMenu({ user, status: statusProp, defaultStatus = "available"
     window.addEventListener("resize", place);
     window.addEventListener("scroll", place, true);
     return () => { window.removeEventListener("resize", place); window.removeEventListener("scroll", place, true); };
-  }, [open, sheet, inline, align]);
+  }, [open, sheet, inline, align, side]);
 
   // Outside presses close the panel. The sheet has its own scrim.
   useEffect(() => {
@@ -408,7 +415,7 @@ export function UserMenu({ user, status: statusProp, defaultStatus = "available"
   </AnimatePresence>;
 
   return <span ref={rootRef} className={styles.root}>
-    <button ref={setTriggerRef} id={triggerId} type="button" className={[styles.trigger, className].filter(Boolean).join(" ")} data-state={open ? "open" : "closed"} data-name={showName || undefined}
+    <button ref={setTriggerRef} id={triggerId} type="button" className={[styles.trigger, className].filter(Boolean).join(" ")} data-state={open ? "open" : "closed"} data-side={side === "auto" ? undefined : side} data-name={showName || undefined}
       aria-haspopup="menu" aria-expanded={open} aria-controls={open ? menuId : undefined} aria-label={`Account menu, ${user.name}${showStatus ? `, ${statusLabel(status)}` : ""}`}
       onClick={onTriggerClick} onKeyDown={onTriggerKeyDown}>
       <Face user={user} status={showStatus ? status : undefined} size="sm" />

@@ -1,7 +1,11 @@
-import React, { memo } from 'react';
-import { LogOut, User, LogIn } from 'lucide-react';
-import Image from 'next/image';
+'use client';
+
+import React, { memo, useEffect, useState } from 'react';
+import { LogIn, UserRound } from 'lucide-react';
 import { User as UserType } from '@/src/types/user.types';
+import { UserMenu } from '@/src/components/arc/user-menu/user-menu';
+import { useProfileStore } from '@/src/store/profileStore';
+import ProfileModal from '@/src/components/sidebar/user/ProfileModal';
 
 interface UserSectionProps {
   user?: UserType | null;
@@ -11,6 +15,11 @@ interface UserSectionProps {
   onLogoutClick: () => void;
 }
 
+/**
+ * Signed-in footer of the sidebar: the account menu (Arc registry UserMenu)
+ * opens upward from the avatar, with a mock profile modal for name, photo,
+ * and bio. Profile edits are kept in the local profile store only.
+ */
 const UserSection: React.FC<UserSectionProps> = ({
   user,
   collapsed,
@@ -18,19 +27,16 @@ const UserSection: React.FC<UserSectionProps> = ({
   onLoginClick,
   onLogoutClick,
 }) => {
-  const avatar = user?.avatarUrl ? (
-    <Image
-      src={user.avatarUrl}
-      alt={user.name || 'User'}
-      width={32}
-      height={32}
-      className="h-8 w-8 rounded-full ring-1 ring-white/10"
-    />
-  ) : (
-    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#3a3a3a] ring-1 ring-white/10">
-      <User className="h-3.5 w-3.5 text-[#e2dfda]" strokeWidth={1.8} />
-    </div>
-  );
+  const [profileOpen, setProfileOpen] = useState(false);
+  // Render the session identity on the first client paint (matching the
+  // server), then reveal the locally-persisted profile overrides.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  const storedName = useProfileStore((state) => state.name);
+  const storedBio = useProfileStore((state) => state.bio);
+  const storedAvatar = useProfileStore((state) => state.avatarUrl);
+  const updateProfile = useProfileStore((state) => state.updateProfile);
 
   if (!isAuthenticated) {
     return collapsed ? (
@@ -53,50 +59,43 @@ const UserSection: React.FC<UserSectionProps> = ({
     );
   }
 
-  if (collapsed) {
-    return (
-      <div className="flex flex-col items-center gap-2">
-        <button
-          onClick={() => {}}
-          className="relative cursor-pointer rounded-full focus:outline-none focus-visible:ring-2 focus-visible:ring-white/30"
-          title={user?.name || user?.email || 'Profile'}
-        >
-          {avatar}
-        </button>
-        <button
-          onClick={onLogoutClick}
-          className="rounded-md p-1.5 text-[#8f8b86] transition-colors hover:bg-red-500/10 hover:text-red-400"
-          title="Sign out"
-          aria-label="Sign out"
-        >
-          <LogOut className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    );
-  }
+  const email = user?.email || '';
+  const name = (mounted && storedName) || user?.name || 'User';
+  // storedAvatar: null = never edited (use the provider's photo), '' = removed here.
+  const avatarSrc = mounted && storedAvatar !== null ? storedAvatar || undefined : user?.avatarUrl || undefined;
+  const bio = mounted ? storedBio : '';
+
+  const handleSaveProfile = ({ name: nextName, bio: nextBio, avatarUrl }: { name: string; bio: string; avatarUrl: string | null }) => {
+    updateProfile({ name: nextName, bio: nextBio, avatarUrl: avatarUrl ?? '' });
+  };
 
   return (
-    <div className="space-y-1.5">
-      <div className="flex items-center gap-2.5 rounded-lg border border-white/[0.06] bg-white/[0.03] p-2.5">
-        {avatar}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-[13px] font-medium text-[#f0eeeb]">
-            {user?.name || 'User'}
-          </p>
-          <p className="truncate text-[11.5px] text-[#8f8b86]">
-            {user?.email || `Signed in with ${user?.provider}`}
-          </p>
-        </div>
+    <>
+      <div className={collapsed ? 'flex justify-center' : undefined}>
+        <UserMenu
+          side="top"
+          align={collapsed ? 'center' : 'start'}
+          showName={!collapsed}
+          showTheme={false}
+          user={{ name, email, avatarSrc }}
+          items={[
+            {
+              label: 'View profile',
+              icon: <UserRound size={16} strokeWidth={1.75} />,
+              onSelect: () => setProfileOpen(true),
+            },
+          ]}
+          onSignOut={onLogoutClick}
+        />
       </div>
 
-      <button
-        onClick={onLogoutClick}
-        className="flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] font-medium text-[#9d9994] transition-colors hover:bg-red-500/10 hover:text-red-400"
-      >
-        <LogOut className="h-3.5 w-3.5" />
-        <span>Sign out</span>
-      </button>
-    </div>
+      <ProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        profile={{ name, email, bio, avatarUrl: avatarSrc ?? null }}
+        onSave={handleSaveProfile}
+      />
+    </>
   );
 };
 
