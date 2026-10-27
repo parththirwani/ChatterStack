@@ -6,6 +6,7 @@ import MessageInput from '@/src/components/chat/input/MessageInput';
 import UserMessage from '@/src/components/chat/messages/UserMessage/UserMessage';
 import { ModelSelectionProvider } from '@/src/context/ModelSelectionContext';
 import { resetSkillsCache } from '@/src/lib/client/skills';
+import { FIT, viewForRegion, zoomAbout } from '@/src/components/sidebar/resources/ImageViewer';
 import { uploadDocument } from '@/src/lib/client/documents';
 import { useAppStore } from '@/src/store/rootStore';
 import type { DocumentAttachment } from '@/src/types/chat.types';
@@ -237,13 +238,76 @@ describe('zooming an image preview', () => {
     expect(screen.getByLabelText('Zoom 111%')).toBeInTheDocument();
   });
 
-  it('toggles between fit and 200% on double-click', async () => {
+  it('zooms in where you click with the magnifier, and out with Alt-click', async () => {
     const user = await openImage();
+    const frame = screen.getByTestId('image-viewer-frame');
+    expect(screen.getByRole('button', { name: 'Magnifier' })).toHaveAttribute('aria-pressed', 'true');
+    expect(frame.className).toContain('cursor-zoom-in');
+
+    await user.click(frame);
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
+    await user.click(frame);
+    expect(screen.getByLabelText('Zoom 400%')).toBeInTheDocument();
+
+    await user.keyboard('{Alt>}');
+    expect(frame.className).toContain('cursor-zoom-out');
+    await user.click(frame);
+    await user.keyboard('{/Alt}');
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
+  });
+
+  it('switches to the hand to pan, where the magnifier no longer zooms on click', async () => {
+    const user = await openImage();
+    const frame = screen.getByTestId('image-viewer-frame');
+    await user.click(screen.getByRole('button', { name: 'Pan' }));
+    expect(screen.getByRole('button', { name: 'Pan' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'Magnifier' })).toHaveAttribute('aria-pressed', 'false');
+
+    await user.click(frame);
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+  });
+
+  it('toggles between fit and 200% on double-click with the hand', async () => {
+    const user = await openImage();
+    await user.click(screen.getByRole('button', { name: 'Pan' }));
     const frame = screen.getByTestId('image-viewer-frame');
     await user.dblClick(frame);
     expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
     await user.dblClick(frame);
     expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+  });
+});
+
+describe('zoom maths', () => {
+  const frame = { width: 1000, height: 600 };
+  // Where an image point that sits at `focal` (from the frame centre) lands on screen.
+  const screenOf = (view: { scale: number; x: number; y: number }, point: { x: number; y: number }) => ({ x: view.x + view.scale * point.x, y: view.y + view.scale * point.y });
+
+  it('keeps the focal point still while zooming', () => {
+    const focal = { x: 300, y: -120 };
+    const first = zoomAbout(FIT, 2, focal);
+    const again = zoomAbout(first, 3.5, focal);
+    for (const view of [first, again]) {
+      // The image point under `focal` before zooming is `focal` itself at fit.
+      expect(screenOf(view, focal)).toEqual({ x: expect.closeTo(focal.x, 5), y: expect.closeTo(focal.y, 5) });
+    }
+  });
+
+  it('centres a dragged region and scales it to fill the frame', () => {
+    // A 200x120 box whose centre is 250px right of and 100px below the frame centre.
+    const region = { x: 650, y: 340, width: 200, height: 120 };
+    const view = viewForRegion(FIT, frame, region);
+
+    expect(view.scale).toBeCloseTo(5 * 0.96, 5);
+    const centre = { x: 750 - 500, y: 400 - 300 };
+    const onScreen = screenOf(view, centre);
+    expect(onScreen.x).toBeCloseTo(0, 5);
+    expect(onScreen.y).toBeCloseTo(0, 5);
+  });
+
+  it('stays within the zoom limits and falls back to fit for a large region', () => {
+    expect(viewForRegion(FIT, frame, { x: 10, y: 10, width: 2, height: 2 }).scale).toBe(8);
+    expect(viewForRegion(FIT, frame, { x: 0, y: 0, width: 1000, height: 600 })).toEqual(FIT);
   });
 });
 
