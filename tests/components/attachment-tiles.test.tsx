@@ -81,7 +81,8 @@ describe('attachments while uploading', () => {
     await act(async () => { finish({ documentId: 'doc-1', name: 'cat.png', mimeType: 'image/png', size: 3 }); });
 
     await waitFor(() => expect(screen.queryByText('42%')).toBeNull());
-    expect(screen.getByAltText('cat.png')).toHaveAttribute('src', '/api/documents/doc-1/content?preview=1');
+    // The decoded local preview stays on screen; the saved document backs the tile.
+    expect(screen.getByAltText('cat.png')).toHaveAttribute('src', 'blob:local-preview');
     expect(screen.getByRole('button', { name: 'Preview cat.png' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
   });

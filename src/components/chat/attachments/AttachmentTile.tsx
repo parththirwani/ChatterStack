@@ -59,7 +59,7 @@ export default function AttachmentTile({
           <span className="line-clamp-2 w-full break-all text-[9px] leading-[1.2] text-white/60">{name}</span>
         </div>}
 
-      {uploading && <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/45">
+      {uploading && <div className={`absolute inset-0 flex flex-col items-center justify-center gap-1 ${isImage ? 'bg-black/35' : 'bg-black/60'}`}>
         {!isImage && <span className="absolute inset-0 animate-pulse bg-white/[0.07]" aria-hidden="true" />}
         <Loader2 className="relative h-5 w-5 animate-spin text-white/90" aria-hidden="true" />
         <span className="relative text-[10px] font-medium tabular-nums text-white/90">{percent}%</span>

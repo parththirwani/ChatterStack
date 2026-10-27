@@ -56,6 +56,9 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   const [pending, setPending] = useState<PendingUpload[]>([]);
   const [preview, setPreview] = useState<{ id: string; name: string; mimeType: string } | null>(null);
   const objectUrls = useRef<string[]>([]);
+  // Keeps the already-decoded local preview on screen after the upload
+  // finishes, so the tile does not flash while the saved file loads.
+  const previewsByDocument = useRef(new Map<string, string>());
   // Uploads the user dismissed while they were still in flight.
   const cancelledUploads = useRef(new Set<string>());
   const uploading = pending.some((file) => file.status === 'uploading');
@@ -205,7 +208,10 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     results.forEach((result, index) => {
       const { key } = batch[index];
       if (result.status === 'fulfilled') {
-        if (!cancelledUploads.current.has(key)) saved.push(result.value.attachment);
+        if (cancelledUploads.current.has(key)) return;
+        saved.push(result.value.attachment);
+        const { previewUrl } = batch[index];
+        if (previewUrl) previewsByDocument.current.set(result.value.attachment.documentId, previewUrl);
       } else {
         failures.push({ key, message: result.reason instanceof Error ? result.reason.message : 'Could not upload file.' });
       }
@@ -218,12 +224,6 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
         const failure = failures.find((item) => item.key === entry.key);
         return failure ? { ...entry, status: 'error' as const, error: failure.message } : entry;
       }));
-    // The tile now reads the saved document, so the local preview can go.
-    batch.forEach((item) => {
-      if (failures.some((failure) => failure.key === item.key) || !item.previewUrl) return;
-      URL.revokeObjectURL(item.previewUrl);
-      objectUrls.current = objectUrls.current.filter((url) => url !== item.previewUrl);
-    });
 
     if (failures.length) setFileError(failures[0].message);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -312,6 +312,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
             name={file.name}
             mimeType={file.mimeType}
             sourceUrl={`/api/documents/${file.documentId}/content?preview=1`}
+            previewUrl={previewsByDocument.current.get(file.documentId)}
             onOpen={() => setPreview({ id: file.documentId, name: file.name, mimeType: file.mimeType })}
             onRemove={() => onAttachmentsChange((current) => current.filter((item) => item.documentId !== file.documentId))}
           />)}
