@@ -110,6 +110,9 @@ export async function POST(request: NextRequest) {
     const isCouncilMode = selectedModel === 'council';
     const thinkingLevel = data.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
     const attachments = data.attachments ?? [];
+    // One id for every model call this request makes, so the council stages and the
+    // embedding calls can be joined back together in OpenObserve.
+    const traceId = crypto.randomUUID();
     let currentParts;
     try {
       const resolved = await resolveDocuments(userId, attachments);
@@ -186,7 +189,7 @@ export async function POST(request: NextRequest) {
       let titleTask: Promise<void> = Promise.resolve();
       if (isNewConversation) {
         send({ conversationCreated: conversationId });
-        titleTask = generateConversationTitle({ userMessage: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}` })
+        titleTask = generateConversationTitle({ trace: { traceId, userId, conversationId }, userMessage: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}` })
           .then(async (title) => {
             // Saved even if the client has gone; only sent if it's still there.
             if (await saveGeneratedTitle(conversationId, title)) send({ title });
@@ -200,7 +203,8 @@ export async function POST(request: NextRequest) {
         userId,
         data.message,
         conversationId,
-        conversationHistory
+        conversationHistory,
+        traceId
       );
 
       const messagesForAI = await Promise.all([
@@ -228,7 +232,13 @@ export async function POST(request: NextRequest) {
               data.message,
               // Members see earlier files too; the chair's prompt uses the text.
               conversationHistory.map((m, index) => ({ ...m, parts: messagesForAI[index].content })),
-              { members: data.council?.members, chair: data.council?.chair, thinkingLevel, signal },
+              {
+                members: data.council?.members,
+                chair: data.council?.chair,
+                thinkingLevel,
+                signal,
+                trace: { traceId, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
+              },
               {
                 onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
                 onChunk: (chunk) => send({ chunk }),
@@ -243,6 +253,16 @@ export async function POST(request: NextRequest) {
               signal,
               onChunk: (chunk) => send({ chunk }),
               onReasoning: (reasoning) => send({ reasoning }),
+              trace: {
+                traceId,
+                span: 'completion',
+                userId,
+                conversationId,
+                thinkingLevel,
+                messageCount: messagesForAI.length,
+                attachmentCount: attachments.length,
+                ragUsed: Boolean(ragContext),
+              },
             });
         send({ done: true });
       } catch (error) {
@@ -294,7 +314,7 @@ export async function POST(request: NextRequest) {
         throw error;
       }
       if (fullContent) {
-        await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);
+        await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel, traceId);
       }
 
       // Usually finished long before the answer; bounded by the title timeout.

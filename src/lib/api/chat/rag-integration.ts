@@ -16,7 +16,8 @@ export async function retrieveRAGContext(
   userId: string,
   query: string,
   conversationId: string,
-  conversationHistory: ConversationMessage[]
+  conversationHistory: ConversationMessage[],
+  traceId?: string
 ): Promise<string> {
   if (!RAG_ENABLED) {
     return '';
@@ -31,6 +32,7 @@ export async function retrieveRAGContext(
         role: m.role,
         content: m.content,
       })),
+      traceId,
     });
 
     return formatContextForLLM(context);
@@ -45,7 +47,8 @@ export async function ingestConversationData(
   conversationId: string,
   userMessage: string,
   aiResponse: string,
-  selectedModel: string
+  selectedModel: string,
+  traceId?: string
 ) {
   if (!RAG_ENABLED) return;
 
@@ -59,6 +62,7 @@ export async function ingestConversationData(
     messageId: userMessageId,
     content: userMessage,
     role: 'user',
+    traceId,
   }).catch((err) => captureError(err, { route: 'chat/rag', stage: 'ingest-user' }));
 
   // Ingest AI response
@@ -69,6 +73,7 @@ export async function ingestConversationData(
     content: aiResponse,
     role: 'assistant',
     modelUsed: selectedModel,
+    traceId,
   }).catch((err) => captureError(err, { route: 'chat/rag', model: selectedModel, stage: 'ingest-assistant' }));
 
   // Update profile

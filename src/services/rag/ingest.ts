@@ -21,6 +21,8 @@ export async function ingestMessage(params: {
   modelUsed?: string;
   timestamp?: Date;
   profileTags?: string[];
+  /** Shared with the chat request that produced this message. */
+  traceId?: string;
 }): Promise<void> {
   const {
     userId,
@@ -31,6 +33,7 @@ export async function ingestMessage(params: {
     modelUsed,
     timestamp = new Date(),
     profileTags = [],
+    traceId,
   } = params;
 
   // RAG is optional - don't break chat if it fails
@@ -56,7 +59,7 @@ export async function ingestMessage(params: {
     
     let denseVectors: number[][] = [];
     try {
-      denseVectors = await generateEmbeddings(chunkTexts);
+      denseVectors = await generateEmbeddings(chunkTexts, { traceId, userId, conversationId });
       
       if (!denseVectors || denseVectors.length === 0) {
         console.warn(`No embeddings generated for message ${messageId}, skipping RAG ingestion`);
