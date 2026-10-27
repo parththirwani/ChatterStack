@@ -45,6 +45,8 @@ export interface RetrievalContext {
     role: 'user' | 'assistant';
     content: string;
   }>;
+  /** Set when the memory search failed and only short-term context came back. */
+  degraded?: true;
 }
 
 export interface HybridSearchResult {

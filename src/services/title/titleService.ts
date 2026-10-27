@@ -32,6 +32,8 @@ async function generateTitleWithAI(userMessage: string, trace?: TitleGenerationP
         conversationId: trace?.conversationId,
         messageCount: 2,
         prompt: userMessage,
+        inRequest: Boolean(trace),
+        contentPrompt: userMessage,
       },
       (metrics) => requestTitle(userMessage, metrics)
     );

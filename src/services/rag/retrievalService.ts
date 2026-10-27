@@ -85,6 +85,7 @@ async function retrieveContext(params: {
     return {
       chunks: [],
       shortTermContext: shortTermMessages.slice(-8),
+      degraded: true,
     };
   }
 }
@@ -236,6 +237,7 @@ export async function retrieveContextWithFallback(params: {
     return {
       chunks: [],
       shortTermContext: params.shortTermMessages || [],
+      degraded: true,
     };
   }
 }

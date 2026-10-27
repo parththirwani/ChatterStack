@@ -211,6 +211,51 @@ The panels worth having first, in this order: p50/p95 latency per model, error
 rate per model per day, tokens and cost per day, council stage breakdown, and
 time to first token.
 
+## Traces
+
+`OPENOBSERVE_TRACES=true` adds OTLP traces next to the records: one trace per
+chat request in OpenObserve → Traces (stream `OPENOBSERVE_TRACE_STREAM`,
+default `default`). The trace id is the request's `trace_id` with the dashes
+removed, so a record and its trace can be matched.
+
+```
+chat <model> | council              root: outcome (+ question and answer, opt-in)
+├─ rag.retrieve                     rag_chunks, rag_context_found, rag_degraded
+│  └─ embedding <model>             the query embedding
+├─ completion <model>               or council-member-answer / council-ranking / council-chair
+├─ title-generation <model>
+├─ db.persist                       Redis cache + Postgres write of the turn
+├─ rag.ingest                       one per message, rag_role + rag_outcome
+│  └─ embeddings <model>
+└─ profile.update
+```
+
+Requests refused before streaming are a root span alone: status `rejected`
+(4xx) or `error` (5xx), with `http.response.status_code`. A RAG lookup that
+fell back because the memory store failed (`rag_degraded=true`) and an ingest
+whose outcome is `failed` have span status ERROR.
+
+Span attributes: `gen_ai.operation.name`, `gen_ai.provider.name`,
+`gen_ai.request.model`, `gen_ai.usage.input_tokens`,
+`gen_ai.usage.output_tokens`, `gen_ai.response.finish_reasons`,
+`gen_ai.conversation.id`, `user.id`, and `chatterstack.*` for cost, time to
+first token, stage, thinking level, RAG use, Stop and answer length. A user's
+Stop has span status OK with `chatterstack.stopped=true`; failures have status
+ERROR with the provider's message.
+
+With `OPENOBSERVE_TRACE_CONTENT=true` (its own flag, independent of
+`OPENOBSERVE_LOG_CONTENT`), model and root spans also carry
+`gen_ai.input.messages` (the user's own message) and `gen_ai.output.messages`
+(the answer), each cut to 4,000 characters. Council ranking and chair spans show
+the user's question as input and the ranking or synthesis as output. Never
+attached: the system prompt, earlier turns, retrieved memory, extracted
+attachment text, file bytes, embedding inputs.
+
+Delivery: at most 100 spans per POST; a payload refused with a 4xx other than
+408/429 is dropped (resending cannot help) and the loss is reported as the
+resource attribute `chatterstack.spans_dropped` on the next successful send.
+Temporary failures keep the spans and back off for 30 seconds.
+
 ## Privacy
 
 Records hold ids, counts, durations and costs only. Prompts and answers are
@@ -218,4 +263,7 @@ never included unless `OPENOBSERVE_LOG_CONTENT=true`, in which case each side is
 truncated to 2,000 characters and stored in that OpenObserve stream - treat the
 stream as holding user content. File parts are described as a count
 (`attachment_count`) and, in a logged prompt, as `[+N file part(s)]`: attachment
-bytes are never written. `user_id` is the NextAuth id, not an email.
+bytes are never written. `user_id` is the NextAuth id, not an email. Traces
+have their own content flag, `OPENOBSERVE_TRACE_CONTENT` (see Traces). Error
+messages are one line, at most 300 characters, with credentials, data URLs and
+base64 removed.

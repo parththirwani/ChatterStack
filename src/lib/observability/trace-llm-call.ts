@@ -1,5 +1,6 @@
 import { estimateCostUsd, estimateTokens } from './cost';
 import {
+  describeError,
   enqueueLlmCallRecord,
   openObserveConfig,
   truncateContent,
@@ -7,6 +8,14 @@ import {
   type LlmCallStatus,
   type OpenObserveConfig,
 } from './openobserve';
+import {
+  contentAttributes,
+  enqueueSpan,
+  newSpanId,
+  parentSpanIdFor,
+  traceContentEnabled,
+  tracesEnabled,
+} from './otlp-traces';
 
 export const PROVIDER = 'openrouter';
 
@@ -27,6 +36,15 @@ export interface LlmTraceContext {
   prompt?: string;
   /** Aborted when the user pressed Stop or disconnected. */
   signal?: AbortSignal;
+  /**
+   * The user's own message for the trace view (OPENOBSERVE_TRACE_CONTENT). Not
+   * the assembled prompt: no system prompt, history, memory or file text.
+   */
+  contentPrompt?: string;
+  /** True when this call belongs to a chat request: its span nests under that request's root span. */
+  inRequest?: boolean;
+  /** 'chat' for completions, 'embeddings' for embedding calls. */
+  operation?: 'chat' | 'embeddings';
 }
 
 export interface LlmCallMetrics {
@@ -52,11 +70,6 @@ function errorType(error: unknown): string {
   return typeof error;
 }
 
-function errorMessage(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  // Only the provider's own line: never a prompt, an answer or a file.
-  return truncateContent(message.replace(/\s+/g, ' ').trim()) ?? 'unknown error';
-}
 
 /** Drops keys whose value is undefined, so records stay small and tidy. */
 function compact(record: LlmCallRecord): LlmCallRecord {
@@ -120,18 +133,46 @@ export async function traceLlmCall<T>(
   }
 }
 
+type CollectedMetrics = {
+  firstTokenAt: number;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  finishReason?: string;
+  completion: string;
+};
+
+/** Token counts and cost, computed once and shared by the record and the span. */
+interface CallTotals {
+  inputTokens?: number;
+  outputTokens?: number;
+  costUsd?: number;
+  endedAt: number;
+  errorMessage?: string;
+}
+
 function recordCall(
   config: OpenObserveConfig,
   context: LlmTraceContext,
-  metrics: { firstTokenAt: number; usage?: { prompt_tokens?: number; completion_tokens?: number }; finishReason?: string; completion: string },
+  metrics: CollectedMetrics,
   status: LlmCallStatus,
   failure: unknown,
   startedAt: number
 ): void {
+  let totals: CallTotals;
   try {
     const inputTokens = metrics.usage?.prompt_tokens ?? (context.prompt !== undefined ? estimateTokens(context.prompt) : undefined);
     const outputTokens = metrics.usage?.completion_tokens ?? (metrics.completion ? estimateTokens(metrics.completion) : undefined);
+    totals = {
+      inputTokens,
+      outputTokens,
+      costUsd: estimateCostUsd(context.model, inputTokens, outputTokens),
+      endedAt: Date.now(),
+      errorMessage: failure !== undefined ? describeError(failure) : undefined,
+    };
+  } catch {
+    return; // Observability must never break the call it describes.
+  }
 
+  try {
     enqueueLlmCallRecord(compact({
       _timestamp: startedAt * 1000,
       timestamp: new Date(startedAt).toISOString(),
@@ -144,23 +185,82 @@ function recordCall(
       thinking_level: context.thinkingLevel,
       status,
       stopped: status === 'aborted',
-      duration_ms: Math.max(0, Date.now() - startedAt),
+      duration_ms: Math.max(0, totals.endedAt - startedAt),
       time_to_first_token_ms: metrics.firstTokenAt ? Math.max(0, metrics.firstTokenAt - startedAt) : undefined,
-      input_tokens: inputTokens,
-      output_tokens: outputTokens,
+      input_tokens: totals.inputTokens,
+      output_tokens: totals.outputTokens,
       estimated: metrics.usage === undefined,
-      cost_usd: estimateCostUsd(context.model, inputTokens, outputTokens),
+      cost_usd: totals.costUsd,
       finish_reason: metrics.finishReason,
       message_count: context.messageCount,
       attachment_count: context.attachmentCount,
       rag_used: context.ragUsed,
       error_type: failure !== undefined ? errorType(failure) : undefined,
-      error_message: failure !== undefined ? errorMessage(failure) : undefined,
+      error_message: totals.errorMessage,
       prompt: config.logContent ? truncateContent(context.prompt) : undefined,
       completion: config.logContent ? truncateContent(metrics.completion) : undefined,
     }));
   } catch {
     // Observability must never break the call it describes.
+  }
+
+  if (tracesEnabled()) recordCallSpan(context, metrics, status, failure, startedAt, totals);
+}
+
+function recordCallSpan(
+  context: LlmTraceContext,
+  metrics: CollectedMetrics,
+  status: LlmCallStatus,
+  failure: unknown,
+  startedAt: number,
+  totals: CallTotals
+): void {
+  try {
+    const operation = context.operation ?? 'chat';
+
+    enqueueSpan({
+      traceId: context.traceId,
+      spanId: newSpanId(),
+      parentSpanId: context.inRequest ? parentSpanIdFor(context.traceId) : undefined,
+      name: `${context.span} ${context.model}`,
+      kind: 3,
+      startedAt,
+      endedAt: totals.endedAt,
+      status,
+      errorMessage: totals.errorMessage,
+      attributes: {
+        'gen_ai.operation.name': operation,
+        'gen_ai.provider.name': context.provider ?? PROVIDER,
+        'gen_ai.system': context.provider ?? PROVIDER,
+        'gen_ai.request.model': context.model,
+        'gen_ai.response.model': context.model,
+        'gen_ai.usage.input_tokens': totals.inputTokens,
+        'gen_ai.usage.output_tokens': totals.outputTokens,
+        'gen_ai.response.finish_reasons': metrics.finishReason ? [metrics.finishReason] : undefined,
+        'gen_ai.conversation.id': context.conversationId,
+        'user.id': context.userId,
+        'error.type': failure !== undefined ? errorType(failure) : undefined,
+        'chatterstack.span': context.span,
+        'chatterstack.thinking_level': context.thinkingLevel,
+        // OpenObserve prices spans from its own model table, which does not know
+        // OpenRouter ids; send the cost from src/config/models.ts instead.
+        'gen_ai.usage.cost': totals.costUsd,
+        'chatterstack.cost_usd': totals.costUsd,
+        'chatterstack.tokens_estimated': metrics.usage === undefined,
+        'chatterstack.time_to_first_token_ms': metrics.firstTokenAt ? Math.max(0, metrics.firstTokenAt - startedAt) : undefined,
+        'chatterstack.message_count': context.messageCount,
+        'chatterstack.attachment_count': context.attachmentCount,
+        'chatterstack.rag_used': context.ragUsed,
+        'chatterstack.stopped': status === 'aborted',
+        'chatterstack.answer_length': operation === 'chat' ? metrics.completion.length : undefined,
+        // Embedding inputs are stored memory text, so they are never attached.
+        ...(traceContentEnabled() && operation === 'chat'
+          ? contentAttributes(context.contentPrompt, metrics.completion)
+          : {}),
+      },
+    });
+  } catch {
+    // Tracing must never break the call it describes.
   }
 }
 
