@@ -3,6 +3,7 @@ import { ingestMessage } from '@/src/services/rag/ingest';
 import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
 import { retrieveContextWithFallback, formatContextForLLM } from '@/src/services/rag/retrievalService';
 import { captureError } from '@/src/lib/observability/capture';
+import { traceStep } from '@/src/lib/observability/otlp-traces';
 
 const RAG_ENABLED = process.env.RAG_ENABLED === 'true';
 
@@ -24,7 +25,7 @@ export async function retrieveRAGContext(
   }
 
   try {
-    const context = await retrieveContextWithFallback({
+    const context = await traceStep(traceId, 'rag.retrieve', () => retrieveContextWithFallback({
       userId,
       query,
       currentConversationId: conversationId,
@@ -33,7 +34,10 @@ export async function retrieveRAGContext(
         content: m.content,
       })),
       traceId,
-    });
+    }), (result) => ({
+      'chatterstack.rag_chunks': result.chunks?.length ?? 0,
+      'chatterstack.rag_context_found': (result.chunks?.length ?? 0) > 0,
+    }));
 
     return formatContextForLLM(context);
   } catch (error) {

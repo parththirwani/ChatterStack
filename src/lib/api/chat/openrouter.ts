@@ -174,6 +174,7 @@ function traceContext(
     signal,
     prompt: trace.prompt ?? promptText(messages),
     messageCount: trace.messageCount ?? messages.length,
+    messages: trace.messages ?? messages,
   };
 }
 

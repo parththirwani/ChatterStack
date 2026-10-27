@@ -51,10 +51,15 @@ export interface OpenObserveConfig {
   stream: string;
   authorization: string;
   logContent: boolean;
+  /** OTLP traces (one trace per chat request) in addition to the log records. */
+  traces: boolean;
+  /** OpenObserve traces stream, sent as the `stream-name` header. */
+  traceStream: string;
 }
 
 export const DEFAULT_STREAM = 'llm_calls';
 export const DEFAULT_ORG = 'default';
+export const DEFAULT_TRACE_STREAM = 'default';
 export const FLUSH_TIMEOUT_MS = 3000;
 /** Records held in memory before the oldest are dropped. */
 export const MAX_BUFFER = 200;
@@ -123,6 +128,8 @@ export function openObserveConfig(): OpenObserveConfig | null {
     stream: process.env.OPENOBSERVE_STREAM?.trim() || DEFAULT_STREAM,
     authorization,
     logContent: truthy(process.env.OPENOBSERVE_LOG_CONTENT),
+    traces: truthy(process.env.OPENOBSERVE_TRACES),
+    traceStream: process.env.OPENOBSERVE_TRACE_STREAM?.trim() || DEFAULT_TRACE_STREAM,
   };
 }
 
@@ -142,12 +149,17 @@ function noteError(): void {
 }
 
 /**
- * Sends one batch. Exported so the timeout and the auth header are directly
- * testable; production code goes through `enqueueLlmCallRecord`.
+ * POSTs one JSON body to an OpenObserve API path (`/api/{org}/...`). Shared by
+ * the log records below and the OTLP traces in `otlp-traces.ts`: it never
+ * throws, gives up after `timeoutMs`, and only counts its own failures.
  */
-export async function sendBatch(records: LlmCallRecord[], timeoutMs = FLUSH_TIMEOUT_MS): Promise<boolean> {
+export async function postToOpenObserve(
+  path: string,
+  body: unknown,
+  { headers = {}, timeoutMs = FLUSH_TIMEOUT_MS }: { headers?: Record<string, string>; timeoutMs?: number } = {}
+): Promise<boolean> {
   const config = openObserveConfig();
-  if (!config || records.length === 0) return false;
+  if (!config) return false;
 
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -162,13 +174,14 @@ export async function sendBatch(records: LlmCallRecord[], timeoutMs = FLUSH_TIME
 
   try {
     const response = await Promise.race([
-      fetch(`${config.url}/api/${config.org}/${config.stream}/_json`, {
+      fetch(`${config.url}/api/${config.org}/${path}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: config.authorization,
+          ...headers,
         },
-        body: JSON.stringify(records),
+        body: JSON.stringify(body),
         signal: controller.signal,
       }),
       timeout,
@@ -183,6 +196,16 @@ export async function sendBatch(records: LlmCallRecord[], timeoutMs = FLUSH_TIME
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
+}
+
+/**
+ * Sends one batch. Exported so the timeout and the auth header are directly
+ * testable; production code goes through `enqueueLlmCallRecord`.
+ */
+export async function sendBatch(records: LlmCallRecord[], timeoutMs = FLUSH_TIMEOUT_MS): Promise<boolean> {
+  const config = openObserveConfig();
+  if (!config || records.length === 0) return false;
+  return postToOpenObserve(`${config.stream}/_json`, records, { timeoutMs });
 }
 
 /**
@@ -267,6 +290,6 @@ export function resetObservability(): void {
     dropped: 0,
     lastErrorAt: 0,
     retryAfter: 0,
-      inFlight: false,
+    inFlight: false,
   };
 }

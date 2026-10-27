@@ -7,6 +7,15 @@ import {
   type LlmCallStatus,
   type OpenObserveConfig,
 } from './openobserve';
+import {
+  contentAttributes,
+  enqueueSpan,
+  newSpanId,
+  requestSpanId,
+  traceContentEnabled,
+  tracesEnabled,
+  type TraceMessage,
+} from './otlp-traces';
 
 export const PROVIDER = 'openrouter';
 
@@ -27,6 +36,12 @@ export interface LlmTraceContext {
   prompt?: string;
   /** Aborted when the user pressed Stop or disconnected. */
   signal?: AbortSignal;
+  /** The messages sent, for the trace view (text only; files are counted). */
+  messages?: TraceMessage[];
+  /** True when this call belongs to a chat request: its span nests under that request's root span. */
+  inRequest?: boolean;
+  /** 'chat' for completions, 'embeddings' for embedding calls. */
+  operation?: 'chat' | 'embeddings';
 }
 
 export interface LlmCallMetrics {
@@ -161,6 +176,63 @@ function recordCall(
     }));
   } catch {
     // Observability must never break the call it describes.
+  }
+
+  if (tracesEnabled()) recordCallSpan(context, metrics, status, failure, startedAt);
+}
+
+function recordCallSpan(
+  context: LlmTraceContext,
+  metrics: { firstTokenAt: number; usage?: { prompt_tokens?: number; completion_tokens?: number }; finishReason?: string; completion: string },
+  status: LlmCallStatus,
+  failure: unknown,
+  startedAt: number
+): void {
+  try {
+    const inputTokens = metrics.usage?.prompt_tokens ?? (context.prompt !== undefined ? estimateTokens(context.prompt) : undefined);
+    const outputTokens = metrics.usage?.completion_tokens ?? (metrics.completion ? estimateTokens(metrics.completion) : undefined);
+    const operation = context.operation ?? 'chat';
+    const input: TraceMessage[] = context.messages ?? (context.prompt !== undefined ? [{ role: 'user', content: context.prompt }] : []);
+
+    enqueueSpan({
+      traceId: context.traceId,
+      spanId: newSpanId(),
+      parentSpanId: context.inRequest ? requestSpanId(context.traceId) : undefined,
+      name: `${context.span} ${context.model}`,
+      kind: 3,
+      startedAt,
+      endedAt: Date.now(),
+      status,
+      errorMessage: failure !== undefined ? errorMessage(failure) : undefined,
+      attributes: {
+        'gen_ai.operation.name': operation,
+        'gen_ai.provider.name': context.provider ?? PROVIDER,
+        'gen_ai.system': context.provider ?? PROVIDER,
+        'gen_ai.request.model': context.model,
+        'gen_ai.response.model': context.model,
+        'gen_ai.usage.input_tokens': inputTokens,
+        'gen_ai.usage.output_tokens': outputTokens,
+        'gen_ai.response.finish_reasons': metrics.finishReason ? [metrics.finishReason] : undefined,
+        'gen_ai.conversation.id': context.conversationId,
+        'user.id': context.userId,
+        'error.type': failure !== undefined ? errorType(failure) : undefined,
+        'chatterstack.span': context.span,
+        'chatterstack.thinking_level': context.thinkingLevel,
+        'chatterstack.cost_usd': estimateCostUsd(context.model, inputTokens, outputTokens),
+        'chatterstack.tokens_estimated': metrics.usage === undefined,
+        'chatterstack.time_to_first_token_ms': metrics.firstTokenAt ? Math.max(0, metrics.firstTokenAt - startedAt) : undefined,
+        'chatterstack.message_count': context.messageCount,
+        'chatterstack.attachment_count': context.attachmentCount,
+        'chatterstack.rag_used': context.ragUsed,
+        'chatterstack.stopped': status === 'aborted',
+        'chatterstack.answer_length': operation === 'chat' ? metrics.completion.length : undefined,
+        ...(traceContentEnabled()
+          ? contentAttributes(input, operation === 'chat' ? metrics.completion : undefined)
+          : {}),
+      },
+    });
+  } catch {
+    // Tracing must never break the call it describes.
   }
 }
 

@@ -13,6 +13,7 @@ import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
+import { recordRequestSpan } from '@/src/lib/observability/otlp-traces';
 import { AnalyticsEvents, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
 import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { ChatRequestSchema } from '@/src/types/chat.types';
@@ -181,6 +182,12 @@ export async function POST(request: NextRequest) {
       // The reservation from withLLMTokenLimit above must never be left
       // dangling: whichever path `respond` exits through, usage is recorded.
       let usageRecorded = false;
+      // The request's root span in OpenObserve traces: question, answer, outcome.
+      const requestStartedAt = Date.now();
+      let requestAnswer = '';
+      let requestStatus: 'ok' | 'error' | 'aborted' = 'error';
+      let requestError: string | undefined;
+      let requestRagUsed = false;
       try {
       send({ status: 'starting' });
 
@@ -206,6 +213,7 @@ export async function POST(request: NextRequest) {
         conversationHistory,
         traceId
       );
+      requestRagUsed = Boolean(ragContext);
 
       const messagesForAI = await Promise.all([
         ...conversationHistory,
@@ -237,7 +245,7 @@ export async function POST(request: NextRequest) {
                 chair: data.council?.chair,
                 thinkingLevel,
                 signal,
-                trace: { traceId, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
+                trace: { traceId, inRequest: true, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
               },
               {
                 onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
@@ -255,6 +263,7 @@ export async function POST(request: NextRequest) {
               onReasoning: (reasoning) => send({ reasoning }),
               trace: {
                 traceId,
+                inRequest: true,
                 span: 'completion',
                 userId,
                 conversationId,
@@ -267,6 +276,7 @@ export async function POST(request: NextRequest) {
         send({ done: true });
       } catch (error) {
         outcome = signal.aborted ? 'stopped' : 'error';
+        requestError = error instanceof Error ? error.message : String(error);
         if (!signal.aborted) {
           captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'model-call', userId });
           send({
@@ -275,6 +285,8 @@ export async function POST(request: NextRequest) {
         }
       }
       if (signal.aborted && outcome === 'success') outcome = 'stopped';
+      requestAnswer = fullContent;
+      requestStatus = outcome === 'success' ? 'ok' : outcome === 'stopped' ? 'aborted' : 'error';
 
       captureServerEvent(userId, AnalyticsEvents.ChatResponseCompleted, chatResponseCompletedProps({
         modelId: selectedModel, council: isCouncilMode, startedAt: modelStartedAt, outcome,
@@ -319,7 +331,28 @@ export async function POST(request: NextRequest) {
 
       // Usually finished long before the answer; bounded by the title timeout.
       await titleTask;
+      } catch (error) {
+        requestError ??= error instanceof Error ? error.message : String(error);
+        throw error;
       } finally {
+        recordRequestSpan({
+          traceId,
+          startedAt: requestStartedAt,
+          status: requestStatus,
+          model: selectedModel,
+          council: isCouncilMode,
+          userId,
+          conversationId,
+          question: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}`,
+          answer: requestAnswer,
+          errorMessage: requestError,
+          attributes: {
+            'chatterstack.thinking_level': thinkingLevel,
+            'chatterstack.attachment_count': attachments.length,
+            'chatterstack.rag_used': requestRagUsed,
+            'chatterstack.new_conversation': isNewConversation,
+          },
+        });
         if (!usageRecorded) {
           // Failed before the model call (e.g. RAG or attachment setup):
           // settle the reservation with the estimate so it is not stuck

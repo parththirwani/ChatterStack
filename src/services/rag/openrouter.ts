@@ -89,6 +89,8 @@ export async function generateEmbedding(text: string, trace?: EmbeddingTrace): P
       conversationId: trace?.conversationId,
       messageCount: 1,
       prompt: text,
+      operation: 'embeddings',
+      inRequest: Boolean(trace?.traceId),
     },
     (metrics) => requestEmbedding(text, metrics, 'Embedding API error')
   );
@@ -149,6 +151,8 @@ export async function generateEmbeddings(texts: string[], trace?: EmbeddingTrace
         conversationId: trace?.conversationId,
         messageCount: uncachedTexts.length,
         prompt: uncachedTexts.join('\n'),
+        operation: 'embeddings',
+        inRequest: Boolean(trace?.traceId),
       },
       (metrics) => requestEmbedding(uncachedTexts, metrics, 'Batch embedding API error')
     );
