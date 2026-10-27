@@ -59,7 +59,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
   const showPending = streaming && !content && !reasoning && !showCouncilCard;
 
   return (
-    <div className="w-full">
+    <div className="w-full" data-message-id={messageId}>
       <div className="mx-auto max-w-3xl">
         <div className="flex flex-col gap-2">
           {/* Model Avatar - Responsive size */}

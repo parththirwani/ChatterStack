@@ -43,7 +43,7 @@ const MessageActions: React.FC<MessageActionsProps> = ({
       {onRetry && (
         <RetryButton onRetry={onRetry} />
       )}
-      {messageId && onFork && (
+      {onFork && (
         <MessageMenu messageId={messageId} onFork={onFork} forking={forking} />
       )}
     </div>

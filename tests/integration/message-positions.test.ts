@@ -46,7 +46,7 @@ describe('addMessagesToConversation', () => {
 
   it('continues after the highest position already in the chat', async () => {
     db.message.aggregate.mockResolvedValue({ _max: { position: 8 } });
-    await addMessagesToConversation(CONVERSATION, 'And the risks?', 'Lost writes.');
+    await addMessagesToConversation(CONVERSATION, 'And the risks?', 'Lost writes.', 'openai/gpt-6.1-sol');
     expect(saved().map((row) => row.position)).toEqual([9, 10]);
   });
 
@@ -54,7 +54,7 @@ describe('addMessagesToConversation', () => {
     // Four old rows, none numbered: max position is nothing, so the row count wins.
     db.message.aggregate.mockResolvedValue({ _max: { position: null } });
     db.message.count.mockResolvedValue(4);
-    await addMessagesToConversation(CONVERSATION, 'Next question', 'An answer.');
+    await addMessagesToConversation(CONVERSATION, 'Next question', 'An answer.', 'openai/gpt-6.1-sol');
     expect(saved().map((row) => row.position)).toEqual([5, 6]);
   });
 
@@ -76,12 +76,12 @@ describe('addMessagesToConversation', () => {
         conversation: { update: async () => ({}) },
       });
     });
-    await addMessagesToConversation(CONVERSATION, 'Q', 'A');
+    await addMessagesToConversation(CONVERSATION, 'Q', 'A', 'openai/gpt-6.1-sol');
     expect(order).toEqual(['transaction', 'read', 'insert']);
   });
 
   it('bumps the chat activity to the last saved message', async () => {
-    await addMessagesToConversation(CONVERSATION, 'Q', 'A');
+    await addMessagesToConversation(CONVERSATION, 'Q', 'A', 'openai/gpt-6.1-sol');
     expect(db.conversation.update).toHaveBeenCalledWith({
       where: { id: CONVERSATION },
       data: { updatedAt: expect.any(Date) },

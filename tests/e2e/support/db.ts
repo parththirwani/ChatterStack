@@ -39,8 +39,8 @@ export function seedConversation({ id, title, updated, pinned, messages = [] }: 
   sql(`INSERT INTO conversations (id, title, "userId", "pinnedAt", "createdAt", "updatedAt")
        VALUES (${literal(id)}, ${literal(title)}, ${literal(E2E_USER_ID)}, ${pinned === undefined ? 'NULL' : at(pinned)}, ${at(updated)}, ${at(updated)})`);
   messages.forEach((message, index) => {
-    sql(`INSERT INTO messages (id, "conversationId", content, role, "modelId", "createdAt", "updatedAt")
-         VALUES (gen_random_uuid(), ${literal(id)}, ${literal(message.content)}, ${literal(message.role)}, ${literal(message.modelId ?? null)},
+    sql(`INSERT INTO messages (id, "conversationId", content, role, "modelId", position, "createdAt", "updatedAt")
+         VALUES (gen_random_uuid(), ${literal(id)}, ${literal(message.content)}, ${literal(message.role)}, ${literal(message.modelId ?? null)}, ${index + 1},
                  ${at(updated)} + interval '${index} seconds', now())`);
   });
 }
@@ -50,4 +50,31 @@ export function conversationRow(id: string): { title: string | null; pinned: boo
   if (!out) return null;
   const [title, pinned] = out.split('|');
   return { title: title || null, pinned: pinned === 't' };
+}
+
+/** How many messages a chat has saved. */
+export function messageCount(conversationId: string): number {
+  return Number(sql(`SELECT count(*) FROM messages WHERE "conversationId" = ${literal(conversationId)}`));
+}
+
+/** The chat's saved rows, in the order the app reads them. */
+export function savedMessages(conversationId: string): Array<{ id: string; role: string; content: string; position: number }> {
+  const out = sql(`SELECT id, role, content, position FROM messages WHERE "conversationId" = ${literal(conversationId)}`
+    + ` ORDER BY position NULLS FIRST, "createdAt", id`);
+  if (!out) return [];
+  return out.split('\n').map((line) => {
+    const [id, role, content, position] = line.split('|');
+    return { id, role, content, position: Number(position) };
+  });
+}
+
+/** Chats forked from this one, newest first, with the message each was cut at. */
+export function forksOf(conversationId: string): Array<{ id: string; title: string | null; forkedFromMessageId: string }> {
+  const out = sql(`SELECT id, coalesce(title, ''), "forkedFromMessageId" FROM conversations WHERE "parentConversationId" = ${literal(conversationId)}`
+    + ` ORDER BY "createdAt" DESC`);
+  if (!out) return [];
+  return out.split('\n').map((line) => {
+    const [id, title, forkedFromMessageId] = line.split('|');
+    return { id, title: title || null, forkedFromMessageId };
+  });
 }

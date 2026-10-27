@@ -14,7 +14,6 @@ import type { Turn } from '../navigation/turns';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
 import { showConversation } from '@/src/lib/navigation';
-import { isSavedMessageId } from '@/src/lib/client/message-id';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import type { QueuedMessage } from '@/src/store/slices/chat/chatSlice';
@@ -191,20 +190,18 @@ const MessageList = memo(function MessageList({
       {messages.map((msg, index) => {
         const isLastMessage = index === messages.length - 1;
         const key = msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
-        // Only a row the database saved can be a fork point, so an unsent or
-        // locally-added message gets no menu.
-        const savedId = isSavedMessageId(msg.id) ? msg.id : undefined;
+        // The menu itself stays hidden unless the row is one the database saved.
         const forking = !!msg.id && msg.id === forkingMessageId;
 
         if (msg.role === 'user') {
           // Each question is an anchor the left rail jumps between.
           return (
-            <div key={key} data-turn-anchor={index}>
+            <div key={key} data-turn-anchor={index} data-message-id={msg.id}>
               <UserMessage
                 content={msg.content}
                 attachments={msg.attachments}
                 skills={msg.skills}
-                messageId={savedId}
+                messageId={msg.id}
                 onFork={onFork}
                 forking={forking}
               />
@@ -224,7 +221,7 @@ const MessageList = memo(function MessageList({
             reasoningDurationMs={msg.reasoningDurationMs}
             analytics={msg.analytics}
             onRetry={isLastMessage && !loading ? onRetry : undefined}
-            messageId={savedId}
+            messageId={msg.id}
             onFork={onFork}
             forking={forking}
             council={msg.council}

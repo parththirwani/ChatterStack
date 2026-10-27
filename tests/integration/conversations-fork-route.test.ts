@@ -80,7 +80,7 @@ const skillTable = table('skill');
 
 const messageTable = {
   ...table('message', () => ({ modelId: null, attachments: null, skills: null })),
-  findMany: vi.fn(async ({ where }: { where?: Record<string, unknown> } = {}) =>
+  findMany: vi.fn(async ({ where }: { where?: Record<string, unknown>; orderBy?: unknown } = {}) =>
     inOrder([...tables.message.values()].filter((row) => matches(row, where)).map((row) => ({ ...row })))),
   createMany: vi.fn(async ({ data }: { data: Array<Record<string, unknown>> }) => {
     const list = Array.isArray(data) ? data : [data];
@@ -93,33 +93,28 @@ const messageTable = {
     }
     return { count: list.length };
   }),
-  aggregate: vi.fn(async ({ _max }: { _max: { position: true } }) => ({
+  aggregate: vi.fn(async () => ({
     _max: { position: Math.max(0, ...inOrder([...tables.message.values()]).map((row) => (row.position as number | null) ?? 0)) },
   })),
 };
 
-// The transactional client is the same fake; it is filled in below, once `db` exists.
-let transactionClient: unknown;
+// The tables a transaction callback gets to work with.
+const client = { conversation: conversationTable, message: messageTable, document: documentTable, skill: skillTable };
 
 const db = {
-  conversation: conversationTable,
-  message: messageTable,
-  document: documentTable,
-  skill: skillTable,
-  // Either shape Prisma takes: a list of operations, or a callback with the
-  // transactional client. A callback that throws rolls the tables back.
-  $transaction: vi.fn(async (work: (tx: unknown) => unknown) => {
+  ...client,
+  // Prisma's $transaction takes either a list of operations or a callback with
+  // the transactional client. A callback that throws rolls the tables back.
+  $transaction: vi.fn(async (work: (tx: typeof client) => unknown) => {
     const state = snapshot();
     try {
-      return await work(transactionClient);
+      return await work(client);
     } catch (error) {
       restore(state);
       throw error;
     }
   }),
 };
-
-transactionClient = db;
 
 const snapshot = () => Object.fromEntries(Object.entries(tables).map(([name, rows]) => [name, [...rows.values()].map((row) => ({ ...row }))]));
 function restore(state: Record<string, Row[]>) {
@@ -181,9 +176,9 @@ function seedChat() {
   exchange.forEach((message, index) => {
     tables.message.set(mid(index + 1), {
       id: mid(index + 1), conversationId: CHAT, position: index + 1, modelId: null,
-      attachments: null, skills: null, content: message.content, role: message.role,
-      createdAt: at(60 - index), updatedAt: at(60 - index),
+      attachments: null, skills: null,
       ...message,
+      createdAt: at(60 - index), updatedAt: at(60 - index),
     } as Row);
   });
   tables.conversation.set(OTHER_USER_CHAT, { id: OTHER_USER_CHAT, userId: 'user-2', title: 'Not yours', pinnedAt: null, scheduledTaskId: null, createdAt: at(90), updatedAt: at(90) });
@@ -288,7 +283,8 @@ describe('POST /api/conversations/[id]/fork', () => {
       where: { id: CHAT, userId: 'user-1', scheduledTaskId: null },
     }));
     expect(db.$transaction).toHaveBeenCalledTimes(1);
-    expect(db.message.findMany.mock.calls[0][0].orderBy).toEqual([
+    const sourceQuery = db.message.findMany.mock.calls[0]?.[0] as { orderBy?: unknown } | undefined;
+    expect(sourceQuery?.orderBy).toEqual([
       { position: { sort: 'asc', nulls: 'first' } },
       { createdAt: 'asc' },
       { id: 'asc' },

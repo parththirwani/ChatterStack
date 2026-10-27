@@ -48,7 +48,7 @@ const UserMessage: React.FC<UserMessageProps> = ({ content, attachments = [], sk
                   : <React.Fragment key={index}>{part.text}</React.Fragment>) : content}
               </p>}
             </div>
-            {messageId && onFork && (
+            {onFork && (
               <div className="mt-1 flex justify-end">
                 <MessageMenu messageId={messageId} onFork={onFork} forking={forking} />
               </div>
