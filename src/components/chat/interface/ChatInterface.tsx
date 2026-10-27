@@ -168,12 +168,15 @@ interface MessageListProps {
   messages: Message[];
   loading: boolean;
   councilProgress: CouncilProgress[];
+  /** Regenerates the last answer; not offered while one is still streaming. */
+  onRetry?: () => void;
 }
 
 const MessageList = memo(function MessageList({
   messages,
   loading,
   councilProgress,
+  onRetry,
 }: MessageListProps) {
   return (
     <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
@@ -200,6 +203,8 @@ const MessageList = memo(function MessageList({
             reasoning={msg.reasoning}
             reasoningStartedAt={msg.reasoningStartedAt}
             reasoningDurationMs={msg.reasoningDurationMs}
+            analytics={msg.analytics}
+            onRetry={isLastMessage && !loading ? onRetry : undefined}
             council={msg.council}
             councilProgress={isLastMessage ? councilProgress : undefined}
           />
@@ -548,6 +553,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     councilProgress,
     queue,
     sendMessage,
+    retryLastReply,
     queueMessage,
     steerQueuedMessage,
     startEditingQueued,
@@ -639,6 +645,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     setShowJumpToLatest(false);
   }, []);
 
+  // The question goes out again and its reply replaces the one on screen.
+  const handleRetry = useCallback(() => {
+    handleSendStart();
+    retryLastReply().catch((error) => console.error('Failed to retry message:', error));
+  }, [handleSendStart, retryLastReply]);
+
   const handleJumpToLatest = useCallback(() => {
     autoScrollEnabledRef.current = true;
     setShowJumpToLatest(false);
@@ -700,6 +712,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   messages={activeMessages}
                   loading={loading}
                   councilProgress={councilProgress}
+                  onRetry={handleRetry}
                 />
               )}
             </div>

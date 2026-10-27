@@ -4,10 +4,11 @@ import MarkdownContent from './MarkdownContent';
 import { PendingIndicator, ThinkingBlock } from './ThinkingBlock';
 import CouncilProgressIndicator from '@/src/components/council/progress/ProgressIndicator';
 import { CouncilSummary } from '@/src/components/council/summary/CouncilSummary';
-import type { CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
+import type { CompletionAnalytics, CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
 
 import Image from 'next/image';
 import MessageActions from '../../actions/MessageActions';
+import MessageAnalytics from '../../analytics/MessageAnalytics';
 import { getModelMeta } from '@/src/lib/models';
 
 interface AIMessageProps {
@@ -21,6 +22,10 @@ interface AIMessageProps {
   reasoning?: string;
   reasoningStartedAt?: number;
   reasoningDurationMs?: number;
+  /** Tokens and timing of this answer, once the server has reported them. */
+  analytics?: CompletionAnalytics;
+  /** Set on the reply that can be regenerated (the last one). */
+  onRetry?: () => void;
   council?: CouncilDetails;
   councilProgress?: CouncilProgress[];
 }
@@ -36,6 +41,8 @@ const AIMessage: React.FC<AIMessageProps> = ({
   reasoning,
   reasoningStartedAt,
   reasoningDurationMs,
+  analytics,
+  onRetry,
   council,
   councilProgress = [],
 }) => {
@@ -81,13 +88,15 @@ const AIMessage: React.FC<AIMessageProps> = ({
 
             {/* Actions - Responsive positioning */}
             {!loading && content && (
-              <div className="mt-1.5">
+              <div className="mt-1.5 flex items-center gap-1">
                 <MessageActions
                   content={content}
                   filename={filename}
                   showCopy={showCopy}
                   showDownload={showDownload}
+                  onRetry={onRetry}
                 />
+                {analytics && <MessageAnalytics analytics={analytics} />}
               </div>
             )}
           </div>
@@ -106,6 +115,8 @@ export default memo(AIMessage, (prev, next) => {
     prev.isLastMessage === next.isLastMessage &&
     prev.reasoning === next.reasoning &&
     prev.reasoningDurationMs === next.reasoningDurationMs &&
+    prev.analytics === next.analytics &&
+    prev.onRetry === next.onRetry &&
     prev.council === next.council &&
     prev.councilProgress === next.councilProgress
   );

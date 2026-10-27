@@ -1,6 +1,7 @@
 import { Conversation, User } from "../types";
 import type {
   ChatRequest,
+  CompletionAnalytics,
   CouncilAnswer,
   CouncilProgress,
   CouncilRanking,
@@ -19,6 +20,8 @@ export interface ChatStreamHandlers {
   onProgress?: (progress: CouncilProgress) => void;
   onCouncilAnswer?: (answer: CouncilAnswer) => void;
   onCouncilRankings?: (rankings: CouncilRanking[]) => void;
+  /** Tokens and timing of the finished completion, sent just before done. */
+  onAnalytics?: (analytics: CompletionAnalytics) => void;
 }
 
 interface UserProfileResponse {
@@ -193,6 +196,9 @@ export class ApiService {
       }
       if (parsed.councilRankings) {
         handlers.onCouncilRankings?.(parsed.councilRankings);
+      }
+      if (parsed.analytics) {
+        handlers.onAnalytics?.(parsed.analytics);
       }
       if (parsed.reasoning) {
         handlers.onReasoning?.(parsed.reasoning);

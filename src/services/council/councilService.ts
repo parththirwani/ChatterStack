@@ -16,7 +16,7 @@ import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/sr
 import { streamCompletion } from '@/src/lib/api/chat/openrouter';
 import { captureError } from '@/src/lib/observability/capture';
 import type { StreamTrace } from '@/src/lib/api/chat/openrouter';
-import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
+import type { CouncilAnswer, CouncilRanking, ModelTiming } from '@/src/types/chat.types';
 import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 import type { ParsedSkill } from '@/src/lib/skills/skill-file';
 
@@ -67,6 +67,8 @@ export interface CouncilCallbacks {
   onReasoning?: (chunk: string) => void;
   onAnswer?: (answer: CouncilAnswer) => void;
   onRankings?: (rankings: CouncilRanking[]) => void;
+  /** Reports how long each model call took, as soon as it finishes. */
+  onTiming?: (timing: ModelTiming) => void;
 }
 
 // Members start a second apart so a council doesn't burst the provider's rate limit.
@@ -91,7 +93,7 @@ async function stage1_collect_responses(
   members: readonly string[],
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
-  { onProgress, onAnswer }: CouncilCallbacks,
+  { onProgress, onAnswer, onTiming }: CouncilCallbacks,
   skills: readonly ParsedSkill[],
   trace: CouncilOptions['trace']
 ): Promise<Stage1Result[]> {
@@ -113,12 +115,14 @@ async function stage1_collect_responses(
         { role: 'user', content: attachmentContent.length ? [{ type: 'text' as const, text: userQuery || 'Please examine the attached file(s).' }, ...attachmentContent] : userQuery },
       ];
 
+      const answerStartedAt = Date.now();
       const response = await streamCompletion(messages, model, {
         thinkingLevel,
         signal,
         trace: trace && { ...trace, span: 'council-member-answer', thinkingLevel, messageCount: messages.length },
       });
       if (signal?.aborted) return null;
+      onTiming?.({ model, stage: 'stage1', durationMs: Date.now() - answerStartedAt });
       if (!response.trim()) throw new Error('Empty response');
 
       onProgress?.('stage1', model, 100);
@@ -174,7 +178,7 @@ async function stage2_collect_rankings(
   stage1Results: Stage1Result[],
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
-  onProgress: ((stage: string, model: string, progress: number) => void) | undefined,
+  { onProgress, onTiming }: CouncilCallbacks,
   trace: CouncilOptions['trace']
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
 
@@ -201,12 +205,14 @@ async function stage2_collect_rankings(
       try {
         onProgress?.('stage2', model, 0);
         const rankingMessages = [{ role: 'user', content: rankingPrompt }];
+        const rankingStartedAt = Date.now();
         const rankingText = await streamCompletion(rankingMessages, model, {
           thinkingLevel,
           signal,
           trace: trace && { ...trace, span: 'council-ranking', thinkingLevel, messageCount: rankingMessages.length },
         });
         if (signal?.aborted) return null;
+        onTiming?.({ model, stage: 'stage2', durationMs: Date.now() - rankingStartedAt });
         onProgress?.('stage2', model, 100);
         return { model, rankingText, parsedRanking: parse_ranking_from_text(rankingText) };
       } catch (error) {
@@ -264,7 +270,7 @@ async function stage3_synthesize_final(
   chair: string,
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
-  { onProgress, onChunk, onReasoning }: CouncilCallbacks,
+  { onProgress, onChunk, onReasoning, onTiming }: CouncilCallbacks,
   skills: readonly ParsedSkill[],
   trace: CouncilOptions['trace']
 ): Promise<string> {
@@ -287,6 +293,7 @@ async function stage3_synthesize_final(
 
   try {
     onProgress?.('stage3', chair, 0);
+    const chairStartedAt = Date.now();
     const finalResponse = await streamCompletion(chairmanMessages, chair, {
       thinkingLevel,
       onChunk,
@@ -294,6 +301,7 @@ async function stage3_synthesize_final(
       signal,
       trace: trace && { ...trace, span: 'council-chair', thinkingLevel, messageCount: chairmanMessages.length },
     });
+    onTiming?.({ model: chair, stage: 'stage3', durationMs: Date.now() - chairStartedAt });
     onProgress?.('stage3', chair, 100);
     return finalResponse;
   } catch (error) {
@@ -315,7 +323,7 @@ export async function runCouncilProcess(
   callbacks: CouncilCallbacks = {},
   attachmentContent: OpenRouterPart[] = []
 ): Promise<string> {
-  const { onProgress, onRankings } = callbacks;
+  const { onRankings } = callbacks;
 
   const stage1Results = await stage1_collect_responses(
     userQuery,
@@ -338,7 +346,7 @@ export async function runCouncilProcess(
     stage1Results,
     thinkingLevel,
     signal,
-    onProgress,
+    callbacks,
     trace
   );
   if (signal?.aborted) return '';

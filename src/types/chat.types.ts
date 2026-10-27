@@ -12,9 +12,12 @@ export interface Message {
   createdAt?: string;
   updatedAt?: string;
   modelId?: string; // Track which LLM generated the response
+  /** Thinking level the reply was generated with, so Retry can replay it. */
+  thinkingLevel?: ThinkingLevel;
   reasoning?: string;
   reasoningStartedAt?: number;
   reasoningDurationMs?: number;
+  analytics?: CompletionAnalytics;
   council?: CouncilDetails;
   attachments?: AttachmentMeta[];
   /** Skills tagged on a user message. */
@@ -63,6 +66,25 @@ export interface CouncilProgress {
   progress: number;
 }
 
+export type CouncilStage = 'stage1' | 'stage2' | 'stage3';
+
+/** How long one model call took (council mode reports every member). */
+export interface ModelTiming {
+  model: string;
+  stage: CouncilStage;
+  durationMs: number;
+}
+
+/** Reported by the server once a completion finishes; live-session only. */
+export interface CompletionAnalytics {
+  durationMs: number;
+  inputTokens: number;
+  outputTokens: number;
+  totalTokens: number;
+  /** Council mode: per-model timings behind `durationMs`. */
+  timings?: ModelTiming[];
+}
+
 export interface ChatSettings {
   temperature?: number;
   maxTokens?: number;
@@ -87,6 +109,8 @@ export interface ChatRequest {
   council?: { members: string[]; chair: string };
   /** conversationId is a client-generated id for a chat that doesn't exist yet. */
   newConversation?: boolean;
+  /** Regenerates the last answer: the saved question/answer pair is replaced. */
+  retry?: boolean;
 }
 
 export interface ChatInterfaceProps {
@@ -129,6 +153,7 @@ export const ChatRequestSchema = z.object({
   ),
   thinkingLevel: z.enum(THINKING_LEVELS).optional(),
   newConversation: z.boolean().optional(),
+  retry: z.boolean().optional(),
   council: z
     .object({
       members: z
@@ -174,4 +199,6 @@ export interface SSEData {
   conversationCreated?: string;
   /** Generated title for a new chat. */
   title?: string;
+  /** Tokens and timing for the completion that just finished. */
+  analytics?: CompletionAnalytics;
 }

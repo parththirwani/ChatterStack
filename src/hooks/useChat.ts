@@ -3,10 +3,11 @@ import { ApiService } from '../services/api';
 import { showConversation } from '../lib/navigation';
 import { cacheInvalidators } from '../services/apiOptimizer';
 import { useModelSelection, type SendSettings } from '../context/ModelSelectionContext';
-import type { DocumentAttachment, CouncilProgress, Message } from '@/src/types/chat.types';
+import type { CompletionAnalytics, CouncilProgress, DocumentAttachment, Message } from '@/src/types/chat.types';
 import type { ChatState, QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
 import { skillTagsIn } from '@/src/lib/client/skills';
+import { COUNCIL_MIN_MEMBERS, isChatModelId } from '@/src/config/models';
 import type { SkillTag } from '@/src/types/skill.types';
 
 const EMPTY_QUEUE: QueuedMessage[] = [];
@@ -42,7 +43,8 @@ async function sendToConversation(
   message: string,
   selection: SendSettings,
   onConversationCreated?: (conversationId: string) => void,
-  attachments: DocumentAttachment[] = []
+  attachments: DocumentAttachment[] = [],
+  { retry = false }: { retry?: boolean } = {}
 ) {
   // Read the user fresh from the store: the render-time closure can be
   // stale right after an OAuth redirect.
@@ -73,6 +75,8 @@ async function sendToConversation(
 
   const isNewConversation = conversationKey === 'new';
   const isCouncilMode = activeModelId === 'council';
+  // Only a saved chat has an answer to replace.
+  const isRetry = retry && !isNewConversation;
   // A new chat gets its real id now, so it can appear in the sidebar and
   // keep streaming into its own slot if the user starts another chat.
   const key = isNewConversation ? crypto.randomUUID() : conversationKey;
@@ -97,6 +101,8 @@ async function sendToConversation(
     role: 'assistant',
     content: '',
     modelId: activeModelId,
+    // Kept so Retry can resend the question with the same settings.
+    thinkingLevel,
     createdAt: now,
     council: isCouncilMode
       ? { members: [...councilMembers], chair: councilChair, answers: [], rankings: [] }
@@ -133,6 +139,7 @@ async function sendToConversation(
   let reasoning = '';
   let reasoningStartedAt: number | undefined;
   let reasoningDurationMs: number | undefined;
+  let analytics: CompletionAnalytics | undefined;
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let lastFlushAt = 0;
   let dirty = false;
@@ -223,6 +230,7 @@ async function sendToConversation(
         council: isCouncilMode
           ? { members: councilMembers, chair: councilChair }
           : undefined,
+        retry: isRetry || undefined,
       },
       {
         onChunk: (chunk: string) => {
@@ -251,6 +259,9 @@ async function sendToConversation(
           patchStreamingMessage((msg) => ({
             council: msg.council && { ...msg.council, rankings },
           })),
+        onAnalytics: (completion) => {
+          analytics = completion;
+        },
       },
       abortController.signal
     );
@@ -291,6 +302,8 @@ async function sendToConversation(
       flushTimer = null;
     }
     flushNow();
+    // The reply is final now: attach the tokens it used and how long it took.
+    if (analytics) patchStreamingMessage(() => ({ analytics }));
 
     const fresh = useAppStore.getState();
     if (fresh.chatState[key]) {
@@ -312,6 +325,32 @@ async function sendToConversation(
       sendNextQueued(key);
     }
   }
+}
+
+/** The files of a saved question that can be sent again. */
+function attachmentsToResend(message: Message): DocumentAttachment[] {
+  return (message.attachments ?? []).filter((file): file is DocumentAttachment => Boolean(file.documentId));
+}
+
+/** Replays a reply with the model and thinking level it was generated with. */
+function settingsOf(reply: Message, current: SendSettings): SendSettings {
+  const thinkingLevel = reply.thinkingLevel ?? current.thinkingLevel;
+  if (reply.modelId === 'council') {
+    // The council a loaded chat was answered with isn't saved with it, so a
+    // stale selection falls back to what is configured now.
+    const members = (reply.council?.members ?? []).filter(isChatModelId);
+    const chair = reply.council?.chair;
+    return {
+      activeModelId: 'council',
+      thinkingLevel,
+      councilMembers: members.length >= COUNCIL_MIN_MEMBERS ? members : current.councilMembers,
+      councilChair: chair && isChatModelId(chair) && members.includes(chair) ? chair : current.councilChair,
+    };
+  }
+  const model = reply.modelId;
+  return model && isChatModelId(model)
+    ? { ...current, activeModelId: model, thinkingLevel }
+    : { ...current, thinkingLevel };
 }
 
 /** Signed in, and no reply already streaming in this conversation. */
@@ -367,6 +406,39 @@ export const useChat = (conversationKey: string) => {
     ) => sendToConversation(conversationKey, message, modelSelectionRef.current, onConversationCreated, attachments),
     [conversationKey]
   );
+
+  /**
+   * Regenerate the last answer. The question is sent again and its new reply
+   * takes the old one's place, on screen and in the saved chat.
+   */
+  const retryLastReply = useCallback(async () => {
+    const store = useAppStore.getState();
+    const chat = store.chatState[conversationKey];
+    if (!chat || chat.loading || chat.messages.at(-1)?.role !== 'assistant') return;
+
+    const replyIndex = chat.messages.length - 1;
+    let questionIndex = -1;
+    for (let index = replyIndex - 1; index >= 0; index -= 1) {
+      if (chat.messages[index].role === 'user') {
+        questionIndex = index;
+        break;
+      }
+    }
+    const question = chat.messages[questionIndex];
+    if (!question) return;
+
+    const settings = settingsOf(chat.messages[replyIndex], modelSelectionRef.current);
+    // The pair being replaced disappears first; the resend puts the question back.
+    store.setChatState(conversationKey, { messages: chat.messages.slice(0, questionIndex), error: undefined });
+    await sendToConversation(
+      conversationKey,
+      question.content,
+      settings,
+      undefined,
+      attachmentsToResend(question),
+      { retry: true }
+    );
+  }, [conversationKey]);
 
   /**
    * Hold a message until the current reply finishes. It keeps the model and
@@ -453,6 +525,7 @@ export const useChat = (conversationKey: string) => {
     councilProgress: chatState.councilProgress ?? [],
     queue,
     sendMessage,
+    retryLastReply,
     queuePaused,
     queueMessage,
     steerQueuedMessage,

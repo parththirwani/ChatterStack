@@ -3,7 +3,7 @@ import { auth } from '@/src/lib/auth';
 import { redisStore } from '@/src/lib/redis';
 import crypto from 'crypto';
 import { runCouncilProcess } from '@/src/services/council/councilService';
-import { createEmptyConversation, addMessagesToConversation } from '@/src/lib/api/chat/conversation-persistance';
+import { createEmptyConversation, addMessagesToConversation, deleteLastExchange } from '@/src/lib/api/chat/conversation-persistance';
 import { generateConversationTitle, saveGeneratedTitle } from '@/src/services/title/titleService';
 import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
@@ -14,13 +14,14 @@ import { prisma } from '@/src/lib/prisma';
 import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
 import { recordRequestSpan, traceStep } from '@/src/lib/observability/otlp-traces';
-import { AnalyticsEvents, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
+import { AnalyticsEvents, chatMessageRetriedProps, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
 import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { ChatRequestSchema } from '@/src/types/chat.types';
 import { COUNCIL_MODEL_IDS, DEFAULT_THINKING_LEVEL, TITLE_MODEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
+import type { CompletionAnalytics, ModelTiming } from '@/src/types/chat.types';
 import { markDocumentsUsed, resolveDocuments } from '@/src/lib/server/documents';
 import { resolveSkills, SkillError, skillTags } from '@/src/lib/server/skills';
 import { formatActiveSkills } from '@/src/services/prompt/promptService';
@@ -43,27 +44,37 @@ const isUniqueViolation = (error: unknown) =>
   typeof error === 'object' && error !== null && (error as { code?: string }).code === 'P2002';
 
 /** Cached history, falling back to the database (and refilling the cache in one write). */
-async function loadHistory(conversationId: string): Promise<RedisMessage[]> {
+async function loadHistory(conversationId: string, dropLastExchange = false): Promise<RedisMessage[]> {
   const cached = await redisStore.get(conversationId);
-  if (cached.length > 0) return cached;
+  const history = cached.length > 0 ? cached : await readMessages(conversationId);
 
+  if (cached.length === 0 && history.length > 0 && history.every((message) => !message.attachments?.length)) {
+    // Binary payloads can be several MB each. Keep those conversations in Postgres,
+    // rather than copying the entire history into Redis on every turn.
+    await redisStore.set(conversationId, history);
+  }
+
+  if (!dropLastExchange) return history;
+  // A retry replaces the last exchange, so the model must not see it twice:
+  // drop its answer (if there was one) and the question it answered.
+  const trimmed = history.slice();
+  if (trimmed.at(-1)?.role === 'assistant') trimmed.pop();
+  if (trimmed.at(-1)?.role === 'user') trimmed.pop();
+  return trimmed;
+}
+
+async function readMessages(conversationId: string): Promise<RedisMessage[]> {
   const rows = await prisma.message.findMany({
     where: { conversationId },
     orderBy: { createdAt: 'asc' },
     select: { role: true, content: true, modelId: true, attachments: true },
   });
-  const history: RedisMessage[] = rows.map((m) => ({
+  return rows.map((m) => ({
     role: m.role === 'user' ? 'user' : 'assistant',
     content: m.content,
     modelId: m.modelId ?? undefined,
     attachments: Array.isArray(m.attachments) ? m.attachments as unknown as Array<ChatAttachment | DocumentAttachment> : undefined,
   }));
-  // Binary payloads can be several MB each. Keep those conversations in Postgres,
-  // rather than copying the entire history into Redis on every turn.
-  if (history.length > 0 && history.every((message) => !message.attachments?.length)) {
-    await redisStore.set(conversationId, history);
-  }
-  return history;
 }
 
 async function historyAttachmentParts(userId: string, files: Array<ChatAttachment | DocumentAttachment>) {
@@ -135,6 +146,9 @@ export async function POST(request: NextRequest) {
     const isCouncilMode = selectedModel === 'council';
     const thinkingLevel = data.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
     const attachments = data.attachments ?? [];
+    // Retry regenerates the last answer, so the exchange it replaces is dropped
+    // from the history and from storage instead of piling up behind it.
+    const isRetry = data.retry === true && !isNewConversation;
     traced.model = selectedModel;
     traced.council = isCouncilMode;
     traced.conversationId = conversationId;
@@ -169,7 +183,7 @@ export async function POST(request: NextRequest) {
     // The limit is estimated from the full prompt the model will see:
     // cached history + the new message + current attachment text. The
     // reservation is reconciled with the actual usage in `respond` below.
-    const historyForEstimate = isNewConversation ? [] : await loadHistory(conversationId);
+    const historyForEstimate = isNewConversation ? [] : await loadHistory(conversationId, isRetry);
     const estimateText = [
       ...historyForEstimate.map((m) => m.content),
       data.message,
@@ -195,6 +209,13 @@ export async function POST(request: NextRequest) {
       attachmentCount: attachments.length,
       messageLength: data.message?.length ?? 0,
     }));
+    if (isRetry) {
+      captureServerEvent(userId, AnalyticsEvents.ChatMessageRetried, chatMessageRetriedProps({
+        modelId: selectedModel,
+        council: isCouncilMode,
+        thinkingLevel,
+      }));
+    }
 
     // Claim a new chat only once the budget is reserved; a rejected claim
     // releases the reservation again (0 tokens) so it is not wasted.
@@ -237,7 +258,7 @@ export async function POST(request: NextRequest) {
           .catch((err) => captureError(err, { route: '/api/chat', model: TITLE_MODEL, council: isCouncilMode, stage: 'title', userId }));
       }
 
-      const conversationHistory = isNewConversation ? [] : await loadHistory(conversationId);
+      const conversationHistory = isNewConversation ? [] : await loadHistory(conversationId, isRetry);
 
       const ragContext = await retrieveRAGContext(
         userId,
@@ -266,6 +287,16 @@ export async function POST(request: NextRequest) {
       // text written so far, which is still saved and counted below.
       let fullContent = '';
       const modelStartedAt = Date.now();
+      // Council mode measures every member call, so the total can be broken
+      // down per model in the UI.
+      const timings: ModelTiming[] = [];
+      const promptText = messagesForAI
+        .map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n'))
+        .join('\n');
+      let measured: { input: number; output: number } | undefined;
+      // Counted once and shared by the analytics event and the rate-limit record.
+      const measureTokens = () =>
+        measured ??= { input: countTokens(skillText) + countTokens(promptText), output: countTokens(fullContent) };
       let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
@@ -287,6 +318,7 @@ export async function POST(request: NextRequest) {
                 onReasoning: (reasoning) => send({ reasoning }),
                 onAnswer: (councilAnswer) => send({ councilAnswer }),
                 onRankings: (councilRankings) => send({ councilRankings }),
+                onTiming: (timing) => timings.push(timing),
               },
               currentParts
             )
@@ -309,6 +341,21 @@ export async function POST(request: NextRequest) {
                 ragUsed: Boolean(ragContext),
               },
             });
+        // Tokens and timing of the reply that just finished, for the client to
+        // show under it. A counting failure must never lose the answer.
+        try {
+          const { input, output } = measureTokens();
+          const analytics: CompletionAnalytics = {
+            durationMs: Date.now() - modelStartedAt,
+            inputTokens: input,
+            outputTokens: output,
+            totalTokens: input + output,
+            ...(isCouncilMode && timings.length > 0 ? { timings } : {}),
+          };
+          send({ analytics });
+        } catch (error) {
+          captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'analytics', userId });
+        }
         send({ done: true });
       } catch (error) {
         outcome = signal.aborted ? 'stopped' : 'error';
@@ -339,8 +386,8 @@ export async function POST(request: NextRequest) {
       // still sent, and skipping this would let Stop bypass the rate limit.
       try {
         usageRecorded = true;
-        const inputTokens = countTokens(skillText) + countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
-        await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
+        const { input, output } = measureTokens();
+        await recordLLMTokens(userId, input + output, isCouncilMode);
       } catch (error) {
         captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-record', userId });
       }
@@ -351,12 +398,19 @@ export async function POST(request: NextRequest) {
       ];
       try {
         await traceStep(traceId, 'db.persist', async () => {
-          if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
-            await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
-          } else {
-            await redisStore.delete(conversationId);
+          // A retry that produced nothing (failed, or stopped before the first
+          // word) leaves the saved exchange untouched: there is nothing to put
+          // in its place, so removing it would simply lose the answer.
+          if (!isRetry || fullContent) {
+            if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
+              await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+            } else {
+              await redisStore.delete(conversationId);
+            }
+            // The retried answer takes the place of the one it replaces.
+            if (isRetry) await deleteLastExchange(conversationId);
+            await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           }
-          await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           await markDocumentsUsed(userId, attachments);
         });
       } catch (error) {
