@@ -1,4 +1,5 @@
 import { prisma } from '@/src/lib/prisma';
+import { MESSAGE_ORDER_DESC } from '@/src/lib/server/message-order';
 import type { UserProfile } from './storage';
 import { saveUserProfile, getOrCreateProfile } from './storage';
 
@@ -11,7 +12,7 @@ export async function inferUserProfile(userId: string): Promise<UserProfile> {
     where: { userId },
     include: {
       messages: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: MESSAGE_ORDER_DESC,
         take: 50, // Last 50 messages
       },
     },

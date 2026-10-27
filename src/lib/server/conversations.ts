@@ -1,4 +1,5 @@
 import { prisma } from '@/src/lib/prisma';
+import { MESSAGE_ORDER } from '@/src/lib/server/message-order';
 import type { Conversation } from '@/src/types/conversation.types';
 import type { Message } from '@/src/types/chat.types';
 import type { AttachmentMeta } from '@/src/types/chat.types';
@@ -17,6 +18,7 @@ interface MessageRow {
   modelId: string | null;
   attachments?: unknown;
   skills?: unknown;
+  position?: number | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -52,6 +54,8 @@ function serializeMessage(message: MessageRow, present?: Present): Message {
     skills: Array.isArray(message.skills) && message.skills.length
       ? (message.skills as SkillTag[]).map(({ id, name }) => ({ id, name, removed: !!present && !present.skills.has(id) }))
       : undefined,
+    // Row order within the chat; absent on messages saved before positions.
+    position: message.position ?? undefined,
     createdAt: message.createdAt.toISOString(),
     updatedAt: message.updatedAt.toISOString(),
   };
@@ -83,7 +87,7 @@ export async function listConversations(
 ): Promise<Conversation[]> {
   const conversations = await prisma.conversation.findMany({
     where: recentsWhere(userId),
-    include: { messages: { orderBy: { createdAt: 'asc' }, take: 1, select: {
+    include: { messages: { orderBy: MESSAGE_ORDER, take: 1, select: {
       id: true, role: true, content: true, modelId: true, createdAt: true, updatedAt: true,
     } } },
     orderBy: [{ pinnedAt: { sort: 'desc', nulls: 'last' } }, { updatedAt: 'desc' }],
@@ -97,7 +101,7 @@ export async function listConversations(
 export async function getConversation(userId: string, conversationId: string): Promise<Conversation | null> {
   const conversation = await prisma.conversation.findFirst({
     where: { id: conversationId, userId },
-    include: { messages: { orderBy: { createdAt: 'asc' } } },
+    include: { messages: { orderBy: MESSAGE_ORDER } },
   });
   if (!conversation) return null;
   const ids = conversation.messages.flatMap((message) =>

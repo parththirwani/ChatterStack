@@ -10,6 +10,7 @@ import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/r
 import { createSSEStream, type SSEStream } from '@/src/lib/api/chat/sse-helper';
 import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
 import { prisma } from '@/src/lib/prisma';
+import { MESSAGE_ORDER } from '@/src/lib/server/message-order';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
@@ -66,7 +67,7 @@ async function loadHistory(conversationId: string, dropLastExchange = false): Pr
 async function readMessages(conversationId: string): Promise<RedisMessage[]> {
   const rows = await prisma.message.findMany({
     where: { conversationId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: MESSAGE_ORDER,
     select: { role: true, content: true, modelId: true, attachments: true },
   });
   return rows.map((m) => ({

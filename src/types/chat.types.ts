@@ -22,6 +22,8 @@ export interface Message {
   attachments?: AttachmentMeta[];
   /** Skills tagged on a user message. */
   skills?: SkillTag[];
+  /** Row order within the saved chat; absent on unsent or legacy messages. */
+  position?: number;
 }
 
 export interface AttachmentMeta {

@@ -274,6 +274,29 @@ export class ApiService {
     cacheInvalidators.conversation(id);
   }
 
+  /**
+   * Forks a chat at one saved message. The response is the new conversation, with
+   * its own id and its copied messages, so the client never has to guess.
+   */
+  static async forkConversation(id: string, messageId: string): Promise<Conversation> {
+    const response = await fetch(`/api/conversations/${id}/fork`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: this.getAuthHeaders(),
+      body: JSON.stringify({ messageId }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      throw new Error(typeof error.error === 'string' ? error.error : `Failed to fork conversation (${response.status})`);
+    }
+
+    // Recents gained a chat, and the source's cached read is untouched.
+    cacheInvalidators.conversationList();
+    const { conversation } = (await response.json()) as { conversation: Conversation };
+    return conversation;
+  }
+
   // ============= MODELS (Optimized) =============
 
   static async getModels() {

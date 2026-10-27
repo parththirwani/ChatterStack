@@ -5,12 +5,11 @@ import type { Message } from '../../../types/chat.types';
 import type { ChatState } from '../chat/chatSlice';
 
 
-const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
-  return [...messages].sort((a, b) => {
-    const timeA = new Date(a.createdAt || 0).getTime();
-    const timeB = new Date(b.createdAt || 0).getTime();
-    return timeA - timeB;
-  });
+/** Same order the server reads in: saved position, then time. */
+const sortMessages = (messages: Message[]): Message[] => {
+  const time = (message: Message) => new Date(message.createdAt || 0).getTime();
+  // Messages with no position predate the column, so they sort first.
+  return [...messages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || time(a) - time(b));
 };
 
 /** Pinned chats first (most recently pinned on top), then most recent activity. */
@@ -191,7 +190,7 @@ export const createConversationsSlice: StateCreator<
         if (result?.conversation) {
           get().hydrateConversation({
             ...result.conversation,
-            messages: sortMessagesByCreatedAt(result.conversation.messages ?? []),
+            messages: sortMessages(result.conversation.messages ?? []),
           });
         } else {
           set((state) => ({ missingConversationIds: { ...state.missingConversationIds, [conversationId]: true } }));

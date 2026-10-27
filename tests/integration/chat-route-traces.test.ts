@@ -11,19 +11,26 @@ const auth = vi.fn();
 const OTHER_USERS_CHAT = '9f1c2d3e-0000-4000-8000-000000000000';
 const NEW_ID = '0e7ba32e-05b0-477d-8e30-2bf0a849649e';
 
+const conversationRows = {
+  create: vi.fn(async ({ data }: { data: { id: string } }) => ({ ...data, title: null })),
+  updateMany: vi.fn(async () => ({ count: 1 })),
+  update: vi.fn(async () => ({})),
+  findFirst: vi.fn(async ({ where }: { where: { id: string } }) => (where.id === OTHER_USERS_CHAT ? null : { id: where.id })),
+};
+
+const messageRows = {
+  findMany: vi.fn(async () => []),
+  createMany: vi.fn(async ({ data }: { data: unknown[] }) => ({ count: data.length })),
+  aggregate: vi.fn(async () => ({ _max: { position: null } })),
+  count: vi.fn(async () => 0),
+};
+
 const db = {
   document: { findMany: vi.fn(async () => []), updateMany: vi.fn(async () => ({ count: 1 })) },
-  conversation: {
-    create: vi.fn(async ({ data }: { data: { id: string } }) => ({ ...data, title: null })),
-    updateMany: vi.fn(async () => ({ count: 1 })),
-    update: vi.fn(async () => ({})),
-    findFirst: vi.fn(async ({ where }: { where: { id: string } }) => (where.id === OTHER_USERS_CHAT ? null : { id: where.id })),
-  },
-  message: {
-    findMany: vi.fn(async () => []),
-    createMany: vi.fn(async ({ data }: { data: unknown[] }) => ({ count: data.length })),
-  },
-  $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+  conversation: conversationRows,
+  message: messageRows,
+  $transaction: vi.fn(async (work: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
+    typeof work === 'function' ? work({ conversation: conversationRows, message: messageRows }) : Promise.all(work)),
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));

@@ -1,4 +1,5 @@
 import { prisma } from '@/src/lib/prisma';
+import { MESSAGE_ORDER_DESC, nextPosition } from '@/src/lib/server/message-order';
 import { Role } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
@@ -14,6 +15,15 @@ export async function createEmptyConversation(conversationId: string, userId: st
   return prisma.conversation.create({
     data: { id: conversationId, userId },
   });
+}
+
+/** First position that is free in this conversation, read inside its write. */
+async function firstFreePosition(tx: Prisma.TransactionClient, conversationId: string) {
+  const [highest, rows] = await Promise.all([
+    tx.message.aggregate({ where: { conversationId }, _max: { position: true } }),
+    tx.message.count({ where: { conversationId } }),
+  ]);
+  return nextPosition(highest._max.position, rows);
 }
 
 /**
@@ -38,11 +48,14 @@ export async function addMessagesToConversation(
       : []),
   ];
 
-  await prisma.$transaction([
-    prisma.message.createMany({ data: messages }),
+  // The position is read in the same transaction as the insert, so two writes
+  // can never hand the same row a position.
+  await prisma.$transaction(async (tx) => {
+    const position = await firstFreePosition(tx, conversationId);
+    await tx.message.createMany({ data: messages.map((message, index) => ({ ...message, position: position + index })) });
     // Bump activity so the chat sorts by its latest message.
-    prisma.conversation.update({ where: { id: conversationId }, data: { updatedAt: messages[messages.length - 1].createdAt } }),
-  ]);
+    await tx.conversation.update({ where: { id: conversationId }, data: { updatedAt: messages[messages.length - 1].createdAt } });
+  });
 }
 
 /**
@@ -53,15 +66,20 @@ export async function addMessagesToConversation(
 export async function deleteLastExchange(conversationId: string): Promise<number> {
   const question = await prisma.message.findFirst({
     where: { conversationId, role: Role.User },
-    orderBy: { createdAt: 'desc' },
-    select: { createdAt: true },
+    orderBy: MESSAGE_ORDER_DESC,
+    select: { position: true, createdAt: true },
   });
   if (!question) return 0;
 
-  // The exchange is the question plus anything saved after it (its answer,
-  // or nothing at all when the model failed to answer).
+  // The exchange is the question plus everything ordered after it (its answer,
+  // or nothing at all when the model failed to answer). A question saved before
+  // positions existed still falls back to its timestamp.
+  const position = question.position ?? null;
   const { count } = await prisma.message.deleteMany({
-    where: { conversationId, createdAt: { gte: question.createdAt } },
+    where: {
+      conversationId,
+      ...(position !== null ? { position: { gte: position } } : { createdAt: { gte: question.createdAt } }),
+    },
   });
   return count;
 }
