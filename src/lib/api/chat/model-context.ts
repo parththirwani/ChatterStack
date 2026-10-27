@@ -23,7 +23,6 @@ import {
 } from './compaction-config';
 import {
   commitContextSnapshot,
-  deleteContextSnapshot,
   dropSnapshotIfBoundaryMissing,
   hashContextSource,
   type ContextSnapshot,
@@ -32,7 +31,7 @@ import {
   contentTokens,
   inputBudgetFor,
   messagesTokens,
-  truncateToTokenBudget,
+  outputTokenCap,
 } from './prompt-budget';
 import { streamCompletion } from './openrouter';
 
@@ -71,6 +70,8 @@ export interface PrepareContextInput {
   council?: { members?: readonly string[]; chair?: string };
   skills: readonly ParsedSkill[];
   signal?: AbortSignal;
+  /** A retry reads a trimmed view but must not delete a valid saved snapshot until replacement succeeds. */
+  isRetry?: boolean;
   trace?: { traceId: string; userId?: string; conversationId?: string };
 }
 
@@ -220,7 +221,12 @@ export function planContextView(params: {
     previousIndex = history.findIndex((message) => message.id === previous?.throughMessageId);
     // A boundary inside the verbatim tail (or missing after a retry) cannot be
     // used: it would either drop recent turns or duplicate older ones.
-    if (previousIndex < 0 || previousIndex >= keepStart) previous = null;
+    if (
+      previousIndex < 0 ||
+      previousIndex >= keepStart ||
+      previous.schemaVersion !== COMPACTION_LIMITS.schemaVersion ||
+      previous.sourceHash !== hashContextSource(history.slice(0, previousIndex + 1))
+    ) previous = null;
   }
 
   const fallbackHistory = previous
@@ -315,28 +321,45 @@ export function summaryBlockMessage(summary: string): ContextMessage {
 function renderSummaryMessage(message: ContextMessage): string {
   const files = message.attachments?.map((file) => file.name).filter(Boolean);
   const fileLine = files?.length ? `\n[Attached files: ${files.join(', ')}]` : '';
-  const content =
-    message.content.length > 12_000 ? `${message.content.slice(0, 12_000)}\n[...truncated]` : message.content;
-  return `${message.role === 'user' ? 'User' : 'Assistant'}: ${content}${fileLine}`;
+  return `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content}${fileLine}`;
+}
+
+/** Split one oversized message without dropping its later content. */
+function splitRenderedMessage(rendered: string, maxTokens: number): string[] {
+  const pieces: string[] = [];
+  let remaining = rendered;
+  while (remaining) {
+    if (countTokens(remaining) <= maxTokens) {
+      pieces.push(remaining);
+      break;
+    }
+    let low = 1;
+    let high = remaining.length;
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2);
+      if (countTokens(remaining.slice(0, mid)) <= maxTokens) low = mid;
+      else high = mid - 1;
+    }
+    if (low < 1) throw new Error('The summarizer token budget is too small');
+    pieces.push(remaining.slice(0, low));
+    remaining = remaining.slice(low);
+  }
+  return pieces;
 }
 
 function chunkTranscript(messages: readonly ContextMessage[], maxTokens: number): string[] {
   const chunks: string[] = [];
   let current: string[] = [];
-  let tokens = 0;
 
   for (const message of messages) {
-    let rendered = renderSummaryMessage(message);
-    if (countTokens(rendered) > maxTokens) rendered = truncateToTokenBudget(rendered, maxTokens);
-    const messageTokens = countTokens(rendered);
-
-    if (current.length > 0 && tokens + messageTokens > maxTokens) {
-      chunks.push(current.join('\n\n'));
-      current = [];
-      tokens = 0;
+    for (const rendered of splitRenderedMessage(renderSummaryMessage(message), maxTokens)) {
+      const candidate = [...current, rendered].join('\n\n');
+      if (current.length > 0 && countTokens(candidate) > maxTokens) {
+        chunks.push(current.join('\n\n'));
+        current = [];
+      }
+      current.push(rendered);
     }
-    current.push(rendered);
-    tokens += messageTokens;
   }
 
   if (current.length > 0) chunks.push(current.join('\n\n'));
@@ -380,29 +403,54 @@ export function validateSummary(
   return { ok: true, tokens };
 }
 
+function summaryChunks(messages: readonly ContextMessage[], model: string): string[] {
+  const fixedPromptTokens = messagesTokens([
+    { role: 'system', content: SUMMARY_SYSTEM },
+    { role: 'user', content: buildSummaryPrompt('', '') },
+  ]);
+  const chunkBudget = inputBudgetFor(model, 'off') - fixedPromptTokens - COMPACTION_LIMITS.summaryMaxTokens - 128;
+  if (chunkBudget < 100) throw new Error('The configured summarizer has too little context');
+  return chunkTranscript(messages, chunkBudget);
+}
+
+function summaryTokenReserve(chunks: readonly string[], model: string, priorSummary = ''): number {
+  return chunks.reduce((total, chunk, index) => {
+    const baseInput = messagesTokens([
+      { role: 'system', content: SUMMARY_SYSTEM },
+      { role: 'user', content: buildSummaryPrompt('', chunk) },
+    ]);
+    const carriedSummary = index === 0
+      ? countTokens(priorSummary) + (priorSummary ? 32 : 0)
+      : COMPACTION_LIMITS.summaryMaxTokens + 32;
+    return total + baseInput + carriedSummary + outputTokenCap(model, 'off');
+  }, 0);
+}
+
 async function generateSummary(params: {
   priorSummary?: string;
-  messages: readonly ContextMessage[];
+  chunks: readonly string[];
   signal?: AbortSignal;
   trace?: PrepareContextInput['trace'];
-}): Promise<{ summary: string; usage: TokenUsage }> {
+  usage: TokenUsage;
+}): Promise<string> {
   const model = compactionModel();
-  const chunkBudget = Math.max(4000, inputBudgetFor(model, 'off') - 1200);
-  const chunks = chunkTranscript(params.messages, chunkBudget);
-  const usage: TokenUsage = { input: 0, output: 0 };
   let summary = params.priorSummary?.trim() ?? '';
 
-  for (const chunk of chunks) {
+  for (const chunk of params.chunks) {
     if (params.signal?.aborted) throw new Error('Compaction aborted');
 
     const prompt = buildSummaryPrompt(summary, chunk);
-    usage.input += countTokens(SUMMARY_SYSTEM) + countTokens(prompt);
+    const messages = [
+      { role: 'system', content: SUMMARY_SYSTEM },
+      { role: 'user', content: prompt },
+    ];
+    if (messagesTokens(messages) > inputBudgetFor(model, 'off')) {
+      throw new Error('The summarizer prompt exceeded its input budget');
+    }
+    params.usage.input += messagesTokens(messages);
 
     const output = await streamCompletion(
-      [
-        { role: 'system', content: SUMMARY_SYSTEM },
-        { role: 'user', content: prompt },
-      ],
+      messages,
       model,
       {
         thinkingLevel: 'off',
@@ -418,11 +466,14 @@ async function generateSummary(params: {
         },
       }
     );
-    usage.output += countTokens(output);
+    params.usage.output += countTokens(output);
     summary = output.trim();
+    if (countTokens(summary) > COMPACTION_LIMITS.summaryMaxTokens) {
+      throw new Error('The summarizer returned an oversized intermediate summary');
+    }
   }
 
-  return { summary, usage };
+  return summary;
 }
 
 /** Mirrors `estimatePromptTokens` for a projected input plus its likely answer. */
@@ -444,7 +495,7 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
   let snapshot: ContextSnapshot | null = null;
   if (mode === 'on') {
     try {
-      snapshot = await dropSnapshotIfBoundaryMissing(input.conversationId, historyIds);
+      snapshot = await dropSnapshotIfBoundaryMissing(input.conversationId, historyIds, !input.isRetry);
     } catch (error) {
       captureError(error, { route: '/api/chat', stage: 'compaction-load', userId: input.userId });
     }
@@ -566,10 +617,23 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
   }
 
   // Reserve the projected answer and the summarizer before paying for either.
-  const summarizerReserve =
-    plan.sourceTokens +
-    COMPACTION_LIMITS.summaryMaxTokens +
-    Math.ceil(plan.sourceTokens / 60_000 + 1) * 800;
+  let chunks: string[];
+  let summarizerReserve: number;
+  try {
+    chunks = summaryChunks(plan.summarize, compactionModel());
+    summarizerReserve = summaryTokenReserve(chunks, compactionModel(), plan.previous?.summaryText);
+  } catch (error) {
+    captureError(error, { route: '/api/chat', stage: 'compaction-budget', userId: input.userId });
+    if (plan.viewTokens > budget) {
+      return { ok: false, status: 503, error: 'Could not prepare compaction for this conversation. Please retry.', usage: { input: 0, output: 0 } };
+    }
+    const denied = await withLLMTokenLimit(
+      input.userId, estimateText, input.isCouncil,
+      estimateRequestTokens(plan.viewTokens, input.isCouncil)
+    );
+    if (denied) return rateLimited(denied);
+    return { ok: true, history: plan.fallbackHistory, estimateText, usage: { input: 0, output: 0 }, mode };
+  }
   const reservedTokens =
     estimateRequestTokens(plan.projectedTokens, input.isCouncil) + summarizerReserve;
   const denied = await withLLMTokenLimit(
@@ -580,33 +644,35 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
   );
   if (denied) return rateLimited(denied);
 
-  let summaryResult: { summary: string; usage: TokenUsage };
+  const summaryUsage: TokenUsage = { input: 0, output: 0 };
+  let summary: string;
   try {
-    summaryResult = await generateSummary({
+    summary = await generateSummary({
       priorSummary: plan.previous?.summaryText,
-      messages: plan.summarize,
+      chunks,
       signal: input.signal,
       trace: input.trace,
+      usage: summaryUsage,
     });
   } catch (error) {
     captureError(error, { route: '/api/chat', stage: 'compaction-summary', userId: input.userId });
-    return fallbackAfterFailedSummary(plan, estimateText, input, { input: 0, output: 0 }, reservedTokens);
+    return fallbackAfterFailedSummary(plan, estimateText, input, summaryUsage, reservedTokens);
   }
 
-  const validation = validateSummary(summaryResult.summary, plan.sourceTokens);
+  const validation = validateSummary(summary, plan.sourceTokens);
   if (!validation.ok) {
     captureError(new Error(`Rejected context summary: ${validation.reason}`), {
       route: '/api/chat',
       stage: 'compaction-validation',
       userId: input.userId,
     });
-    return fallbackAfterFailedSummary(plan, estimateText, input, summaryResult.usage, reservedTokens);
+    return fallbackAfterFailedSummary(plan, estimateText, input, summaryUsage, reservedTokens);
   }
 
   const through = plan.summarize.at(-1);
   const afterTokens =
     systemTokens +
-    summaryBlockTokens(summaryResult.summary) +
+    summaryBlockTokens(summary) +
     messagesTokens(plan.keep) +
     currentTokens;
   if (afterTokens > budget) {
@@ -614,7 +680,7 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
       ok: false,
       status: 413,
       error: tooLargeMessage(afterTokens, budget),
-      usage: summaryResult.usage,
+      usage: summaryUsage,
       reservedTokens,
     };
   }
@@ -625,18 +691,16 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
       // An existing snapshot that could not serve as this summary's base
       // (e.g. its boundary fell inside the verbatim tail) must not block the
       // create. Deleting it is safe: the transcript is untouched.
-      if (!plan.previous && snapshot) await deleteContextSnapshot(input.conversationId);
-
       const saved = await commitContextSnapshot({
         conversationId: input.conversationId,
-        summaryText: summaryResult.summary,
+        summaryText: summary,
         throughMessageId: through.id,
-        sourceHash: hashContextSource(plan.summarize),
+        sourceHash: hashContextSource(input.history.slice(0, plan.keepStart)),
         summaryModelId: compactionModel(),
         inputTokensBefore: plan.viewTokens,
         inputTokensAfter: afterTokens,
         summaryTokens: validation.tokens,
-        expectedVersion: plan.previous?.version ?? null,
+        expectedVersion: snapshot?.version ?? null,
       });
       persisted = Boolean(saved);
       if (!saved) {
@@ -652,9 +716,9 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
 
   return {
     ok: true,
-    history: [summaryBlockMessage(summaryResult.summary), ...plan.keep],
+    history: [summaryBlockMessage(summary), ...plan.keep],
     estimateText,
-    usage: summaryResult.usage,
+    usage: summaryUsage,
     mode,
     compaction: {
       throughMessageId: through?.id ?? '',

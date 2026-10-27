@@ -115,18 +115,20 @@ export async function commitContextSnapshot(input: CommitSnapshotInput): Promise
 }
 
 /**
- * A retry can replace the exchange a snapshot was built from. When the
- * boundary is no longer part of the saved history, the snapshot is unusable.
+ * A retry can replace the exchange a snapshot was built from. The pending
+ * retry checks without deleting; only a successfully saved replacement may
+ * delete a snapshot whose boundary is gone.
  */
 export async function dropSnapshotIfBoundaryMissing(
   conversationId: string,
-  historyIds: readonly string[]
+  historyIds: readonly string[],
+  deleteMissing = true
 ): Promise<ContextSnapshot | null> {
   const snapshot = await loadContextSnapshot(conversationId);
   if (!snapshot) return null;
   if (historyIds.includes(snapshot.throughMessageId)) return snapshot;
 
-  await deleteContextSnapshot(conversationId);
+  if (deleteMissing) await deleteContextSnapshot(conversationId);
   return null;
 }
 

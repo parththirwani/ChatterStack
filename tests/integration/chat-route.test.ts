@@ -668,6 +668,55 @@ Port 3000.`;
       expect.arrayContaining([history[0].content, history[1].content])
     );
   });
+
+  it('counts a failed summarizer request even when the answer uses full history', async () => {
+    redis.get.mockResolvedValue(history);
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      if (body.model === 'openai/gpt-4o-mini') {
+        log.push('openrouter:summary');
+        return new Response('summary unavailable', { status: 503 });
+      }
+      return sseResponse([delta({ content: 'Fresh answer.' }), '[DONE]']);
+    });
+
+    await readEvents(await post({ message: 'And now?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+
+    expect(log).toContain('openrouter:summary');
+    expect(log).toContain('db:messages:user=And now?|assistant=Fresh answer.');
+    expect(recordLLMTokens).toHaveBeenCalledOnce();
+    const charged = recordLLMTokens.mock.calls[0][1];
+    const mainPrompt = openRouterBodies().find((body) => body.model === 'openai/gpt-6.1-sol').messages
+      .filter((message: { role: string }) => message.role === 'user' || message.role === 'assistant')
+      .map((message: { content: string }) => message.content).join('\n');
+    expect(charged).toBeGreaterThan(mainPrompt.length + 'Fresh answer.'.length);
+  });
+
+  it('keeps a snapshot on a failed retry, then drops it after a successful replacement', async () => {
+    redis.get.mockResolvedValue(history);
+    snapshotRows.set(NEW_ID, {
+      id: 'snapshot-1', conversationId: NEW_ID, throughMessageId: 'm6',
+      sourceHash: 'old-prefix', version: 1, schemaVersion: 1,
+      summaryText: goodSummary, summaryModelId: 'openai/gpt-4o-mini',
+      inputTokensBefore: 5000, inputTokensAfter: 1000, summaryTokens: 100,
+    });
+    fetchMock.mockImplementation(async () => new Response('provider down', { status: 503 }));
+
+    await readEvents(await post({
+      message: history[4].content, selectedModel: 'openai/gpt-6.1-sol',
+      conversationId: NEW_ID, retry: true,
+    }));
+    expect(snapshotRows.has(NEW_ID)).toBe(true);
+    expect(db.message.deleteMany).not.toHaveBeenCalled();
+
+    installFetch(goodSummary);
+    await readEvents(await post({
+      message: history[4].content, selectedModel: 'openai/gpt-6.1-sol',
+      conversationId: NEW_ID, retry: true,
+    }));
+    expect(db.message.deleteMany).toHaveBeenCalled();
+    expect(snapshotRows.has(NEW_ID)).toBe(false);
+  });
 });
 
 describe('POST /api/chat, history cache', () => {

@@ -4,16 +4,18 @@ import {
   recentStartIndex,
   summaryBlockMessage,
   validateSummary,
+  __contextCompactionForTests,
   type ContextMessage,
 } from '@/src/lib/api/chat/model-context';
 import { hashContextSource, type ContextSnapshot } from '@/src/lib/api/chat/context-snapshot';
+import { countTokens } from '@/src/middleware/llmTokenRateLimit';
 
 const snapshot = (overrides: Partial<ContextSnapshot> = {}): ContextSnapshot => ({
   id: 'snap-1',
   conversationId: 'conversation-1',
   summaryText: '## Current goal\nKeep the old task.',
   throughMessageId: 'm2',
-  sourceHash: 'hash',
+  sourceHash: hashContextSource(exchange(1)),
   version: 1,
   schemaVersion: 1,
   summaryModelId: 'openai/gpt-4o-mini',
@@ -45,6 +47,19 @@ describe('recentStartIndex', () => {
 
   it('returns zero when there are fewer completed exchanges than requested', () => {
     expect(recentStartIndex(exchange(1), 2)).toBe(0);
+  });
+});
+
+describe('summary input', () => {
+  it('includes the end of an oversized individual message without exceeding chunk budgets', () => {
+    const content = `${'middle '.repeat(3000)}END_MARKER`;
+    const chunks = __contextCompactionForTests.chunkTranscript(
+      [{ id: 'large', role: 'user', content }],
+      300
+    );
+    expect(chunks.length).toBeGreaterThan(1);
+    expect(chunks.join('')).toBe(`User: ${content}`);
+    expect(chunks.every((chunk) => countTokens(chunk) <= 300)).toBe(true);
   });
 });
 
@@ -104,6 +119,24 @@ describe('planContextView', () => {
     if (plan.kind !== 'none') return;
     expect(plan.history[0].content).toContain('Earlier conversation summary');
     expect(plan.history.map((message) => message.id)).toEqual([undefined, 'm3', 'm4', 'm5', 'm6']);
+  });
+
+  it('does not reuse a snapshot when an earlier saved message changed under the same id', () => {
+    const history = [...exchange(1), ...exchange(3), ...exchange(5)];
+    history[0] = { ...history[0], content: 'Corrected instruction' };
+    const plan = planContextView({
+      history,
+      snapshot: snapshot(),
+      systemTokens: 10,
+      currentTokens: 10,
+      budget: 10_000,
+      mode: 'on',
+    });
+
+    expect(plan.kind).toBe('none');
+    if (plan.kind !== 'none') return;
+    expect(plan.history).toBe(history);
+    expect(plan.history[0].content).toBe('Corrected instruction');
   });
 
   it('ignores snapshots entirely when the kill switch is off', () => {

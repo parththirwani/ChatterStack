@@ -77,4 +77,12 @@ describe('context snapshot store', () => {
     expect(await dropSnapshotIfBoundaryMissing('conversation-1', ['m1', 'm3'])).toBeNull();
     expect(api.deleteMany).toHaveBeenCalledWith({ where: { conversationId: 'conversation-1' } });
   });
+
+  it('leaves a snapshot in storage while a retry is still pending', async () => {
+    await commitContextSnapshot({ ...input, expectedVersion: null });
+
+    expect(await dropSnapshotIfBoundaryMissing('conversation-1', ['m1'], false)).toBeNull();
+    expect(await loadContextSnapshot('conversation-1')).toMatchObject({ throughMessageId: 'm2' });
+    expect(api.deleteMany).not.toHaveBeenCalled();
+  });
 });

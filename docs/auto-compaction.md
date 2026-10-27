@@ -37,20 +37,22 @@ actionable error before calling the provider.
 - `summaryModelId`, `inputTokensBefore`, `inputTokensAfter`, `summaryTokens`
 
 `throughMessageId` refers to a saved `Message` row, not a timestamp. Reads use
-`(createdAt, id)` order. Snapshot writes compare-and-swap on `version`; a
+`(createdAt, id)` order and verify the source hash and schema version before
+reusing a summary. Snapshot writes compare-and-swap on `version`; a
 concurrent turn that built its summary from different history cannot overwrite
 a newer one. The losing turn still uses its own in-memory summary for that
 request. Deleting a conversation deletes its snapshot (cascade).
 
-A retry that removes the exchange a snapshot ended on deletes the unusable
-snapshot. Retries after the boundary do not affect it.
+A successful retry that removes the exchange a snapshot ended on deletes the
+unusable snapshot. A failed retry leaves the saved snapshot intact. Retries
+after the boundary do not affect it.
 
 ## Failure behavior
 
 - Empty, malformed, section-less, over-long or non-shrinking summaries are
   rejected. The route falls back to the pre-existing view when it fits.
 - A summarizer timeout or abort leaves the transcript and the previous snapshot
-  unchanged.
+  unchanged. An attempted summarizer request is included in token settlement.
 - A compaction call that already ran is settled against the daily token limit,
   even when the turn fails before the provider call.
 - The soft trigger does not reject a turn: below the hard budget, the full

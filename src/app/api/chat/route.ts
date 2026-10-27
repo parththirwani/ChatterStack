@@ -10,6 +10,7 @@ import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/r
 import { createSSEStream, type SSEStream } from '@/src/lib/api/chat/sse-helper';
 import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
 import { prepareModelContext } from '@/src/lib/api/chat/model-context';
+import { dropSnapshotIfBoundaryMissing } from '@/src/lib/api/chat/context-snapshot';
 import type { CompactionInfo, ContextMessage } from '@/src/lib/api/chat/model-context';
 import { truncateToTokenBudget } from '@/src/lib/api/chat/prompt-budget';
 import { prisma } from '@/src/lib/prisma';
@@ -245,6 +246,7 @@ export async function POST(request: NextRequest) {
         council: data.council,
         skills,
         signal: request.signal,
+        isRetry,
         trace: { traceId, userId, conversationId },
       });
 
@@ -514,6 +516,12 @@ export async function POST(request: NextRequest) {
             ];
 
             const cacheHistory = [...prepared.rawHistory, ...exchange];
+            if (isRetry) {
+              await dropSnapshotIfBoundaryMissing(
+                conversationId,
+                cacheHistory.map((message) => message.id).filter((id): id is string => Boolean(id))
+              );
+            }
             if (cacheHistory.every((message) => !message.attachments?.length)) {
               await redisStore.set(conversationId, cacheHistory);
             } else {
