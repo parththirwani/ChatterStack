@@ -304,6 +304,18 @@ describe('POST /api/conversations/[id]/fork', () => {
     expect(savedConversations()).toHaveLength(count);
   });
 
+  it('gives up without a fork if the chosen message goes missing mid-write', async () => {
+    const count = savedConversations().length;
+    // The snapshot the copy is made from no longer holds the chosen row.
+    db.message.findMany.mockImplementationOnce(async () => []);
+
+    const response = await post(CHAT, { messageId: mid(4) });
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ error: 'Conversation not found' });
+    expect(savedConversations()).toHaveLength(count);
+    expect(savedMessages(CHAT)).toHaveLength(6);
+  });
+
   it('never reads or writes the source chat Redis history', async () => {
     const { conversation } = await (await post(CHAT, { messageId: mid(2) })).json();
     expect(redis.get).not.toHaveBeenCalled();

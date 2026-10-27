@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/src/lib/auth';
-import { forkConversationAtMessage } from '@/src/lib/server/conversation-fork';
+import { ForkTargetGone, forkConversationAtMessage } from '@/src/lib/server/conversation-fork';
 import { z } from 'zod';
 
 const UUID = z.string().uuid();
@@ -39,6 +39,11 @@ export async function POST(
 
     return NextResponse.json({ conversation: result.conversation }, { status: 201 });
   } catch (error) {
+    // The message was deleted between the check and the copy: same answer as if
+    // it had never been there, and no fork was left behind.
+    if (error instanceof ForkTargetGone) {
+      return NextResponse.json({ error: 'Conversation not found' }, { status: 404 });
+    }
     console.error('[API] Error forking conversation:', error);
     // Deliberately generic: the failure text can name tables or ids.
     return NextResponse.json({ error: 'Failed to fork conversation' }, { status: 500 });
