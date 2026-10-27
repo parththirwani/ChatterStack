@@ -8,6 +8,24 @@ export const documentStorage = {
   async stat(pathname: string) {
     return head(pathname);
   },
+  /**
+   * One round trip for both the stored metadata and the bytes. Callers check
+   * the metadata first and `discard()` a mismatch without downloading it.
+   */
+  async open(pathname: string) {
+    const result = await get(pathname, { access: 'private', useCache: false });
+    if (!result || result.statusCode !== 200) return null;
+    return {
+      size: result.blob.size,
+      contentType: result.blob.contentType,
+      async read() {
+        return Buffer.from(await new Response(result.stream).arrayBuffer());
+      },
+      async discard() {
+        await result.stream.cancel().catch(() => undefined);
+      },
+    };
+  },
   async read(pathname: string): Promise<Buffer | null> {
     const result = await get(pathname, { access: 'private', useCache: false });
     if (!result || result.statusCode !== 200) return null;

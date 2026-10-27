@@ -40,10 +40,16 @@ export async function confirmUpload(userId: string, input: {
     !/^[a-f0-9]{64}$/.test(input.sha256)) throw new Error('Invalid file details');
   const existing = await prisma.document.findUnique({ where: { userId_sha256: { userId, sha256: input.sha256 } } });
   if (existing) return existing;
-  const stat = await documentStorage.stat(input.storageKey);
-  if (stat.size !== input.size || stat.contentType !== input.mimeType) throw new Error('Uploaded file does not match');
-  const bytes = await documentStorage.read(input.storageKey);
-  if (!bytes || crypto.createHash('sha256').update(bytes).digest('hex') !== input.sha256) throw new Error('Uploaded file does not match');
+  // One storage round trip: the stored size and type are checked before the
+  // body is downloaded, so a mismatched upload costs no transfer.
+  const stored = await documentStorage.open(input.storageKey);
+  if (!stored) throw new Error('Uploaded file does not match');
+  if (stored.size !== input.size || stored.contentType !== input.mimeType) {
+    await stored.discard();
+    throw new Error('Uploaded file does not match');
+  }
+  const bytes = await stored.read();
+  if (crypto.createHash('sha256').update(bytes).digest('hex') !== input.sha256) throw new Error('Uploaded file does not match');
   validateAttachment({ name: input.name, mimeType: input.mimeType, size: input.size, data: bytes.toString('base64') });
   try {
     return await prisma.document.create({ data: { ...input, userId } });
