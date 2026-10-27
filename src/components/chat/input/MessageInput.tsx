@@ -1,10 +1,12 @@
 "use client";
 import React, { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowUp, Paperclip, Square, X } from 'lucide-react';
+import { ArrowUp, Paperclip, Square } from 'lucide-react';
 import { ModelSelector } from './ModelSelector/ModelSelector';
 import { ThinkingSelector } from './ModelSelector/ThinkingSelector';
 import { CouncilToggle } from './CouncilToggle';
 import LLMTokenIndicator from '../../rate-limit/LLMTokenIndicator';
+import AttachmentTile from '@/src/components/chat/attachments/AttachmentTile';
+import DocumentPreview from '@/src/components/sidebar/resources/DocumentPreview';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import { MIME_BY_EXTENSION, uploadDocument } from '@/src/lib/client/documents';
@@ -30,6 +32,16 @@ type SlashOption =
   | { kind: 'files'; key: string; label: string; description: string }
   | { kind: 'skill'; key: string; id: string; name: string; description: string };
 
+/** A picked file that is still uploading, shown in place of the real tile. */
+interface PendingUpload {
+  key: string;
+  file: File;
+  previewUrl?: string;
+  progress: number;
+  status: 'uploading' | 'error';
+  error?: string;
+}
+
 const FILES_OPTION: SlashOption = { kind: 'files', key: 'files', label: 'Add files', description: 'Images, PDF, DOCX, TXT or MD' };
 
 // Must match the textarea's box and type exactly, so the highlighted copy
@@ -41,7 +53,13 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [fileError, setFileError] = useState('');
-  const [readingFiles, setReadingFiles] = useState(false);
+  const [pending, setPending] = useState<PendingUpload[]>([]);
+  const [preview, setPreview] = useState<{ id: string; name: string; mimeType: string } | null>(null);
+  const objectUrls = useRef<string[]>([]);
+  // Uploads the user dismissed while they were still in flight.
+  const cancelledUploads = useRef(new Set<string>());
+  const uploading = pending.some((file) => file.status === 'uploading');
+
   const { councilMode } = useModelSelection();
   const userId = useAppStore((state) => state.user?.id);
   const signedIn = !!userId && userId !== 'guest';
@@ -121,6 +139,12 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     el.style.height = Math.min(el.scrollHeight, 180) + 'px';
   }, [message]);
 
+  // Local previews outlive the upload, so release them when the composer goes.
+  useEffect(() => () => {
+    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrls.current = [];
+  }, []);
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing) return;
     if (pickerOpen && slash) {
@@ -145,7 +169,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
       // While a reply streams, sending puts the message in the queue.
-      if (!readingFiles && (message.trim() || attachments.length)) onSendMessage();
+      if (!uploading && (message.trim() || attachments.length)) onSendMessage();
     }
   };
 
@@ -153,21 +177,68 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     if (!files?.length) return;
     setFileError('');
     const selected = Array.from(files);
-    if (attachments.length + selected.length > 4) { setFileError('Attach up to 4 files.'); return; }
+    if (attachments.length + pending.length + selected.length > 4) { setFileError('Attach up to 4 files.'); return; }
     if (selected.some((file) => file.size > 5 * 1024 * 1024 || file.size === 0)) { setFileError('Each file must be between 1 byte and 5 MB.'); return; }
     if (attachments.reduce((size, file) => size + file.size, 0) + selected.reduce((size, file) => size + file.size, 0) > 10 * 1024 * 1024) { setFileError('Files must total 10 MB or less.'); return; }
     if (selected.some((file) => !MIME_BY_EXTENSION[file.name.split('.').pop()?.toLowerCase() ?? ''])) { setFileError('Use PNG, JPG, WebP, GIF, PDF, DOCX, TXT, or MD files.'); return; }
     if (!userId || userId === 'guest') { setFileError('Sign in before attaching files.'); return; }
-    setReadingFiles(true);
-    try {
-      const encoded = await Promise.all(selected.map((file) => uploadDocument(file, userId)));
-      onAttachmentsChange((current) => [...current, ...encoded]);
-    } catch (error) {
-      setFileError(error instanceof Error ? error.message : 'Could not read file.');
-    } finally {
-      setReadingFiles(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
+
+    // The tiles appear before the first byte leaves the browser: images from
+    // a local object URL, everything else as a labelled skeleton.
+    const batch: PendingUpload[] = selected.map((file) => {
+      const mimeType = MIME_BY_EXTENSION[file.name.split('.').pop()?.toLowerCase() ?? ''];
+      const previewUrl = mimeType.startsWith('image/') ? URL.createObjectURL(file) : undefined;
+      if (previewUrl) objectUrls.current.push(previewUrl);
+      return { key: crypto.randomUUID(), file, previewUrl, progress: 0, status: 'uploading' };
+    });
+    setPending((current) => [...current, ...batch]);
+
+    const results = await Promise.allSettled(batch.map(async (item) => {
+      const attachment = await uploadDocument(item.file, userId, (progress) => {
+        setPending((current) => current.map((entry) => (entry.key === item.key ? { ...entry, progress } : entry)));
+      });
+      return { key: item.key, attachment };
+    }));
+
+    const saved: DocumentAttachment[] = [];
+    const failures: { key: string; message: string }[] = [];
+    results.forEach((result, index) => {
+      const { key } = batch[index];
+      if (result.status === 'fulfilled') {
+        if (!cancelledUploads.current.has(key)) saved.push(result.value.attachment);
+      } else {
+        failures.push({ key, message: result.reason instanceof Error ? result.reason.message : 'Could not upload file.' });
+      }
+    });
+
+    if (saved.length) onAttachmentsChange((current) => [...current, ...saved]);
+    setPending((current) => current
+      .filter((entry) => !batch.some((item) => item.key === entry.key) || failures.some((failure) => failure.key === entry.key))
+      .map((entry) => {
+        const failure = failures.find((item) => item.key === entry.key);
+        return failure ? { ...entry, status: 'error' as const, error: failure.message } : entry;
+      }));
+    // The tile now reads the saved document, so the local preview can go.
+    batch.forEach((item) => {
+      if (failures.some((failure) => failure.key === item.key) || !item.previewUrl) return;
+      URL.revokeObjectURL(item.previewUrl);
+      objectUrls.current = objectUrls.current.filter((url) => url !== item.previewUrl);
+    });
+
+    if (failures.length) setFileError(failures[0].message);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const removePending = (key: string) => {
+    cancelledUploads.current.add(key);
+    setPending((current) => {
+      const removed = current.find((entry) => entry.key === key);
+      if (removed?.previewUrl) {
+        URL.revokeObjectURL(removed.previewUrl);
+        objectUrls.current = objectUrls.current.filter((url) => url !== removed.previewUrl);
+      }
+      return current.filter((entry) => entry.key !== key);
+    });
   };
 
   const hasContent = Boolean(message.trim()) || attachments.length > 0;
@@ -235,15 +306,32 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
             className={`relative block w-full min-h-[68px] max-h-[180px] resize-none bg-transparent ${TEXT_BOX} placeholder:text-[#aaa6a3] caret-[#f2f0ed] focus:outline-none ${hasTokens ? 'text-transparent selection:bg-white/25' : 'text-[#f2f0ed]'}`}
           />
         </div>
-        {attachments.length > 0 && <div className="flex flex-wrap gap-1.5 px-4 pb-2">
-          {attachments.map((file, index) => <span key={`${file.name}-${index}`} className="flex max-w-[210px] items-center gap-1 rounded-lg border border-white/[0.12] bg-white/[0.05] py-1 pl-2 pr-1 text-xs text-[#d8d5d1]">
-            <Paperclip className="h-3 w-3 shrink-0" /><span className="truncate">{file.name}</span>
-            <button type="button" aria-label={`Remove ${file.name}`} onClick={() => onAttachmentsChange((current) => current.filter((_, item) => item !== index))} className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-white/10"><X className="h-3 w-3" /></button>
-          </span>)}
+        {(attachments.length > 0 || pending.length > 0) && <div role="list" aria-label="Attachments" aria-busy={uploading} className="flex flex-wrap items-start gap-2 px-4 pb-2 pt-1">
+          {attachments.map((file) => <AttachmentTile
+            key={file.documentId}
+            name={file.name}
+            mimeType={file.mimeType}
+            sourceUrl={`/api/documents/${file.documentId}/content?preview=1`}
+            onOpen={() => setPreview({ id: file.documentId, name: file.name, mimeType: file.mimeType })}
+            onRemove={() => onAttachmentsChange((current) => current.filter((item) => item.documentId !== file.documentId))}
+          />)}
+          {pending.map((file) => <AttachmentTile
+            key={file.key}
+            name={file.file.name}
+            mimeType={MIME_BY_EXTENSION[file.file.name.split('.').pop()?.toLowerCase() ?? ''] ?? file.file.type}
+            previewUrl={file.previewUrl}
+            progress={file.progress}
+            uploading={file.status === 'uploading'}
+            error={file.error}
+            onRemove={() => removePending(file.key)}
+          />)}
+          {uploading && <span role="status" className="sr-only">
+            Uploading {pending.filter((file) => file.status === 'uploading').length} file{pending.filter((file) => file.status === 'uploading').length === 1 ? '' : 's'}…
+          </span>}
         </div>}
         <div className="flex min-h-12 items-center gap-2 px-3 pb-3">
           <input ref={fileInputRef} type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.txt,.md" aria-label="Choose files" className="sr-only" onChange={(event) => void addFiles(event.target.files)} />
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={readingFiles} aria-label="Attach files" title="Attach files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"><Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploading} aria-label="Attach files" title="Attach files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"><Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>
           <CouncilToggle />
           <div className="flex-1" />
           <div className="flex min-w-0 items-center gap-0.5">
@@ -253,7 +341,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
           <button
             type="button"
             onClick={showStop ? onStopGenerating : onSendMessage}
-            disabled={!showStop && (readingFiles || !hasContent)}
+            disabled={!showStop && (uploading || !hasContent)}
             aria-label={showStop ? 'Stop generating' : loading ? 'Queue message' : 'Send message'}
             title={loading && !showStop ? 'Queue message' : undefined}
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/35 ${showStop ? 'bg-[#e5484d] text-white hover:bg-[#ec5d61]' : 'bg-[#f0eeeb] text-[#1c1b19] hover:bg-white'}`}
@@ -263,6 +351,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
         </div>
       </div>
       {fileError && <p role="alert" className="mt-2 px-2 text-xs text-red-300">{fileError}</p>}
+      {preview && <DocumentPreview document={preview} onClose={() => setPreview(null)} />}
       <LLMTokenIndicator isCouncilMode={councilMode} className="mt-2" />
     </div>
   );
