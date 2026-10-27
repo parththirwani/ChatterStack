@@ -9,28 +9,34 @@ export function showConversation(conversationId: string | undefined, { replace =
 }
 
 /** Top-level paths that are app pages rather than chat ids. */
-export const APP_PAGES = ['customize', 'resources'] as const;
+export const APP_PAGES = ['customize', 'resources', 'scheduled'] as const;
 
 export type AppView =
   | { kind: 'chat' }
   | { kind: 'resources' }
+  /** `/scheduled[/<task id>]` */
+  | { kind: 'scheduled'; taskId?: string }
   /** `/customize/skills[/yours|/discover|/new/upload|/<id>[/contents]]` */
   | { kind: 'skills'; tab: 'discover' | 'yours' | 'upload' | 'skill'; skillId?: string; section?: 'overview' | 'contents' };
 
-const SKILL_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** The app page a path names, or null if it isn't one we have (a 404). */
 export function appPageFromSegments(segments: string[]): Exclude<AppView, { kind: 'chat' }> | null {
   const [first, second, third, fourth, ...rest] = segments;
   if (rest.length) return null;
   if (first === 'resources') return second === undefined ? { kind: 'resources' } : null;
+  if (first === 'scheduled') {
+    if (second === undefined) return { kind: 'scheduled' };
+    return UUID.test(second) && third === undefined ? { kind: 'scheduled', taskId: second } : null;
+  }
   if (first !== 'customize') return null;
   if (second === undefined) return { kind: 'skills', tab: 'discover' };
   if (second !== 'skills') return null;
   if (third === undefined) return { kind: 'skills', tab: 'discover' };
   if (third === 'yours' || third === 'discover') return fourth === undefined ? { kind: 'skills', tab: third } : null;
   if (third === 'new') return fourth === 'upload' ? { kind: 'skills', tab: 'upload' } : null;
-  if (!SKILL_ID.test(third)) return null;
+  if (!UUID.test(third)) return null;
   if (fourth !== undefined && fourth !== 'contents') return null;
   return { kind: 'skills', tab: 'skill', skillId: third, section: fourth === 'contents' ? 'contents' : 'overview' };
 }
@@ -61,4 +67,9 @@ export const skillsPath = {
   upload: '/customize/skills/new/upload',
   skill: (id: string, section: 'overview' | 'contents' = 'overview') =>
     `/customize/skills/${id}${section === 'contents' ? '/contents' : ''}`,
+};
+
+export const scheduledPath = {
+  list: '/scheduled',
+  task: (id: string) => `/scheduled/${id}`,
 };

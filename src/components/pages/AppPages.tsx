@@ -4,15 +4,19 @@ import type { AppView } from '@/src/lib/navigation';
 import type { User } from '@/src/types/user.types';
 import Resources from '@/src/components/sidebar/resources/Resources';
 import SkillsPage, { PageHeaderToggle } from '@/src/components/customize/SkillsPage';
+import ScheduledPage from '@/src/components/scheduled/ScheduledPage';
 
-/** Pages shown in the main area instead of a chat (Resources, Customize). */
+const SIGN_IN_SUBJECT = { resources: 'resources', scheduled: 'scheduled tasks', skills: 'skills' } as const;
+
+/** Pages shown in the main area instead of a chat (Resources, Scheduled, Customize). */
 export default function AppPages({ view, user }: { view: Exclude<AppView, { kind: 'chat' }>; user?: User | null }) {
   if (!user || user.id === 'guest') {
     return (
-      <div className="flex flex-1 items-center justify-center p-8 text-sm text-[#aaa6a2]">Sign in to see your {view.kind === 'resources' ? 'resources' : 'skills'}.</div>
+      <div className="flex flex-1 items-center justify-center p-8 text-sm text-[#aaa6a2]">Sign in to see your {SIGN_IN_SUBJECT[view.kind]}.</div>
     );
   }
   if (view.kind === 'skills') return <SkillsPage view={view} />;
+  if (view.kind === 'scheduled') return <ScheduledPage view={view} />;
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#191919]">
       <div className="mx-auto w-full max-w-3xl px-5 pb-16 pt-6 sm:px-8">

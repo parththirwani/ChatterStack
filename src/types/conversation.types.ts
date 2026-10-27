@@ -16,6 +16,8 @@ export interface Conversation {
   title?: string;
   /** ISO time the chat was pinned; null/undefined when not pinned. */
   pinnedAt?: string | null;
+  /** Set on a scheduled task's run chats, which stay out of Recents. */
+  scheduledTaskId?: string | null;
   userId: string;
   createdAt: string;
   updatedAt: string;

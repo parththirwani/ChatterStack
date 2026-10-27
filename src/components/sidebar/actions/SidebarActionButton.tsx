@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, memo } from 'react';
-import { Files, Search, SlidersHorizontal, SquarePen, X } from 'lucide-react';
+import { CalendarClock, Files, Search, SlidersHorizontal, SquarePen, X } from 'lucide-react';
 
-export type SidebarPage = 'resources' | 'skills';
+export type SidebarPage = 'resources' | 'scheduled' | 'skills';
 
 interface SidebarActionButtonsProps {
   collapsed: boolean;
@@ -71,6 +71,9 @@ const SidebarActionButtons: React.FC<SidebarActionButtonsProps> = ({
           <button type="button" onClick={() => onOpenPage?.('resources')} className={iconRowClass(activePage === 'resources')} title="Resources" aria-label="Resources" aria-current={activePage === 'resources' ? 'page' : undefined}>
             <Files className="h-4 w-4" strokeWidth={1.8} />
           </button>
+          <button type="button" onClick={() => onOpenPage?.('scheduled')} className={iconRowClass(activePage === 'scheduled')} title="Scheduled" aria-label="Scheduled" aria-current={activePage === 'scheduled' ? 'page' : undefined}>
+            <CalendarClock className="h-4 w-4" strokeWidth={1.8} />
+          </button>
           <button type="button" onClick={() => onOpenPage?.('skills')} className={iconRowClass(activePage === 'skills')} title="Customize" aria-label="Customize" aria-current={activePage === 'skills' ? 'page' : undefined}>
             <SlidersHorizontal className="h-4 w-4" strokeWidth={1.8} />
           </button>
@@ -132,6 +135,10 @@ const SidebarActionButtons: React.FC<SidebarActionButtonsProps> = ({
         <button type="button" onClick={() => onOpenPage?.('resources')} className={rowClass(activePage === 'resources')} aria-current={activePage === 'resources' ? 'page' : undefined}>
           <Files className="h-4 w-4 text-[#b3afa9]" strokeWidth={1.8} />
           <span>Resources</span>
+        </button>
+        <button type="button" onClick={() => onOpenPage?.('scheduled')} className={rowClass(activePage === 'scheduled')} aria-current={activePage === 'scheduled' ? 'page' : undefined}>
+          <CalendarClock className="h-4 w-4 text-[#b3afa9]" strokeWidth={1.8} />
+          <span>Scheduled</span>
         </button>
         <button type="button" onClick={() => onOpenPage?.('skills')} className={rowClass(activePage === 'skills')} aria-current={activePage === 'skills' ? 'page' : undefined}>
           <SlidersHorizontal className="h-4 w-4 text-[#b3afa9]" strokeWidth={1.8} />

@@ -45,7 +45,7 @@ async function hasRunningRun(taskId: string) {
  * run's chat, calls the model and saves the exchange. Never throws; the
  * outcome is written to the run.
  */
-async function executeRun(task: TaskRow, runId: string) {
+async function executeRun(task: TaskRow, runId: string, trigger: 'schedule' | 'manual') {
   const startedAt = Date.now();
   const traceId = crypto.randomUUID();
   const finishRun = (status: 'succeeded' | 'failed' | 'skipped', error?: string) =>
@@ -69,8 +69,12 @@ async function executeRun(task: TaskRow, runId: string) {
     await prisma.scheduledTaskRun.update({ where: { id: runId }, data: { conversationId } });
 
     // The saved prompt is the user's own instruction; the header only tells
-    // the model when this run is happening in the user's time zone.
-    const header = `This is a scheduled run of the task "${task.name}", started ${formatRunTime(new Date(), task.timezone)} (${task.timezone}).`;
+    // the model when this run is happening in the user's time zone, and
+    // whether it is on schedule (so "morning brief" at 9 PM isn't a surprise).
+    const when = `${formatRunTime(new Date(), task.timezone)} (${task.timezone})`;
+    const header = trigger === 'manual'
+      ? `This is the scheduled task "${task.name}", started by hand with Run now at ${when}, outside its usual schedule.`
+      : `This is a scheduled run of the task "${task.name}", started ${when}.`;
     answer = await createCompletion([{ role: 'user', content: `${header}\n\n${task.prompt}` }], task.model, {
       thinkingLevel: task.thinkingLevel as ThinkingLevel,
       signal: AbortSignal.timeout(RUN_TIMEOUT_MS),
@@ -128,7 +132,7 @@ export async function startManualRun(task: TaskRow) {
   if (await hasRunningRun(task.id)) throw new RunInProgressError();
   const run = await prisma.scheduledTaskRun.create({ data: { taskId: task.id, trigger: 'manual', status: 'running' } });
   await prisma.scheduledTask.update({ where: { id: task.id }, data: { lastRunAt: run.startedAt } });
-  return { run, done: () => executeRun(task, run.id) };
+  return { run, done: () => executeRun(task, run.id, 'manual') };
 }
 
 /** Marks runs from a crashed process as failed, so the task can run again. */
@@ -182,7 +186,7 @@ export async function runDueTasks(now = new Date()): Promise<TickResult> {
       continue;
     }
     const run = await prisma.scheduledTaskRun.create({ data: { taskId: task.id, trigger: 'schedule', status: 'running', scheduledFor } });
-    runs.push(executeRun(task, run.id));
+    runs.push(executeRun(task, run.id, 'schedule'));
   }
   await Promise.allSettled(runs);
   return { due: due.length, started: runs.length, skipped, staleFailed };

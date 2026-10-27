@@ -194,7 +194,7 @@ describe('Run now', () => {
     // The model sees when the run happens, then the saved prompt.
     const [messages, model] = createCompletion.mock.calls[0] as [Array<{ content: string }>, string];
     expect(model).toBe(input.model);
-    expect(messages[0].content).toMatch(/^This is a scheduled run of the task "Morning brief", started .+\(UTC\)\.\n\nSummarize AI news\.$/);
+    expect(messages[0].content).toMatch(/^This is the scheduled task "Morning brief", started by hand with Run now at .+\(UTC\), outside its usual schedule\.\n\nSummarize AI news\.$/);
     expect(recordTokens).toHaveBeenCalledWith('user-1', 'Summarize AI news.'.length + 'Here is your brief.'.length, false);
   });
 
@@ -215,6 +215,7 @@ describe('scheduler', () => {
     expect(first.started + second.started).toBe(1);
     expect(runs()).toHaveLength(1);
     expect(runs()[0]).toMatchObject({ trigger: 'schedule', status: 'succeeded' });
+    expect((createCompletion.mock.calls[0][0] as Array<{ content: string }>)[0].content).toMatch(/^This is a scheduled run of the task "Morning brief", started .+\(UTC\)\.\n\n/);
     // The next run moved past now.
     expect((tables.scheduledTask.get(task.id)!.nextRunAt as Date).getTime()).toBeGreaterThan(Date.now());
   });

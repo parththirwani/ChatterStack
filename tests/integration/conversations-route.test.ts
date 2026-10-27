@@ -166,7 +166,7 @@ describe('list and single-chat shapes', () => {
     expect(fromList).toEqual(conversation);
     expect(ssr.initialConversation).toEqual(conversation);
     expect(conversation).toEqual({
-      id: 'c1', pinnedAt: null, userId: 'user-1', createdAt: updatedAt.toISOString(), updatedAt: updatedAt.toISOString(),
+      id: 'c1', pinnedAt: null, scheduledTaskId: null, userId: 'user-1', createdAt: updatedAt.toISOString(), updatedAt: updatedAt.toISOString(),
       messages: [{ id: 'm1', role: 'user', content: 'Hi', createdAt: updatedAt.toISOString(), updatedAt: updatedAt.toISOString() }],
     });
   });

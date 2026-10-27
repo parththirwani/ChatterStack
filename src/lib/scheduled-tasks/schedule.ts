@@ -54,7 +54,7 @@ const CHAT_MODEL_IDS = CHAT_MODELS.map((model) => model.id) as [string, ...strin
 
 export const ScheduledTaskInputSchema = z.object({
   name: z.string().trim().min(1, 'Give the task a name').max(MAX_TASK_NAME, `Keep the name under ${MAX_TASK_NAME} characters`),
-  prompt: z.string().trim().min(1, 'Describe what Claude should do on each run').max(MAX_TASK_PROMPT, `Keep the instructions under ${MAX_TASK_PROMPT.toLocaleString('en-US')} characters`),
+  prompt: z.string().trim().min(1, 'Describe what to do on each run').max(MAX_TASK_PROMPT, `Keep the instructions under ${MAX_TASK_PROMPT.toLocaleString('en-US')} characters`),
   model: z.enum(CHAT_MODEL_IDS, { message: 'Pick a model' }),
   thinkingLevel: z.enum(THINKING_LEVELS).default('medium'),
   frequency: z.enum(FREQUENCIES),
