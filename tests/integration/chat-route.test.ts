@@ -661,6 +661,26 @@ describe('POST /api/chat, retry', () => {
     expect(saved.map((m) => m.content)).toEqual(['Explain TCP', 'Slow start doubles cwnd.']);
   });
 
+  it('keeps the answer it was replacing when the retry produces nothing', async () => {
+    redis.get.mockImplementation(async () => history);
+    fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
+      const body = JSON.parse(init.body as string);
+      if (body.model === 'openai/gpt-5.6-luna') return new Response(JSON.stringify({ choices: [{ message: { content: 'T' } }] }));
+      return new Response('upstream down', { status: 500 });
+    });
+    try {
+      const events = await readEvents(await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, retry: true }));
+      expect(events.some((e) => e !== '[DONE]' && 'error' in e)).toBe(true);
+    } finally {
+      redis.get.mockImplementation(async () => []);
+    }
+    // Nothing was deleted and nothing was written: the saved pair is untouched.
+    expect(db.message.deleteMany).not.toHaveBeenCalled();
+    expect(db.message.createMany).not.toHaveBeenCalled();
+    expect(redis.set).not.toHaveBeenCalled();
+    expect(redis.delete).not.toHaveBeenCalled();
+  });
+
   it('replaces nothing when the chat is brand new', async () => {
     await readEvents(await post({
       message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true, retry: true,

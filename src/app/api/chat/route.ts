@@ -398,14 +398,19 @@ export async function POST(request: NextRequest) {
       ];
       try {
         await traceStep(traceId, 'db.persist', async () => {
-          if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
-            await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
-          } else {
-            await redisStore.delete(conversationId);
+          // A retry that produced nothing (failed, or stopped before the first
+          // word) leaves the saved exchange untouched: there is nothing to put
+          // in its place, so removing it would simply lose the answer.
+          if (!isRetry || fullContent) {
+            if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
+              await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+            } else {
+              await redisStore.delete(conversationId);
+            }
+            // The retried answer takes the place of the one it replaces.
+            if (isRetry) await deleteLastExchange(conversationId);
+            await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           }
-          // The retried answer takes the place of the one it replaces.
-          if (isRetry) await deleteLastExchange(conversationId);
-          await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
           await markDocumentsUsed(userId, attachments);
         });
       } catch (error) {
