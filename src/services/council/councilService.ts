@@ -13,6 +13,7 @@ import {
 } from '../prompt/promptService';
 import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/src/config/models';
 import { streamCompletion } from '@/src/lib/api/chat/openrouter';
+import { captureError } from '@/src/lib/observability/capture';
 import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
 import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 
@@ -112,7 +113,7 @@ async function stage1_collect_responses(
 
       return { model, response } as Stage1Result;
     } catch (error) {
-      console.error(`Stage 1: ${model} failed:`, error);
+      captureError(error, { route: 'council', model, council: true, stage: 'member-answer' });
       onProgress?.('stage1', model, -1);
       return null;
     }
@@ -194,7 +195,7 @@ async function stage2_collect_rankings(
         onProgress?.('stage2', model, 100);
         return { model, rankingText, parsedRanking: parse_ranking_from_text(rankingText) };
       } catch (error) {
-        console.error(`Stage 2: ${model} failed:`, error);
+      captureError(error, { route: 'council', model, council: true, stage: 'member-ranking' });
         onProgress?.('stage2', model, -1);
         return null;
       }
@@ -278,7 +279,7 @@ async function stage3_synthesize_final(
     onProgress?.('stage3', chair, 100);
     return finalResponse;
   } catch (error) {
-    console.error('Stage 3 failed:', error);
+    captureError(error, { route: 'council', model: chair, council: true, stage: 'chair-synthesis' });
     onProgress?.('stage3', chair, -1);
     throw new Error('Failed to synthesize final response');
   }

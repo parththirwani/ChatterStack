@@ -3,6 +3,7 @@
  * Generates concise, descriptive titles for conversations based on the first user message
  */
 import { TITLE_MODEL } from '@/src/config/models';
+import { captureError } from '@/src/lib/observability/capture';
 
 interface TitleGenerationParams {
   userMessage: string;
@@ -61,7 +62,8 @@ async function generateTitleWithAI(userMessage: string): Promise<string> {
 
     return generateFallbackTitle(userMessage);
   } catch (error) {
-    console.error('AI title generation failed:', error);
+    // The fallback title keeps the UI fine; the failure is still worth reporting.
+    captureError(error, { route: 'title', model: TITLE_MODEL, stage: 'title-generation' });
     return generateFallbackTitle(userMessage);
   }
 }

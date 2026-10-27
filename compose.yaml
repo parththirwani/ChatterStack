@@ -43,6 +43,11 @@ services:
     build:
       context: .
       target: app
+      # Optional: the browser Sentry DSN is baked in at build time. Empty means
+      # client-side Sentry stays off.
+      args:
+        NEXT_PUBLIC_SENTRY_DSN: ${NEXT_PUBLIC_SENTRY_DSN:-}
+        SENTRY_RELEASE: ${SENTRY_RELEASE:-}
     env_file:
       - path: .env.local
         required: true

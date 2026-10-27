@@ -53,3 +53,36 @@ The Docker app can use the same Blob store when its `.env.local` contains
 `BLOB_READ_WRITE_TOKEN`. For a Docker-only deployment, invoke
 `GET /api/cron/cleanup-documents` daily with
 `Authorization: Bearer <CRON_SECRET>`.
+
+## Error tracking (Sentry)
+
+Optional error monitoring for the browser and the Node server
+(`@sentry/nextjs`, App Router + Turbopack). While `SENTRY_DSN` is unset the SDK
+never initializes and nothing is sent, so local development, tests and Docker
+need no Sentry configuration.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SENTRY_DSN` | No | Server DSN. Unset ⇒ server capture is off. |
+| `NEXT_PUBLIC_SENTRY_DSN` | No | Browser DSN. Inlined at build time; Docker and Compose pass it as a build ARG that defaults to empty. |
+| `SENTRY_ENVIRONMENT` | No | Tag shown on issues (falls back to `NODE_ENV`). |
+| `SENTRY_RELEASE` | No | Release/version tag. |
+| `SENTRY_AUTH_TOKEN` | No | Only for uploading source maps at build time. |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | No | Only with the auth token: where to upload. |
+
+Files: `src/instrumentation.ts` (server register + `onRequestError`),
+`src/instrumentation-client.ts` (browser), `src/sentry.server.config.ts`,
+`src/app/global-error.tsx`, `src/app/error.tsx`, and the shared scrubber plus
+`captureError()` in `src/lib/observability/`. Existing `console.error` calls in
+request paths were replaced with `captureError()` — they were stripped from
+production builds by `compiler.removeConsole`, which is why these failures were
+previously invisible.
+
+Privacy and noise: `sendDefaultPii: false`, no tracing and no replay. Events
+carry tags (`route`, `model`, `council`, `stage`) and, when known, the NextAuth
+user id only — never an email. `beforeSend` drops the request object entirely
+(no headers, cookies or bodies), removes any `content`, `message`, `title`,
+`attachment`, `document`, `rag`-style field, truncates long provider messages
+and strips base64/data-URL blobs, so chat text and file data cannot ride along.
+Expected conditions are not reported: 401/403/404/409/429, aborted requests and
+user Stop, and rate-limit rejections.
