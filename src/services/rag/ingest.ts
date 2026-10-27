@@ -4,6 +4,7 @@ import { generateSparseVector } from './sparse';
 import type { RagPoint } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { generateEmbeddings } from './openrouter';
+import { captureError } from '@/src/lib/observability/capture';
 
 const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
 
@@ -11,6 +12,9 @@ const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
  * Ingest a message into the RAG system
  * FIXED: Better error handling for embedding failures - doesn't break chat flow
  */
+/** What happened to one message: written to memory, nothing to write, or a failure (already reported). */
+export type IngestOutcome = 'stored' | 'skipped' | 'failed';
+
 export async function ingestMessage(params: {
   userId: string;
   conversationId: string;
@@ -20,7 +24,9 @@ export async function ingestMessage(params: {
   modelUsed?: string;
   timestamp?: Date;
   profileTags?: string[];
-}): Promise<void> {
+  /** Shared with the chat request that produced this message. */
+  traceId?: string;
+}): Promise<IngestOutcome> {
   const {
     userId,
     conversationId,
@@ -30,24 +36,25 @@ export async function ingestMessage(params: {
     modelUsed,
     timestamp = new Date(),
     profileTags = [],
+    traceId,
   } = params;
 
   // RAG is optional - don't break chat if it fails
   if (!process.env.RAG_ENABLED || process.env.RAG_ENABLED !== 'true') {
-    return;
+    return 'skipped';
   }
 
   try {
     // Validate content
     if (!content || content.trim().length === 0) {
-      return;
+      return 'skipped';
     }
 
     // 1. Chunk the message
     const chunks = chunkMessage(content);
 
     if (chunks.length === 0) {
-      return;
+      return 'skipped';
     }
 
     // 2. Generate dense embeddings (batch)
@@ -55,24 +62,24 @@ export async function ingestMessage(params: {
     
     let denseVectors: number[][] = [];
     try {
-      denseVectors = await generateEmbeddings(chunkTexts);
+      denseVectors = await generateEmbeddings(chunkTexts, { traceId, userId, conversationId });
       
       if (!denseVectors || denseVectors.length === 0) {
         console.warn(`No embeddings generated for message ${messageId}, skipping RAG ingestion`);
-        return;
+        return 'failed';
       }
       
     } catch (embeddingError) {
-      console.error('Embedding generation failed:', embeddingError);
+      captureError(embeddingError, { route: 'rag/ingest', model: role === 'assistant' ? modelUsed : undefined, stage: 'embedding' });
       // If embeddings fail, skip RAG ingestion but don't fail the entire message
       console.warn(`Skipping RAG ingestion for message ${messageId} due to embedding failure`);
-      return;
+      return 'failed';
     }
 
     // Validate embeddings match chunks
     if (denseVectors.length !== chunks.length) {
       console.warn(`Embedding count mismatch: ${denseVectors.length} vs ${chunks.length} chunks, skipping`);
-      return;
+      return 'failed';
     }
 
     // 3. Generate sparse vectors (BM25)
@@ -110,10 +117,12 @@ export async function ingestMessage(params: {
         payload: p.payload,
       })),
     });
+    return 'stored';
 
   } catch (error) {
-    console.error('Ingestion error:', error);
+    captureError(error, { route: 'rag/ingest', stage: 'ingest' });
     // RAG is nice-to-have - don't break the main chat flow
     console.warn(`Failed to ingest message ${messageId}, continuing without RAG`);
+    return 'failed';
   }
 }

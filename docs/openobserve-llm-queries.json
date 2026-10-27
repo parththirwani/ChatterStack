@@ -1,0 +1,89 @@
+{
+  "name": "ChatterStack LLM observability",
+  "target": "OpenObserve saved views (Logs > explore > run query > Save view). Dashboard export JSON is build-specific, so these queries are the importable unit.",
+  "stream": "llm_calls",
+  "fields": {
+    "_timestamp": "microseconds, set by the client",
+    "trace_id": "one chat request; shared by council stages and the embedding calls it made",
+    "span": "completion | council-member-answer | council-ranking | council-chair | title-generation | embedding | embeddings",
+    "user_id": "NextAuth user id only",
+    "conversation_id": "chat id",
+    "provider": "openrouter",
+    "model": "OpenRouter model id",
+    "thinking_level": "off | low | medium | high | xhigh | max",
+    "status": "ok | error | aborted",
+    "stopped": "true when the user pressed Stop",
+    "duration_ms": "whole call",
+    "time_to_first_token_ms": "first streamed token (reasoning or answer)",
+    "input_tokens": "provider usage when present, otherwise estimated",
+    "output_tokens": "provider usage when present, otherwise estimated",
+    "estimated": "true when the token counts came from the local tokenizer",
+    "cost_usd": "from src/config/models.ts pricing; absent for unpriced models",
+    "finish_reason": "provider finish reason",
+    "message_count": "messages sent to the model",
+    "attachment_count": "files attached to the turn (bytes are never sent)",
+    "rag_used": "true when retrieved context was added",
+    "error_type": "exception name, only on failures",
+    "error_message": "provider message, truncated to 2000 characters"
+  },
+  "views": [
+    {
+      "name": "llm - p50 p95 latency per model",
+      "unit": "table",
+      "query": "SELECT model, COUNT(*) AS calls, ROUND(AVG(duration_ms), 1) AS avg_ms, ROUND(approx_percentile_cont(duration_ms, 0.50), 1) AS p50_ms, ROUND(approx_percentile_cont(duration_ms, 0.95), 1) AS p95_ms FROM llm_calls GROUP BY model ORDER BY calls DESC"
+    },
+    {
+      "name": "llm - error rate per model per day",
+      "unit": "line",
+      "xAxis": "day",
+      "query": "SELECT DATE_TRUNC('day', TO_TIMESTAMP(_timestamp / 1000000)) AS day, model, COUNT(*) AS calls, SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors, ROUND(100.0 * SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) / COUNT(*), 2) AS error_pct FROM llm_calls GROUP BY day, model ORDER BY day DESC, error_pct DESC"
+    },
+    {
+      "name": "llm - failure kinds",
+      "unit": "table",
+      "query": "SELECT error_type, COUNT(*) AS n FROM llm_calls WHERE status <> 'ok' GROUP BY error_type ORDER BY n DESC"
+    },
+    {
+      "name": "llm - status mix (errors, stops, rag use)",
+      "unit": "table",
+      "query": "SELECT status, COUNT(*) AS calls, SUM(CASE WHEN stopped THEN 1 ELSE 0 END) AS stopped, SUM(CASE WHEN rag_used THEN 1 ELSE 0 END) AS with_rag FROM llm_calls GROUP BY status"
+    },
+    {
+      "name": "llm - tokens and cost per day",
+      "unit": "line",
+      "xAxis": "day",
+      "query": "SELECT DATE_TRUNC('day', TO_TIMESTAMP(_timestamp / 1000000)) AS day, COUNT(*) AS calls, SUM(input_tokens) AS input_tokens, SUM(output_tokens) AS output_tokens, ROUND(SUM(cost_usd), 6) AS cost_usd, SUM(CASE WHEN estimated THEN 1 ELSE 0 END) AS estimated_calls FROM llm_calls GROUP BY day ORDER BY day DESC LIMIT 90"
+    },
+    {
+      "name": "llm - cost per model",
+      "unit": "bar",
+      "query": "SELECT model, ROUND(SUM(cost_usd), 6) AS cost_usd, COUNT(*) AS calls FROM llm_calls WHERE cost_usd IS NOT NULL GROUP BY model ORDER BY cost_usd DESC"
+    },
+    {
+      "name": "llm - cost per user (top 50)",
+      "unit": "table",
+      "query": "SELECT user_id, ROUND(SUM(cost_usd), 4) AS cost_usd, COUNT(*) AS calls FROM llm_calls WHERE user_id IS NOT NULL GROUP BY user_id ORDER BY cost_usd DESC LIMIT 50"
+    },
+    {
+      "name": "llm - council stage breakdown",
+      "unit": "table",
+      "query": "SELECT span, model, COUNT(*) AS calls, ROUND(AVG(duration_ms), 1) AS avg_ms, ROUND(approx_percentile_cont(duration_ms, 0.95), 1) AS p95_ms, SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) AS errors FROM llm_calls WHERE span LIKE 'council%' GROUP BY span, model ORDER BY span, calls DESC"
+    },
+    {
+      "name": "llm - slowest council runs",
+      "unit": "table",
+      "query": "SELECT trace_id, COUNT(*) AS stages, COUNT(DISTINCT model) AS models, SUM(duration_ms) AS model_ms, MAX(_timestamp) - MIN(_timestamp) AS spread_us FROM llm_calls WHERE span LIKE 'council%' GROUP BY trace_id ORDER BY model_ms DESC LIMIT 50"
+    },
+    {
+      "name": "llm - time to first token",
+      "unit": "table",
+      "query": "SELECT model, thinking_level, ROUND(approx_percentile_cont(time_to_first_token_ms, 0.50), 1) AS p50_ttfb_ms, ROUND(approx_percentile_cont(time_to_first_token_ms, 0.95), 1) AS p95_ttfb_ms FROM llm_calls WHERE time_to_first_token_ms IS NOT NULL GROUP BY model, thinking_level ORDER BY model, thinking_level"
+    },
+    {
+      "name": "llm - one chat request end to end",
+      "unit": "table",
+      "note": "Replace the trace_id value; this is how a slow or failed chat is read back.",
+      "query": "SELECT timestamp, span, model, status, duration_ms, time_to_first_token_ms, input_tokens, output_tokens, cost_usd, finish_reason FROM llm_calls WHERE trace_id = 'paste-a-trace-id-here' ORDER BY _timestamp"
+    }
+  ]
+}

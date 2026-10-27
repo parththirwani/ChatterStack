@@ -1,7 +1,8 @@
 'use client';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import type { ParsedSkill, SkillFile } from '@/src/lib/skills/skill-file';
-import type { Skill, SkillUploadResult } from '@/src/types/skill.types';
+import { MAX_SKILLS_PER_MESSAGE, type ParsedSkill, type SkillFile } from '@/src/lib/skills/skill-file';
+import type { Skill, SkillTag, SkillUploadResult } from '@/src/types/skill.types';
+import { skillsInText } from '@/src/lib/skills/slash';
 import { SKILL_CREATOR_ID } from '@/src/config/skill-catalog';
 import { useAppStore } from '@/src/store/rootStore';
 
@@ -84,12 +85,20 @@ function setState(next: Partial<SkillsState>) {
 let latestRequest = 0;
 
 let latestRefresh: Promise<void> = Promise.resolve();
+// False while the newest refresh hasn't answered.
+let current = true;
 
 export function refreshSkills() {
   const requested = ++latestRequest;
+  current = false;
+  const settle = (next: Partial<SkillsState>) => {
+    if (requested !== latestRequest) return;
+    current = true;
+    setState(next);
+  };
   latestRefresh = request<{ skills: Skill[] }>('/api/skills')
-    .then(({ skills }) => { if (requested === latestRequest) setState({ skills, loading: false, error: '' }); })
-    .catch((error: Error) => { if (requested === latestRequest) setState({ loading: false, error: error.message }); });
+    .then(({ skills }) => settle({ skills, loading: false, error: '' }))
+    .catch((error: Error) => settle({ loading: false, error: error.message }));
   return latestRefresh;
 }
 
@@ -115,6 +124,22 @@ export async function currentSkills(userId: string | undefined): Promise<Skill[]
     await waited;
   } while (waited !== latestRefresh);
   return loadedFor === userId ? state.skills : [];
+}
+
+const tagsFrom = (text: string, skills: Skill[]): SkillTag[] =>
+  skillsInText(text, skills.filter((skill) => skill.enabled))
+    .slice(0, MAX_SKILLS_PER_MESSAGE)
+    .map(({ id, name }) => ({ id, name }));
+
+/**
+ * The skills a message tags: its `/name` tokens for turned-on skills, the
+ * first few. Answers right away when the list is up to date (the usual case),
+ * otherwise once the load or refresh in progress has answered.
+ */
+export function skillTagsIn(text: string, userId: string | undefined): SkillTag[] | Promise<SkillTag[]> {
+  if (!userId || userId === 'guest') return [];
+  if (loadedFor === userId && current && !state.loading) return tagsFrom(text, state.skills);
+  return currentSkills(userId).then((skills) => tagsFrom(text, skills));
 }
 
 function subscribe(listener: () => void) {
@@ -152,6 +177,7 @@ export function resetSkillsCache() {
   loadedFor = null;
   latestRequest += 1;
   latestRefresh = Promise.resolve();
+  current = true;
 }
 
 /**

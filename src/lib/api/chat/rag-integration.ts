@@ -1,7 +1,9 @@
 import crypto from 'crypto';
-import { ingestMessage } from '@/src/services/rag/ingest';
+import { ingestMessage, type IngestOutcome } from '@/src/services/rag/ingest';
 import { incrementalProfileUpdate } from '@/src/services/profile/profiler';
 import { retrieveContextWithFallback, formatContextForLLM } from '@/src/services/rag/retrievalService';
+import { captureError } from '@/src/lib/observability/capture';
+import { traceStep } from '@/src/lib/observability/otlp-traces';
 
 const RAG_ENABLED = process.env.RAG_ENABLED === 'true';
 
@@ -15,14 +17,15 @@ export async function retrieveRAGContext(
   userId: string,
   query: string,
   conversationId: string,
-  conversationHistory: ConversationMessage[]
+  conversationHistory: ConversationMessage[],
+  traceId?: string
 ): Promise<string> {
   if (!RAG_ENABLED) {
     return '';
   }
 
   try {
-    const context = await retrieveContextWithFallback({
+    const context = await traceStep(traceId, 'rag.retrieve', () => retrieveContextWithFallback({
       userId,
       query,
       currentConversationId: conversationId,
@@ -30,11 +33,16 @@ export async function retrieveRAGContext(
         role: m.role,
         content: m.content,
       })),
-    });
+      traceId,
+    }), (result) => ({
+      'chatterstack.rag_chunks': result.chunks?.length ?? 0,
+      'chatterstack.rag_context_found': (result.chunks?.length ?? 0) > 0,
+      'chatterstack.rag_degraded': result.degraded === true,
+    }), (result) => result.degraded === true);
 
     return formatContextForLLM(context);
   } catch (error) {
-    console.error('RAG retrieval failed:', error);
+    captureError(error, { route: 'chat/rag', stage: 'retrieve' });
     return '';
   }
 }
@@ -44,35 +52,46 @@ export async function ingestConversationData(
   conversationId: string,
   userMessage: string,
   aiResponse: string,
-  selectedModel: string
+  selectedModel: string,
+  traceId?: string
 ) {
   if (!RAG_ENABLED) return;
 
   const userMessageId = crypto.randomUUID();
   const aiMessageId = crypto.randomUUID();
 
+  // Each write is its own span (with its embedding call nested inside), so a
+  // slow or failing memory store shows up in the request's trace.
+  const ingestStep = (role: 'user' | 'assistant', run: () => Promise<IngestOutcome>) =>
+    traceStep(traceId, 'rag.ingest', run, (outcome) => ({
+      'chatterstack.rag_role': role,
+      'chatterstack.rag_outcome': outcome,
+    }), (outcome) => outcome === 'failed');
+
   // Ingest user message
-  ingestMessage({
+  ingestStep('user', () => ingestMessage({
     userId,
     conversationId,
     messageId: userMessageId,
     content: userMessage,
     role: 'user',
-  }).catch((err) => console.error('User message ingestion failed:', err));
+    traceId,
+  })).catch((err) => captureError(err, { route: 'chat/rag', stage: 'ingest-user' }));
 
   // Ingest AI response
-  ingestMessage({
+  ingestStep('assistant', () => ingestMessage({
     userId,
     conversationId,
     messageId: aiMessageId,
     content: aiResponse,
     role: 'assistant',
     modelUsed: selectedModel,
-  }).catch((err) => console.error('AI message ingestion failed:', err));
+    traceId,
+  })).catch((err) => captureError(err, { route: 'chat/rag', model: selectedModel, stage: 'ingest-assistant' }));
 
   // Update profile
-  incrementalProfileUpdate(userId, {
+  traceStep(traceId, 'profile.update', () => incrementalProfileUpdate(userId, {
     role: 'user',
     content: userMessage,
-  }).catch((err) => console.error('Profile update failed:', err));
+  })).catch((err) => captureError(err, { route: 'chat/rag', stage: 'profile-update' }));
 }

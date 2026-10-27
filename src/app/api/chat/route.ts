@@ -7,12 +7,17 @@ import { createEmptyConversation, addMessagesToConversation } from '@/src/lib/ap
 import { generateConversationTitle, saveGeneratedTitle } from '@/src/services/title/titleService';
 import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { retrieveRAGContext, ingestConversationData } from '@/src/lib/api/chat/rag-integration';
-import { createSSEStream } from '@/src/lib/api/chat/sse-helper';
+import { createSSEStream, type SSEStream } from '@/src/lib/api/chat/sse-helper';
+import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
 import { prisma } from '@/src/lib/prisma';
 
-import { withLLMTokenLimit, recordLLMTokens, countTokens } from '@/src/middleware/llmTokenRateLimit';
+import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
+import { captureError } from '@/src/lib/observability/capture';
+import { recordRequestSpan, traceStep } from '@/src/lib/observability/otlp-traces';
+import { AnalyticsEvents, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
+import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { ChatRequestSchema } from '@/src/types/chat.types';
-import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
+import { COUNCIL_MODEL_IDS, DEFAULT_THINKING_LEVEL, TITLE_MODEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
@@ -76,19 +81,41 @@ async function historyAttachmentParts(userId: string, files: Array<ChatAttachmen
 }
 
 export async function POST(request: NextRequest) {
+  // One id for every model call this request makes, so the council stages and the
+  // embedding calls can be joined back together in OpenObserve.
+  const traceId = crypto.randomUUID();
+  const requestStartedAt = Date.now();
+  const traced: { userId?: string; model?: string; council?: boolean; conversationId?: string } = {};
+  // A request answered without streaming (rejected, or failed before the stream)
+  // still gets a root-only trace, so throttled and refused requests are visible.
+  const finish = (response: Response, error?: unknown) => {
+    recordRequestSpan({
+      traceId,
+      startedAt: requestStartedAt,
+      status: response.status >= 500 ? 'error' : 'rejected',
+      httpStatus: response.status,
+      error,
+      ...traced,
+    });
+    return response;
+  };
+
   try {
     const session = await auth();
     if (!session?.user?.id) {
-      return jsonError('Unauthorized', 401);
+      return finish(jsonError('Unauthorized', 401));
     }
 
     const userId = session.user.id;
-    const body = await request.json();
+    traced.userId = userId;
+    // A body that is not JSON is the client's mistake, not a server error.
+    const body = await request.json().catch(() => undefined);
+    if (body === undefined) return finish(jsonError('Request body must be valid JSON', 400));
 
     const { success, data, error: validationError } =
       ChatRequestSchema.safeParse(body);
     if (!success) {
-      return new Response(
+      return finish(new Response(
         JSON.stringify({
           message: 'Incorrect inputs',
           errors: validationError?.issues,
@@ -97,7 +124,7 @@ export async function POST(request: NextRequest) {
           status: 400,
           headers: { 'Content-Type': 'application/json' },
         }
-      );
+      ));
     }
 
     // New chats normally arrive with a client-generated id so the client can
@@ -108,51 +135,93 @@ export async function POST(request: NextRequest) {
     const isCouncilMode = selectedModel === 'council';
     const thinkingLevel = data.thinkingLevel ?? DEFAULT_THINKING_LEVEL;
     const attachments = data.attachments ?? [];
+    traced.model = selectedModel;
+    traced.council = isCouncilMode;
+    traced.conversationId = conversationId;
     let currentParts;
     try {
       const resolved = await resolveDocuments(userId, attachments);
       currentParts = await attachmentParts(resolved);
     } catch (error) {
-      return jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400);
+      return finish(jsonError(error instanceof Error ? error.message : 'Invalid attachment', 400));
     }
     let skills;
     try {
       skills = await resolveSkills(userId, data.skills ?? []);
     } catch (error) {
-      if (error instanceof SkillError) return jsonError(error.message, error.status);
+      if (error instanceof SkillError) return finish(jsonError(error.message, error.status));
       throw error;
     }
     // Sent in the system prompt, so it counts toward the limit like the message.
     const skillText = formatActiveSkills(skills);
 
-    const rateLimitCheck = await withLLMTokenLimit(
-      userId,
-      data.message + currentParts.filter((part) => part.type === 'text').map((part) => part.text).join('\n') + skillText,
-      isCouncilMode
-    );
-    if (rateLimitCheck) {
-      return rateLimitCheck; // Returns 429 with detailed token info
-    }
-    // End rate limiting check
-
     // Check (or claim) the conversation before streaming anything: the id
-    // comes from the client, so it must belong to this user.
-    if (isNewConversation) {
-      try {
-        await createEmptyConversation(conversationId, userId);
-      } catch (error) {
-        if (isUniqueViolation(error)) return jsonError('Conversation already exists', 409);
-        throw error;
-      }
-    } else {
+    // comes from the client, so it must belong to this user. Ownership is
+    // verified before any history is read or budget is reserved.
+    if (!isNewConversation) {
       const owned = await prisma.conversation.findFirst({
         where: { id: conversationId, userId },
         select: { id: true },
       });
-      if (!owned) return jsonError('Conversation not found', 404);
+      if (!owned) return finish(jsonError('Conversation not found', 404));
     }
 
-    return createSSEStream(async ({ send, signal }) => {
+    // The limit is estimated from the full prompt the model will see:
+    // cached history + the new message + current attachment text. The
+    // reservation is reconciled with the actual usage in `respond` below.
+    const historyForEstimate = isNewConversation ? [] : await loadHistory(conversationId);
+    const estimateText = [
+      ...historyForEstimate.map((m) => m.content),
+      data.message,
+      ...currentParts.filter((part) => part.type === 'text').map((part) => part.text),
+      skillText,
+    ].join('\n');
+
+    const rateLimitCheck = await withLLMTokenLimit(userId, estimateText, isCouncilMode);
+    if (rateLimitCheck) {
+      if (rateLimitCheck.status === 429) {
+        captureServerEvent(userId, AnalyticsEvents.RateLimitHit, {
+          council: isCouncilMode,
+          limit: rateLimitCheck.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
+        });
+      }
+      return finish(rateLimitCheck); // Returns 429 (or 503) with detailed token info
+    }
+
+    captureServerEvent(userId, AnalyticsEvents.ChatMessageSent, chatMessageSentProps({
+      modelId: selectedModel,
+      council: isCouncilMode,
+      thinkingLevel,
+      attachmentCount: attachments.length,
+      messageLength: data.message?.length ?? 0,
+    }));
+
+    // Claim a new chat only once the budget is reserved; a rejected claim
+    // releases the reservation again (0 tokens) so it is not wasted.
+    if (isNewConversation) {
+      try {
+        await createEmptyConversation(conversationId, userId);
+        captureServerEvent(userId, AnalyticsEvents.ConversationCreated, { council: isCouncilMode });
+      } catch (error) {
+        if (isUniqueViolation(error)) {
+          await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
+          return finish(jsonError('Conversation already exists', 409));
+        }
+        await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
+        throw error;
+      }
+    }
+
+    const respond = async ({ send, signal }: SSEStream) => {
+      // The reservation from withLLMTokenLimit above must never be left
+      // dangling: whichever path `respond` exits through, usage is recorded.
+      let usageRecorded = false;
+      // The request's root span in OpenObserve traces: question, answer, outcome.
+      let requestAnswer = '';
+      let requestStatus: 'ok' | 'error' | 'aborted' = 'error';
+      let requestError: unknown;
+      let requestRagUsed = false;
+      try {
       send({ status: 'starting' });
 
       // A new chat is named in parallel with the answer, so the sidebar can
@@ -160,12 +229,12 @@ export async function POST(request: NextRequest) {
       let titleTask: Promise<void> = Promise.resolve();
       if (isNewConversation) {
         send({ conversationCreated: conversationId });
-        titleTask = generateConversationTitle({ userMessage: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}` })
+        titleTask = generateConversationTitle({ trace: { traceId, userId, conversationId }, userMessage: data.message || `Attached ${attachments.map((file) => file.name).join(', ')}` })
           .then(async (title) => {
             // Saved even if the client has gone; only sent if it's still there.
             if (await saveGeneratedTitle(conversationId, title)) send({ title });
           })
-          .catch((err) => console.error('Title generation failed:', err));
+          .catch((err) => captureError(err, { route: '/api/chat', model: TITLE_MODEL, council: isCouncilMode, stage: 'title', userId }));
       }
 
       const conversationHistory = isNewConversation ? [] : await loadHistory(conversationId);
@@ -174,8 +243,10 @@ export async function POST(request: NextRequest) {
         userId,
         data.message,
         conversationId,
-        conversationHistory
+        conversationHistory,
+        traceId
       );
+      requestRagUsed = Boolean(ragContext);
 
       const messagesForAI = await Promise.all([
         ...conversationHistory,
@@ -194,13 +265,22 @@ export async function POST(request: NextRequest) {
       // On Stop/disconnect the model call is cancelled and resolves with the
       // text written so far, which is still saved and counted below.
       let fullContent = '';
+      const modelStartedAt = Date.now();
+      let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
           ? await runCouncilProcess(
               data.message,
               // Members see earlier files too; the chair's prompt uses the text.
               conversationHistory.map((m, index) => ({ ...m, parts: messagesForAI[index].content })),
-              { members: data.council?.members, chair: data.council?.chair, thinkingLevel, signal, skills },
+              {
+                members: data.council?.members,
+                chair: data.council?.chair,
+                thinkingLevel,
+                signal,
+                skills,
+                trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: Boolean(ragContext), attachmentCount: attachments.length },
+              },
               {
                 onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
                 onChunk: (chunk) => send({ chunk }),
@@ -216,47 +296,126 @@ export async function POST(request: NextRequest) {
               skills,
               onChunk: (chunk) => send({ chunk }),
               onReasoning: (reasoning) => send({ reasoning }),
+              trace: {
+                traceId,
+                inRequest: true,
+                contentPrompt: data.message,
+                span: 'completion',
+                userId,
+                conversationId,
+                thinkingLevel,
+                messageCount: messagesForAI.length,
+                attachmentCount: attachments.length,
+                ragUsed: Boolean(ragContext),
+              },
             });
         send({ done: true });
       } catch (error) {
+        outcome = signal.aborted ? 'stopped' : 'error';
+        requestError = error;
         if (!signal.aborted) {
-          console.error('Model call failed:', error);
+          captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'model-call', userId });
           send({
             error: error instanceof Error ? error.message : 'Failed to generate response',
           });
         }
       }
+      if (signal.aborted && outcome === 'success') outcome = 'stopped';
+      requestAnswer = fullContent;
+      requestStatus = outcome === 'success' ? 'ok' : outcome === 'stopped' ? 'aborted' : 'error';
+
+      captureServerEvent(userId, AnalyticsEvents.ChatResponseCompleted, chatResponseCompletedProps({
+        modelId: selectedModel, council: isCouncilMode, startedAt: modelStartedAt, outcome,
+      }));
+      if (isCouncilMode) {
+        captureServerEvent(userId, AnalyticsEvents.CouncilRunCompleted, councilRunCompletedProps({
+          members: data.council?.members?.length ?? COUNCIL_MODEL_IDS.length,
+          startedAt: modelStartedAt,
+          outcome,
+        }));
+      }
 
       // Count every call, including stopped and failed ones: the prompt was
       // still sent, and skipping this would let Stop bypass the rate limit.
       try {
+        usageRecorded = true;
         const inputTokens = countTokens(skillText) + countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
         await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
       } catch (error) {
-        console.error('Failed to record tokens:', error);
+        captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-record', userId });
       }
 
       const exchange: RedisMessage[] = [
         { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
-      if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
-        await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
-      } else {
-        await redisStore.delete(conversationId);
+      try {
+        await traceStep(traceId, 'db.persist', async () => {
+          if ([...conversationHistory, ...exchange].every((message) => !message.attachments?.length)) {
+            await redisStore.set(conversationId, [...conversationHistory, ...exchange]);
+          } else {
+            await redisStore.delete(conversationId);
+          }
+          await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
+          await markDocumentsUsed(userId, attachments);
+        });
+      } catch (error) {
+        captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'persist', userId });
+        throw error;
       }
-      await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments, skillTags(skills));
-      await markDocumentsUsed(userId, attachments);
       if (fullContent) {
-        await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);
+        await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel, traceId);
       }
 
       // Usually finished long before the answer; bounded by the title timeout.
       await titleTask;
+      } catch (error) {
+        // Anything that fails after the answer (saving, ingestion) fails the turn.
+        requestStatus = 'error';
+        requestError ??= error;
+        throw error;
+      } finally {
+        recordRequestSpan({
+          traceId,
+          startedAt: requestStartedAt,
+          status: requestStatus,
+          model: selectedModel,
+          council: isCouncilMode,
+          userId,
+          conversationId,
+          question: data.message || undefined,
+          answer: requestAnswer,
+          error: requestError,
+          attributes: {
+            'chatterstack.thinking_level': thinkingLevel,
+            'chatterstack.attachment_count': attachments.length,
+            'chatterstack.rag_used': requestRagUsed,
+            'chatterstack.new_conversation': isNewConversation,
+          },
+        });
+        if (!usageRecorded) {
+          // Failed before the model call (e.g. RAG or attachment setup):
+          // settle the reservation with the estimate so it is not stuck
+          // against the window for 24 hours.
+          await recordLLMTokens(userId, estimatePromptTokens(estimateText, isCouncilMode), isCouncilMode).catch((error) =>
+            captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-release', userId })
+          );
+        }
+      }
+    };
+
+    const turn = beginConversationTurn(conversationId);
+    return createSSEStream(async (stream) => {
+      try {
+        await turn.ready;
+        await respond(stream);
+      } finally {
+        turn.end();
+      }
     }, request.signal);
   } catch (error) {
-    console.error('Error in chat:', error);
-    return new Response(
+    captureError(error, { route: '/api/chat', stage: 'request' });
+    return finish(new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error occurred',
       }),
@@ -264,6 +423,6 @@ export async function POST(request: NextRequest) {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       }
-    );
+    ), error);
   }
 }

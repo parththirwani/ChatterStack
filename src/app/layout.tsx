@@ -2,6 +2,8 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Source_Serif_4 } from "next/font/google";
 import "./globals.css";
 import { ModelSelectionProvider } from "@/src/context/ModelSelectionContext";
+import PostHogAnalytics from "@/src/components/analytics/PostHogAnalytics";
+import { postHogClientConfig } from "@/src/lib/analytics/config";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -39,9 +41,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${sourceSerif.variable}`}
     >
       <body className="antialiased">
-        <ModelSelectionProvider>
-          {children}
-        </ModelSelectionProvider>
+        <PostHogAnalytics config={postHogClientConfig()}>
+          <ModelSelectionProvider>
+            {children}
+          </ModelSelectionProvider>
+        </PostHogAnalytics>
       </body>
     </html>
   );

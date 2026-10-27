@@ -2,6 +2,7 @@ import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { auth } from '@/src/lib/auth';
 import { MAX_FILE_SIZE, validStorageKey } from '@/src/lib/server/documents';
 import { fileMimeType } from '@/src/lib/api/chat/attachments';
+import { captureError } from '@/src/lib/observability/capture';
 
 export async function POST(request: Request) {
   try {
@@ -21,6 +22,7 @@ export async function POST(request: Request) {
     });
     return Response.json(response);
   } catch (error) {
+    captureError(error, { route: '/api/documents/upload', stage: 'generate-token' });
     const message = error instanceof Error ? error.message : 'Upload failed';
     return Response.json({ error: message }, { status: message === 'Unauthorized' ? 401 : 400 });
   }

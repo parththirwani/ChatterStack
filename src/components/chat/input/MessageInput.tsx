@@ -22,6 +22,8 @@ interface MessageInputProps {
   loading: boolean;
   onStopGenerating?: () => void;
   placeholder?: string;
+  /** Rendered just above the input box, tucked behind its top edge. */
+  queue?: React.ReactNode;
 }
 
 type SlashOption =
@@ -34,7 +36,7 @@ const FILES_OPTION: SlashOption = { kind: 'files', key: 'files', label: 'Add fil
 // behind it lines up character for character.
 const TEXT_BOX = 'px-5 pt-4 pb-2 text-[15px] leading-6 whitespace-pre-wrap break-words';
 
-const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, attachments, onAttachmentsChange, onSendMessage, loading, onStopGenerating, placeholder = 'Ask anything' }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, attachments, onAttachmentsChange, onSendMessage, loading, onStopGenerating, placeholder = 'Ask anything', queue }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,7 +144,8 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     }
     if (event.key === 'Enter' && !event.shiftKey) {
       event.preventDefault();
-      if (!loading && !readingFiles && (message.trim() || attachments.length)) onSendMessage();
+      // While a reply streams, sending puts the message in the queue.
+      if (!readingFiles && (message.trim() || attachments.length)) onSendMessage();
     }
   };
 
@@ -167,38 +170,44 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
     }
   };
 
+  const hasContent = Boolean(message.trim()) || attachments.length > 0;
+  // Streaming with something typed: the button queues it. Streaming with an
+  // empty box: the button stops the reply.
+  const showStop = loading && !hasContent;
+
   return (
-    <div className="relative w-full">
-      {pickerOpen && slash && (
-        <div className="absolute inset-x-0 bottom-full z-30 mb-2 overflow-hidden rounded-xl border border-white/[0.14] bg-[#242424] py-1 shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
-          <ul id={pickerId} role="listbox" aria-label="Skills and actions" className="max-h-72 overflow-y-auto">
-            {options.map((option, index) => (
-              <li
-                key={option.key}
-                id={`${pickerId}-${index}`}
-                role="option"
-                aria-selected={index === active}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => setActiveOption(index)}
-                onClick={() => choose(option)}
-                className={`flex cursor-pointer items-center gap-2.5 px-3 py-1.5 ${index === active ? 'bg-white/[0.08]' : ''} ${option.kind === 'files' && options[index + 1] ? 'mb-1 border-b border-white/[0.07] pb-2' : ''}`}
-              >
-                {option.kind === 'files'
-                  ? <Paperclip className="h-4 w-4 shrink-0 text-[#aaa6a2]" />
-                  : <span aria-hidden="true" className="w-4 shrink-0 text-center font-mono text-sm text-[#8f8b86]">/</span>}
-                <span className="min-w-0">
-                  <span className="block text-[13px] text-[#eee]">{option.kind === 'files' ? option.label : option.name}</span>
-                  <span className="block truncate text-xs text-[#8f8b86]">{option.description}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          {!options.length && <p className="px-3 py-2 text-xs text-[#aaa6a2]">
-            {skillsLoading ? 'Loading skills…' : enabledSkills.length === 0 ? 'No skills turned on. Add some in Customize.' : `No skills match “/${slash.query}”.`}
-          </p>}
-        </div>
-      )}
-      <div className="rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.38] focus-within:ring-1 focus-within:ring-white/[0.12]">
+    <div className="w-full">
+      {queue}
+      <div className="relative rounded-[20px] border border-white/[0.14] bg-[#292929] shadow-[0_10px_28px_rgba(0,0,0,0.10)] transition-colors focus-within:border-white/[0.38] focus-within:ring-1 focus-within:ring-white/[0.12]">
+        {pickerOpen && slash && (
+          <div className="absolute inset-x-0 bottom-full z-30 mb-2 overflow-hidden rounded-xl border border-white/[0.14] bg-[#242424] py-1 shadow-[0_12px_32px_rgba(0,0,0,0.35)]">
+            <ul id={pickerId} role="listbox" aria-label="Skills and actions" className="max-h-72 overflow-y-auto">
+              {options.map((option, index) => (
+                <li
+                  key={option.key}
+                  id={`${pickerId}-${index}`}
+                  role="option"
+                  aria-selected={index === active}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveOption(index)}
+                  onClick={() => choose(option)}
+                  className={`flex cursor-pointer items-center gap-2.5 px-3 py-1.5 ${index === active ? 'bg-white/[0.08]' : ''} ${option.kind === 'files' && options[index + 1] ? 'mb-1 border-b border-white/[0.07] pb-2' : ''}`}
+                >
+                  {option.kind === 'files'
+                    ? <Paperclip className="h-4 w-4 shrink-0 text-[#aaa6a2]" />
+                    : <span aria-hidden="true" className="w-4 shrink-0 text-center font-mono text-sm text-[#8f8b86]">/</span>}
+                  <span className="min-w-0">
+                    <span className="block text-[13px] text-[#eee]">{option.kind === 'files' ? option.label : option.name}</span>
+                    <span className="block truncate text-xs text-[#8f8b86]">{option.description}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {!options.length && <p className="px-3 py-2 text-xs text-[#aaa6a2]">
+              {skillsLoading ? 'Loading skills…' : enabledSkills.length === 0 ? 'No skills turned on. Add some in Customize.' : `No skills match “/${slash.query}”.`}
+            </p>}
+          </div>
+        )}
         <div className="relative">
           {/* Skill tokens are highlighted in a copy of the text drawn behind
               the (then transparent) textarea, as claude.ai shows them inline. */}
@@ -234,7 +243,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
         </div>}
         <div className="flex min-h-12 items-center gap-2 px-3 pb-3">
           <input ref={fileInputRef} type="file" multiple accept=".png,.jpg,.jpeg,.webp,.gif,.pdf,.docx,.txt,.md" aria-label="Choose files" className="sr-only" onChange={(event) => void addFiles(event.target.files)} />
-          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={loading || readingFiles} aria-label="Attach files" title="Attach files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"><Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>
+          <button type="button" onClick={() => fileInputRef.current?.click()} disabled={readingFiles} aria-label="Attach files" title="Attach files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#aaa6a2] transition-colors hover:bg-white/[0.07] hover:text-white disabled:opacity-40"><Paperclip className="h-[17px] w-[17px]" strokeWidth={1.8} /></button>
           <CouncilToggle />
           <div className="flex-1" />
           <div className="flex min-w-0 items-center gap-0.5">
@@ -243,12 +252,13 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
           </div>
           <button
             type="button"
-            onClick={loading ? onStopGenerating : onSendMessage}
-            disabled={!loading && (readingFiles || (!message.trim() && attachments.length === 0))}
-            aria-label={loading ? 'Stop generating' : 'Send message'}
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#f0eeeb] text-[#1c1b19] transition-colors hover:bg-white disabled:bg-white/10 disabled:text-white/35 disabled:cursor-not-allowed"
+            onClick={showStop ? onStopGenerating : onSendMessage}
+            disabled={!showStop && (readingFiles || !hasContent)}
+            aria-label={showStop ? 'Stop generating' : loading ? 'Queue message' : 'Send message'}
+            title={loading && !showStop ? 'Queue message' : undefined}
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition-colors disabled:cursor-not-allowed disabled:bg-white/10 disabled:text-white/35 ${showStop ? 'bg-[#e5484d] text-white hover:bg-[#ec5d61]' : 'bg-[#f0eeeb] text-[#1c1b19] hover:bg-white'}`}
           >
-            {loading ? <Square className="h-3.5 w-3.5 fill-current" /> : <ArrowUp className="h-5 w-5" />}
+            {showStop ? <Square className="h-3.5 w-3.5 fill-current" /> : <ArrowUp className="h-5 w-5" />}
           </button>
         </div>
       </div>

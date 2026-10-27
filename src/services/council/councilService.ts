@@ -14,6 +14,8 @@ import {
 } from '../prompt/promptService';
 import { COUNCIL_CHAIR_MODEL, COUNCIL_MODEL_IDS, type ThinkingLevel } from '@/src/config/models';
 import { streamCompletion } from '@/src/lib/api/chat/openrouter';
+import { captureError } from '@/src/lib/observability/capture';
+import type { StreamTrace } from '@/src/lib/api/chat/openrouter';
 import type { CouncilAnswer, CouncilRanking } from '@/src/types/chat.types';
 import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 import type { ParsedSkill } from '@/src/lib/skills/skill-file';
@@ -55,6 +57,8 @@ export interface CouncilOptions {
   signal?: AbortSignal;
   /** Skills tagged on this message; members and the chair follow them. */
   skills?: readonly ParsedSkill[];
+  /** Shared trace id + request context, recorded for every stage. */
+  trace?: Omit<StreamTrace, 'span' | 'thinkingLevel'>;
 }
 
 export interface CouncilCallbacks {
@@ -88,7 +92,8 @@ async function stage1_collect_responses(
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
   { onProgress, onAnswer }: CouncilCallbacks,
-  skills: readonly ParsedSkill[]
+  skills: readonly ParsedSkill[],
+  trace: CouncilOptions['trace']
 ): Promise<Stage1Result[]> {
 
   const systemPrompt = getCouncilStage1Prompt() + formatActiveSkills(skills);
@@ -108,7 +113,11 @@ async function stage1_collect_responses(
         { role: 'user', content: attachmentContent.length ? [{ type: 'text' as const, text: userQuery || 'Please examine the attached file(s).' }, ...attachmentContent] : userQuery },
       ];
 
-      const response = await streamCompletion(messages, model, { thinkingLevel, signal });
+      const response = await streamCompletion(messages, model, {
+        thinkingLevel,
+        signal,
+        trace: trace && { ...trace, span: 'council-member-answer', thinkingLevel, messageCount: messages.length },
+      });
       if (signal?.aborted) return null;
       if (!response.trim()) throw new Error('Empty response');
 
@@ -117,7 +126,7 @@ async function stage1_collect_responses(
 
       return { model, response } as Stage1Result;
     } catch (error) {
-      console.error(`Stage 1: ${model} failed:`, error);
+      captureError(error, { route: 'council', model, council: true, stage: 'member-answer' });
       onProgress?.('stage1', model, -1);
       return null;
     }
@@ -165,7 +174,8 @@ async function stage2_collect_rankings(
   stage1Results: Stage1Result[],
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
-  onProgress?: (stage: string, model: string, progress: number) => void
+  onProgress: ((stage: string, model: string, progress: number) => void) | undefined,
+  trace: CouncilOptions['trace']
 ): Promise<{ stage2Results: Stage2Result[]; labelToModel: Map<string, string> }> {
 
   const labels = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
@@ -190,16 +200,17 @@ async function stage2_collect_rankings(
       if (signal?.aborted) return null;
       try {
         onProgress?.('stage2', model, 0);
-        const rankingText = await streamCompletion(
-          [{ role: 'user', content: rankingPrompt }],
-          model,
-          { thinkingLevel, signal }
-        );
+        const rankingMessages = [{ role: 'user', content: rankingPrompt }];
+        const rankingText = await streamCompletion(rankingMessages, model, {
+          thinkingLevel,
+          signal,
+          trace: trace && { ...trace, span: 'council-ranking', thinkingLevel, messageCount: rankingMessages.length },
+        });
         if (signal?.aborted) return null;
         onProgress?.('stage2', model, 100);
         return { model, rankingText, parsedRanking: parse_ranking_from_text(rankingText) };
       } catch (error) {
-        console.error(`Stage 2: ${model} failed:`, error);
+      captureError(error, { route: 'council', model, council: true, stage: 'member-ranking' });
         onProgress?.('stage2', model, -1);
         return null;
       }
@@ -254,7 +265,8 @@ async function stage3_synthesize_final(
   thinkingLevel: ThinkingLevel,
   signal: AbortSignal | undefined,
   { onProgress, onChunk, onReasoning }: CouncilCallbacks,
-  skills: readonly ParsedSkill[]
+  skills: readonly ParsedSkill[],
+  trace: CouncilOptions['trace']
 ): Promise<string> {
 
   const chairmanPrompt = getCouncilChairmanPrompt(
@@ -280,11 +292,12 @@ async function stage3_synthesize_final(
       onChunk,
       onReasoning,
       signal,
+      trace: trace && { ...trace, span: 'council-chair', thinkingLevel, messageCount: chairmanMessages.length },
     });
     onProgress?.('stage3', chair, 100);
     return finalResponse;
   } catch (error) {
-    console.error('Stage 3 failed:', error);
+    captureError(error, { route: 'council', model: chair, council: true, stage: 'chair-synthesis' });
     onProgress?.('stage3', chair, -1);
     throw new Error('Failed to synthesize final response');
   }
@@ -298,7 +311,7 @@ async function stage3_synthesize_final(
 export async function runCouncilProcess(
   userQuery: string,
   conversationHistory: Message[] = [],
-  { members = COUNCIL_MODELS, chair = CHAIRMAN_MODEL, thinkingLevel = 'off', signal, skills = [] }: CouncilOptions = {},
+  { members = COUNCIL_MODELS, chair = CHAIRMAN_MODEL, thinkingLevel = 'off', signal, skills = [], trace }: CouncilOptions = {},
   callbacks: CouncilCallbacks = {},
   attachmentContent: OpenRouterPart[] = []
 ): Promise<string> {
@@ -312,7 +325,8 @@ export async function runCouncilProcess(
     thinkingLevel,
     signal,
     callbacks,
-    skills
+    skills,
+    trace
   );
   if (signal?.aborted) return '';
   if (stage1Results.length === 0) {
@@ -324,7 +338,8 @@ export async function runCouncilProcess(
     stage1Results,
     thinkingLevel,
     signal,
-    onProgress
+    onProgress,
+    trace
   );
   if (signal?.aborted) return '';
   if (stage2Results.length === 0) {
@@ -343,6 +358,7 @@ export async function runCouncilProcess(
     thinkingLevel,
     signal,
     callbacks,
-    skills
+    skills,
+    trace
   );
 }

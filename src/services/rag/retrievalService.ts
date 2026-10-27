@@ -2,6 +2,7 @@ import { getQdrantClient } from '@/src/lib/qdrant';
 import { HybridSearchResult, RetrievalContext } from './types';
 import { generateEmbedding } from './openrouter';
 import { generateSparseVector } from './sparse';
+import { captureError } from '@/src/lib/observability/capture';
 
 
 const COLLECTION_NAME = process.env.QDRANT_COLLECTION || 'chatterstack_memory';
@@ -43,6 +44,8 @@ async function retrieveContext(params: {
   currentConversationId?: string;
   shortTermMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   timeWindowDays?: number;
+  /** Shared with the chat request that triggered this retrieval. */
+  traceId?: string;
 }): Promise<RetrievalContext> {
   const {
     userId,
@@ -50,6 +53,7 @@ async function retrieveContext(params: {
     currentConversationId,
     shortTermMessages = [],
     timeWindowDays = TIME_WINDOW_DAYS,
+    traceId,
   } = params;
 
   try {
@@ -59,6 +63,7 @@ async function retrieveContext(params: {
       query,
       currentConversationId,
       timeWindowDays,
+      traceId,
     });
 
     // Format context
@@ -75,11 +80,12 @@ async function retrieveContext(params: {
       shortTermContext: shortTermMessages.slice(-8), // Last 4-8 turns
     };
   } catch (error) {
-    console.error('Retrieval error:', error);
+    captureError(error, { route: 'rag/retrieve', stage: 'hybrid-search' });
     // Fallback: return only short-term context
     return {
       chunks: [],
       shortTermContext: shortTermMessages.slice(-8),
+      degraded: true,
     };
   }
 }
@@ -92,8 +98,9 @@ async function hybridSearch(params: {
   query: string;
   currentConversationId?: string;
   timeWindowDays: number;
+  traceId?: string;
 }): Promise<HybridSearchResult[]> {
-  const { userId, query, currentConversationId, timeWindowDays } = params;
+  const { userId, query, currentConversationId, timeWindowDays, traceId } = params;
   
   const client = getQdrantClient();
   
@@ -117,7 +124,7 @@ async function hybridSearch(params: {
   }
 
   // 1. Dense (semantic) search
-  const queryVector = await generateEmbedding(query);
+  const queryVector = await generateEmbedding(query, { traceId, userId, conversationId: currentConversationId });
   const denseResults = await client.search(COLLECTION_NAME, {
     vector: queryVector,
     filter: baseFilter,
@@ -218,17 +225,19 @@ export async function retrieveContextWithFallback(params: {
   currentConversationId?: string;
   shortTermMessages?: Array<{ role: 'user' | 'assistant'; content: string }>;
   timeWindowDays?: number;
+  traceId?: string;
 }): Promise<RetrievalContext> {
   try {
     // Try full RAG retrieval
     return await retrieveContext(params);
   } catch (error) {
-    console.error('RAG retrieval failed, using short-term memory only:', error);
+    captureError(error, { route: 'rag/retrieve', stage: 'fallback' });
     
     // Fallback: return only short-term context
     return {
       chunks: [],
       shortTermContext: params.shortTermMessages || [],
+      degraded: true,
     };
   }
 }

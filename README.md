@@ -28,6 +28,19 @@ npm run dev
 
 `npm run build` checks the production build and prepares its standalone assets; `npm run start` serves that build. The app uses NextAuth with Google and GitHub sign-in. The optional retrieval flow is controlled by `RAG_ENABLED`.
 
+## Rate limiting
+
+Free-tier usage is capped per user over a rolling 24-hour window: 4,000 LLM
+tokens and 2 AI Council messages. The counters live in Redis (one sorted set
+per user), so the caps hold across serverless instances and survive cold
+starts. A request atomically reserves an estimate of its full prompt with a
+Lua script and the actual usage is reconciled afterwards, so concurrent
+requests can't both spend the same budget. If Redis is unavailable the
+limiter fails closed with a 503 in production; in development and tests it
+falls back to in-process counters with a console warning. The limiter's
+integration-style tests run automatically when `REDIS_URL` (or
+`REDIS_TEST_URL`) points at a reachable server, and skip otherwise.
+
 ## Resources and document storage
 
 Chat attachments are stored in a **private Vercel Blob store**. PostgreSQL keeps
@@ -89,3 +102,153 @@ Only the SKILL.md body is sent to the model: ChatterStack models can't open
 bundled files or run scripts, and skills run only when tagged (Claude can also
 pick skills automatically). Each user can keep 50 skills. Apply the Prisma
 schema (`npx prisma db push`) before deploying this version.
+
+## Environments in Sentry, PostHog and OpenObserve
+
+All three tag what they send with the same value, so local testing never mixes
+with real traffic: `development` (local `next dev`), `preview` (Vercel preview
+deploys) or `production`. It comes from `src/lib/observability/environment.ts`:
+`APP_ENV` if set, else Vercel's `VERCEL_ENV`, else `NODE_ENV` (the browser uses
+`NEXT_PUBLIC_APP_ENV` / `NEXT_PUBLIC_VERCEL_ENV`). Filter with:
+
+| Service | Where |
+| --- | --- |
+| Sentry | the environment selector at the top of Issues (`environment:development`) |
+| PostHog | event property `environment` (filters, insights, breakdowns) |
+| OpenObserve logs | field `environment` in `llm_calls` |
+| OpenObserve traces | field `service_deployment_environment` (sent as the resource attribute `deployment.environment`) |
+
+## Error tracking (Sentry)
+
+Optional error monitoring for the browser and the Node server
+(`@sentry/nextjs`, App Router + Turbopack). While `SENTRY_DSN` is unset the SDK
+never initializes and nothing is sent, so local development, tests and Docker
+need no Sentry configuration.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `SENTRY_DSN` | No | Server DSN. Unset ⇒ server capture is off. |
+| `NEXT_PUBLIC_SENTRY_DSN` | No | Browser DSN. Inlined at build time; Docker and Compose pass it as a build ARG that defaults to empty. |
+| `SENTRY_ENVIRONMENT` | No | Tag shown on issues (falls back to `NODE_ENV`). |
+| `SENTRY_RELEASE` | No | Release/version tag. |
+| `SENTRY_AUTH_TOKEN` | No | Only for uploading source maps at build time. |
+| `SENTRY_ORG`, `SENTRY_PROJECT` | No | Only with the auth token: where to upload. |
+
+Files: `src/instrumentation.ts` (server register + `onRequestError`),
+`src/instrumentation-client.ts` (browser), `src/sentry.server.config.ts`,
+`src/app/global-error.tsx`, `src/app/error.tsx`, and the shared scrubber plus
+`captureError()` in `src/lib/observability/`. Existing `console.error` calls in
+request paths were replaced with `captureError()` — they were stripped from
+production builds by `compiler.removeConsole`, which is why these failures were
+previously invisible.
+
+Privacy and noise: `sendDefaultPii: false`, no tracing and no replay. Events
+carry tags (`route`, `model`, `council`, `stage`) and, when known, the NextAuth
+user id only — never an email. `beforeSend` drops the request object entirely
+(no headers, cookies or bodies), removes any `content`, `message`, `title`,
+`attachment`, `document`, `rag`-style field, truncates long provider messages
+and strips base64/data-URL blobs, so chat text and file data cannot ride along.
+Expected conditions are not reported: 401/403/404/409/429, aborted requests and
+user Stop, and rate-limit rejections.
+
+## Analytics (PostHog)
+
+Optional product analytics with `posthog-js` (browser) and `posthog-node`
+(server). Everything is inert while `POSTHOG_KEY` is unset, so local
+development, tests and Docker need no configuration.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `POSTHOG_KEY` | No | Public project token (`phc_...`). Unset disables analytics entirely. |
+| `POSTHOG_HOST` | No | Ingestion host, defaults to `https://us.i.posthog.com`. |
+| `POSTHOG_SESSION_REPLAY` | No | `true` turns on session recording. Off by default. |
+
+The key and host are read on the server in `src/app/layout.tsx` and passed to
+the client provider as props, so a Docker image works without build-time args
+and the values can be changed by restarting the container. A browser that sends
+Do Not Track or Global Privacy Control loads nothing.
+
+Event names and their property types live in `src/lib/analytics/events.ts`.
+Server events go through `captureServerEvent()` in
+`src/lib/analytics/posthog-server.ts`, which flushes with `after()` once the
+response — including the chat SSE stream — has finished.
+
+Nothing about the conversation itself is sent: no message text, chat titles,
+file names, document contents or retrieved context. Messages are described by
+model id, council yes/no, thinking level, attachment count and a length bucket;
+uploads by mime type and a size bucket. Identity is the NextAuth user id only
+(`identify()` on the client, `distinctId` on the server) — never an email,
+display name or avatar — and it is reset on sign-out. Person profiles are
+`identified_only`, element autocapture is off, and session replay masks all
+inputs, text and element attributes.
+
+## LLM observability (OpenObserve)
+
+Every model call - the streamed chat answer, each council stage, the title model
+and the embedding calls - can be recorded to an OpenObserve stream for latency,
+token, cost and failure analysis. Nothing is sent unless both
+`OPENOBSERVE_URL` and credentials are set.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `OPENOBSERVE_URL` | No | Base URL, e.g. `https://observe.example.com`. Unset disables everything. |
+| `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD` | No | Basic auth user and password. |
+| `OPENOBSERVE_AUTH` | No | Instead of the pair: a ready base64 Basic token, or `user:password`. |
+| `OPENOBSERVE_ORG` | No | Organisation, defaults to `default`. |
+| `OPENOBSERVE_STREAM` | No | Stream name, defaults to `llm_calls`. |
+| `OPENOBSERVE_LOG_CONTENT` | No | `true` also stores prompts and answers in the log records. See the warning below. |
+| `OPENOBSERVE_TRACES` | No | `true` also sends one OTLP trace per chat request to OpenObserve's Traces view. |
+| `OPENOBSERVE_TRACE_STREAM` | No | Traces stream, defaults to `default`. |
+| `OPENOBSERVE_TRACE_CONTENT` | No | `true` attaches the user's message and the answer to trace spans. Separate from `OPENOBSERVE_LOG_CONTENT`. |
+
+The client (`src/lib/observability/openobserve.ts`) is deliberately
+dependency-free: it POSTs batches of JSON records to
+`/api/{org}/{stream}/_json`. No OpenTelemetry provider is registered here -
+Sentry's SDK owns the process-wide OTel setup, and registering a second one
+would fight it. Records are buffered in memory (capped, oldest dropped first)
+and flushed with `after()` from `next/server`, i.e. once the response -
+including the chat's SSE stream - is finished. Sends time out after 3 seconds,
+failures are swallowed, and a failing endpoint gets a 30 second backoff, so
+observability can never slow down or break a chat.
+
+Each record carries a `trace_id` shared by every call of one chat request, so a
+council run (member answers, peer rankings, chair synthesis) and the embeddings
+it triggered can be read back as one story. Fields: model, provider, thinking
+level, status (`ok` / `error` / `aborted`), duration, time to first token, input
+and output tokens (`estimated: true` when OpenRouter sent no usage), `cost_usd`
+from the pricing in `src/config/models.ts`, finish reason, message count,
+attachment count, whether retrieved context was used, and whether the user
+pressed Stop. Query set and field notes:
+[`docs/openobserve-llm-observability.md`](docs/openobserve-llm-observability.md).
+
+**Traces.** With `OPENOBSERVE_TRACES=true`, each chat request also becomes one
+trace in OpenObserve → Traces (`src/lib/observability/otlp-traces.ts`, OTLP/HTTP
+JSON to `/api/{org}/v1/traces`, same auth, timeouts and never-throw rules as
+above; at most 100 spans per POST, and a payload OpenObserve refuses outright is
+dropped and counted instead of blocking later traces). The root span
+`chat <model>` (or `council`) covers the whole turn; under it sit
+`rag.retrieve` (with its query embedding nested inside), one span per model call
+(`completion`, each `council-member-answer` / `council-ranking`,
+`council-chair`, `title-generation`), `db.persist`, `rag.ingest` (with its
+embeddings) and `profile.update`. Model spans carry `gen_ai.*` attributes for
+model, tokens and finish reason, plus cost and time to first token. Requests
+refused before streaming (sign-in, validation, ownership, rate limit) are a
+root span alone with status `rejected` and `http.response.status_code`.
+
+With `OPENOBSERVE_TRACE_CONTENT=true`, model and root spans also carry the
+user's own message and the model's answer (`gen_ai.input.messages` /
+`gen_ai.output.messages`, each cut to 4,000 characters), so answer quality -
+including every council member's answer and ranking - can be read side by side.
+Only those two texts: never the system prompt, earlier turns, retrieved memory,
+extracted attachment text, file bytes or embedding inputs.
+
+**Privacy.** Prompts, answers, titles, filenames and document or retrieved
+content are not recorded. `user_id` is the NextAuth id, never an email. Only
+error types and truncated provider messages travel with failures. If you set
+`OPENOBSERVE_LOG_CONTENT=true`, prompts and answers are stored in OpenObserve
+too (each cut to 2,000 characters, attachment bytes never included), and
+`OPENOBSERVE_TRACE_CONTENT=true` stores the user's message and the answer in
+traces (4,000 characters each) - treat those streams as holding private user
+content, and restrict who can query them. Error messages sent to OpenObserve
+are one line, at most 300 characters, with credentials, data URLs and base64
+removed.
