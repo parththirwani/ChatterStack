@@ -13,8 +13,10 @@ import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
+import { AnalyticsEvents, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
+import { captureServerEvent } from '@/src/lib/analytics/posthog-server';
 import { ChatRequestSchema } from '@/src/types/chat.types';
-import { DEFAULT_THINKING_LEVEL, TITLE_MODEL } from '@/src/config/models';
+import { COUNCIL_MODEL_IDS, DEFAULT_THINKING_LEVEL, TITLE_MODEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
@@ -139,14 +141,29 @@ export async function POST(request: NextRequest) {
 
     const rateLimitCheck = await withLLMTokenLimit(userId, estimateText, isCouncilMode);
     if (rateLimitCheck) {
+      if (rateLimitCheck.status === 429) {
+        captureServerEvent(userId, AnalyticsEvents.RateLimitHit, {
+          council: isCouncilMode,
+          limit: rateLimitCheck.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
+        });
+      }
       return rateLimitCheck; // Returns 429 (or 503) with detailed token info
     }
+
+    captureServerEvent(userId, AnalyticsEvents.ChatMessageSent, chatMessageSentProps({
+      modelId: selectedModel,
+      council: isCouncilMode,
+      thinkingLevel,
+      attachmentCount: attachments.length,
+      messageLength: data.message?.length ?? 0,
+    }));
 
     // Claim a new chat only once the budget is reserved; a rejected claim
     // releases the reservation again (0 tokens) so it is not wasted.
     if (isNewConversation) {
       try {
         await createEmptyConversation(conversationId, userId);
+        captureServerEvent(userId, AnalyticsEvents.ConversationCreated, { council: isCouncilMode });
       } catch (error) {
         if (isUniqueViolation(error)) {
           await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
@@ -203,6 +220,8 @@ export async function POST(request: NextRequest) {
       // On Stop/disconnect the model call is cancelled and resolves with the
       // text written so far, which is still saved and counted below.
       let fullContent = '';
+      const modelStartedAt = Date.now();
+      let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
           ? await runCouncilProcess(
@@ -227,12 +246,25 @@ export async function POST(request: NextRequest) {
             });
         send({ done: true });
       } catch (error) {
+        outcome = signal.aborted ? 'stopped' : 'error';
         if (!signal.aborted) {
           captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'model-call', userId });
           send({
             error: error instanceof Error ? error.message : 'Failed to generate response',
           });
         }
+      }
+      if (signal.aborted && outcome === 'success') outcome = 'stopped';
+
+      captureServerEvent(userId, AnalyticsEvents.ChatResponseCompleted, chatResponseCompletedProps({
+        modelId: selectedModel, council: isCouncilMode, startedAt: modelStartedAt, outcome,
+      }));
+      if (isCouncilMode) {
+        captureServerEvent(userId, AnalyticsEvents.CouncilRunCompleted, councilRunCompletedProps({
+          members: data.council?.members?.length ?? COUNCIL_MODEL_IDS.length,
+          startedAt: modelStartedAt,
+          outcome,
+        }));
       }
 
       // Count every call, including stopped and failed ones: the prompt was

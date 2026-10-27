@@ -2,6 +2,7 @@ import React, { useRef, memo } from 'react';
 import { X, LogOut, AlertTriangle } from 'lucide-react';
 import { signOut } from 'next-auth/react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
+import { resetUser } from '@/src/lib/analytics/posthog-client';
 
 interface LogoutModalProps {
   isOpen: boolean;
@@ -24,6 +25,7 @@ const LogoutModal: React.FC<LogoutModalProps> = ({
   if (!isOpen) return null;
 
   const handleConfirm = async () => {
+    resetUser();
     // Sign out using NextAuth
     await signOut({ redirect: false });
     onConfirm();

@@ -99,3 +99,34 @@ user id only — never an email. `beforeSend` drops the request object entirely
 and strips base64/data-URL blobs, so chat text and file data cannot ride along.
 Expected conditions are not reported: 401/403/404/409/429, aborted requests and
 user Stop, and rate-limit rejections.
+
+## Analytics (PostHog)
+
+Optional product analytics with `posthog-js` (browser) and `posthog-node`
+(server). Everything is inert while `POSTHOG_KEY` is unset, so local
+development, tests and Docker need no configuration.
+
+| Variable | Required | Purpose |
+| --- | --- | --- |
+| `POSTHOG_KEY` | No | Public project token (`phc_...`). Unset disables analytics entirely. |
+| `POSTHOG_HOST` | No | Ingestion host, defaults to `https://us.i.posthog.com`. |
+| `POSTHOG_SESSION_REPLAY` | No | `true` turns on session recording. Off by default. |
+
+The key and host are read on the server in `src/app/layout.tsx` and passed to
+the client provider as props, so a Docker image works without build-time args
+and the values can be changed by restarting the container. A browser that sends
+Do Not Track or Global Privacy Control loads nothing.
+
+Event names and their property types live in `src/lib/analytics/events.ts`.
+Server events go through `captureServerEvent()` in
+`src/lib/analytics/posthog-server.ts`, which flushes with `after()` once the
+response — including the chat SSE stream — has finished.
+
+Nothing about the conversation itself is sent: no message text, chat titles,
+file names, document contents or retrieved context. Messages are described by
+model id, council yes/no, thinking level, attachment count and a length bucket;
+uploads by mime type and a size bucket. Identity is the NextAuth user id only
+(`identify()` on the client, `distinctId` on the server) — never an email,
+display name or avatar — and it is reset on sign-out. Person profiles are
+`identified_only`, element autocapture is off, and session replay masks all
+inputs, text and element attributes.
