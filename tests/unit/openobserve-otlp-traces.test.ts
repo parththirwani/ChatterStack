@@ -152,6 +152,7 @@ describe('OTLP traces', () => {
     expect(attr(span, 'gen_ai.usage.output_tokens')).toBe(5);
     expect(attr(span, 'gen_ai.response.finish_reasons')).toEqual(['stop']);
     expect(attr(span, 'chatterstack.cost_usd')).toBeGreaterThan(0);
+    expect(attr(span, 'gen_ai.usage.cost')).toBe(attr(span, 'chatterstack.cost_usd'));
     expect(span.status).toEqual({ code: 1 });
   });
 
@@ -199,6 +200,13 @@ describe('OTLP traces', () => {
     expect(attr(failed, 'error.type')).toBe('Error');
     expect(stopped.status).toEqual({ code: 1 });
     expect(attr(stopped, 'chatterstack.stopped')).toBe(true);
+  });
+
+  it('names council requests "council" (the model is the pseudo-id council)', async () => {
+    configure();
+    traces.recordRequestSpan({ traceId: TRACE_ID, startedAt: Date.now(), status: 'ok', model: 'council', council: true, question: 'q' });
+    await drain();
+    expect(sentSpans()[0].name).toBe('council');
   });
 
   it('times non-LLM steps under the request and rethrows their errors', async () => {

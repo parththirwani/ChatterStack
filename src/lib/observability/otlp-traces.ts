@@ -271,7 +271,8 @@ export function recordRequestSpan(input: {
     enqueueSpan({
       traceId: input.traceId,
       spanId: requestSpanId(input.traceId),
-      name: `${input.council ? 'council' : 'chat'} ${input.model}`,
+      // Council requests carry the pseudo-model 'council'; members are child spans.
+      name: input.council ? 'council' : `chat ${input.model}`,
       kind: 1,
       startedAt: input.startedAt,
       endedAt: Date.now(),

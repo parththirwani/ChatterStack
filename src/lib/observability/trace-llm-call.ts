@@ -218,6 +218,9 @@ function recordCallSpan(
         'error.type': failure !== undefined ? errorType(failure) : undefined,
         'chatterstack.span': context.span,
         'chatterstack.thinking_level': context.thinkingLevel,
+        // OpenObserve prices spans from its own model table, which does not know
+        // OpenRouter ids; send the cost from src/config/models.ts instead.
+        'gen_ai.usage.cost': estimateCostUsd(context.model, inputTokens, outputTokens),
         'chatterstack.cost_usd': estimateCostUsd(context.model, inputTokens, outputTokens),
         'chatterstack.tokens_estimated': metrics.usage === undefined,
         'chatterstack.time_to_first_token_ms': metrics.firstTokenAt ? Math.max(0, metrics.firstTokenAt - startedAt) : undefined,
