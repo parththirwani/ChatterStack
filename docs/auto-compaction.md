@@ -72,6 +72,9 @@ after the boundary do not affect it.
 
 The summary output is capped at 1,600 tokens and the summarizer input is chunked
 to fit its own context window. Successive chunks roll into one summary.
+The default 4,000-token rolling daily limit cannot admit most compaction turns
+because their reservation includes the old history, summary output, and answer.
+Set `LLM_DAILY_TOKEN_LIMIT` high enough for those calls before enabling `on`.
 
 ## Observability
 

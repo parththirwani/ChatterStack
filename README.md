@@ -157,6 +157,9 @@ not a system instruction, and the full transcript remains visible and saved.
 - `COMPACTION_MODEL` defaults to `openai/gpt-4o-mini`. Summaries are capped at
   1,600 tokens and validated; an empty, malformed or inflated summary leaves
   the previous context untouched.
+- The 4,000-token daily limit is below the reservation needed for a typical
+  compaction turn. Set `LLM_DAILY_TOKEN_LIMIT` to a value that covers the
+  expected full prompt, summary calls, and answer before enabling `on`.
 - Snapshots live in `conversation_context_snapshots`, keyed by conversation and
   the last summarized message. Switching models cannot reuse a snapshot that
   no longer fits: the budget is rebuilt for the new model before the call.
