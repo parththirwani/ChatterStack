@@ -12,8 +12,9 @@ import { beginConversationTurn } from '@/src/lib/api/chat/conversation-turns';
 import { prisma } from '@/src/lib/prisma';
 
 import { withLLMTokenLimit, recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
+import { captureError } from '@/src/lib/observability/capture';
 import { ChatRequestSchema } from '@/src/types/chat.types';
-import { DEFAULT_THINKING_LEVEL } from '@/src/config/models';
+import { DEFAULT_THINKING_LEVEL, TITLE_MODEL } from '@/src/config/models';
 import { attachmentParts, messageContent } from '@/src/lib/api/chat/attachments';
 import type { ChatAttachment } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
@@ -173,7 +174,7 @@ export async function POST(request: NextRequest) {
             // Saved even if the client has gone; only sent if it's still there.
             if (await saveGeneratedTitle(conversationId, title)) send({ title });
           })
-          .catch((err) => console.error('Title generation failed:', err));
+          .catch((err) => captureError(err, { route: '/api/chat', model: TITLE_MODEL, council: isCouncilMode, stage: 'title', userId }));
       }
 
       const conversationHistory = isNewConversation ? [] : await loadHistory(conversationId);
@@ -227,7 +228,7 @@ export async function POST(request: NextRequest) {
         send({ done: true });
       } catch (error) {
         if (!signal.aborted) {
-          console.error('Model call failed:', error);
+          captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'model-call', userId });
           send({
             error: error instanceof Error ? error.message : 'Failed to generate response',
           });
@@ -241,7 +242,7 @@ export async function POST(request: NextRequest) {
         const inputTokens = countTokens(messagesForAI.map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n')).join('\n'));
         await recordLLMTokens(userId, inputTokens + countTokens(fullContent), isCouncilMode);
       } catch (error) {
-        console.error('Failed to record tokens:', error);
+        captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-record', userId });
       }
 
       const exchange: RedisMessage[] = [
@@ -253,8 +254,13 @@ export async function POST(request: NextRequest) {
       } else {
         await redisStore.delete(conversationId);
       }
-      await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
-      await markDocumentsUsed(userId, attachments);
+      try {
+        await addMessagesToConversation(conversationId, data.message, fullContent, selectedModel, attachments);
+        await markDocumentsUsed(userId, attachments);
+      } catch (error) {
+        captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'persist', userId });
+        throw error;
+      }
       if (fullContent) {
         await ingestConversationData(userId, conversationId, data.message, fullContent, selectedModel);
       }
@@ -267,7 +273,7 @@ export async function POST(request: NextRequest) {
           // settle the reservation with the estimate so it is not stuck
           // against the window for 24 hours.
           await recordLLMTokens(userId, estimatePromptTokens(estimateText, isCouncilMode), isCouncilMode).catch((error) =>
-            console.error('Failed to release token reservation:', error)
+            captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-release', userId })
           );
         }
       }
@@ -283,7 +289,7 @@ export async function POST(request: NextRequest) {
       }
     }, request.signal);
   } catch (error) {
-    console.error('Error in chat:', error);
+    captureError(error, { route: '/api/chat', stage: 'request' });
     return new Response(
       JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error occurred',

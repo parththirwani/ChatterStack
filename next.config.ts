@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const nextConfig: NextConfig = {
   devIndicators: false,
@@ -31,4 +32,16 @@ const nextConfig: NextConfig = {
   output: "standalone",
 };
 
-export default nextConfig;
+// Runtime error capture works with or without these values. Source maps are
+// only uploaded when SENTRY_AUTH_TOKEN exists, so builds without a Sentry
+// account (Docker, forks, CI secrets absent) stay untouched.
+export default withSentryConfig(nextConfig, {
+  org: process.env.SENTRY_ORG || undefined,
+  project: process.env.SENTRY_PROJECT || undefined,
+  ...(process.env.SENTRY_AUTH_TOKEN ? { authToken: process.env.SENTRY_AUTH_TOKEN } : {}),
+  // Turbopack (this repo's build command) has no webpack hook: build-time
+  // server instrumentation is a webpack-only feature, so it stays off.
+  buildTimeInstrumentation: false,
+  silent: true,
+  telemetry: false,
+});
