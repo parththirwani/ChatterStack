@@ -215,9 +215,12 @@ describe('zooming an image preview', () => {
     expect(screen.getByLabelText('Zoom 150%')).toBeInTheDocument();
     await user.keyboard('0');
     expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
-    for (let press = 0; press < 12; press++) await user.keyboard('+');
-    expect(screen.getByLabelText('Zoom 800%')).toBeInTheDocument();
+    for (let press = 0; press < 6; press++) await user.keyboard('+');
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Zoom in' })).toBeDisabled();
+    for (let press = 0; press < 6; press++) await user.keyboard('-');
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Zoom out' })).toBeDisabled();
   });
 
   it('zooms with the wheel, counting Firefox line units as real travel', async () => {
@@ -231,8 +234,11 @@ describe('zooming an image preview', () => {
     // One Firefox notch is 3 lines, not 3 pixels: it must zoom visibly.
     wheel({ deltaY: -3, deltaMode: 1 });
     expect(screen.getByLabelText('Zoom 110%')).toBeInTheDocument();
-    wheel({ deltaY: 100 });
-    expect(screen.getByLabelText('Zoom 90%')).toBeInTheDocument();
+    // The wheel stops at the ends too.
+    for (let notch = 0; notch < 12; notch++) wheel({ deltaY: -100 });
+    expect(screen.getByLabelText('Zoom 200%')).toBeInTheDocument();
+    for (let notch = 0; notch < 12; notch++) wheel({ deltaY: 100 });
+    expect(screen.getByLabelText('Zoom 100%')).toBeInTheDocument();
   });
 
   it('zooms further per step for a touchpad pinch, which arrives as ctrl+wheel', async () => {
@@ -286,13 +292,14 @@ describe('zooming an image preview', () => {
 
 describe('zoom maths', () => {
   it('steps 100% -> 150% -> 200% and back, and from between levels', () => {
-    expect([1, 1.5, 2].map((scale) => stepScale(scale, 1))).toEqual([1.5, 2, 3]);
-    expect([2, 1.5, 1].map((scale) => stepScale(scale, -1))).toEqual([1.5, 1, 0.5]);
+    expect([1, 1.5].map((scale) => stepScale(scale, 1))).toEqual([1.5, 2]);
+    expect([2, 1.5].map((scale) => stepScale(scale, -1))).toEqual([1.5, 1]);
     // A wheel can stop between levels; the next click goes to the nearest level in that direction.
     expect(stepScale(1.22, 1)).toBe(1.5);
     expect(stepScale(1.22, -1)).toBe(1);
-    expect(stepScale(8, 1)).toBe(8);
-    expect(stepScale(0.5, -1)).toBe(0.5);
+    // 200% is the top and 100% the bottom.
+    expect(stepScale(2, 1)).toBe(2);
+    expect(stepScale(1, -1)).toBe(1);
   });
 
   const frame = { width: 1000, height: 600 };
@@ -309,12 +316,13 @@ describe('zoom maths', () => {
     }
   });
 
-  it('centres a dragged region and scales it to fill the frame', () => {
+  it('centres a dragged region at the strongest zoom allowed', () => {
     // A 200x120 box whose centre is 250px right of and 100px below the frame centre.
     const region = { x: 650, y: 340, width: 200, height: 120 };
     const view = viewForRegion(FIT, frame, region);
 
-    expect(view.scale).toBeCloseTo(5 * 0.96, 5);
+    // The region would need 480%; zoom stops at 200%, centred on the region.
+    expect(view.scale).toBe(2);
     const centre = { x: 750 - 500, y: 400 - 300 };
     const onScreen = screenOf(view, centre);
     expect(onScreen.x).toBeCloseTo(0, 5);
@@ -322,7 +330,7 @@ describe('zoom maths', () => {
   });
 
   it('stays within the zoom limits and falls back to fit for a large region', () => {
-    expect(viewForRegion(FIT, frame, { x: 10, y: 10, width: 2, height: 2 }).scale).toBe(8);
+    expect(viewForRegion(FIT, frame, { x: 10, y: 10, width: 2, height: 2 }).scale).toBe(2);
     expect(viewForRegion(FIT, frame, { x: 0, y: 0, width: 1000, height: 600 })).toEqual(FIT);
   });
 });

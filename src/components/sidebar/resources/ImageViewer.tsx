@@ -3,10 +3,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Hand, Maximize2, Minus, Plus, ZoomIn } from 'lucide-react';
 
-const MIN_SCALE = 0.5;
-const MAX_SCALE = 8;
+// 100% is the fitted size, and zoom stops at 200%.
+const MIN_SCALE = 1;
+const MAX_SCALE = 2;
 /** Zoom levels for clicks, buttons and keys: 100% -> 150% -> 200% and back. */
-const LEVELS = [0.5, 1, 1.5, 2, 3, 4, 6, 8];
+const LEVELS = [1, 1.5, 2];
 /** Pointer travel under this many pixels is a click, not a drag. */
 const DRAG_THRESHOLD = 5;
 /** Leaves a little air around a region that is zoomed to. */
@@ -86,7 +87,7 @@ interface Gesture {
  * Image preview with zoom. The magnifier tool zooms where you click, or to a
  * box you drag around a region; the hand tool pans a zoomed image. The wheel,
  * +/-/0 keys, toolbar and (hand tool) double-click work too. 100% is the
- * fitted size.
+ * fitted size and the zoom stops at 200%.
  */
 export default function ImageViewer({ src, alt }: { src: string; alt: string }) {
   const [view, setView] = useState<View>(FIT);
@@ -236,7 +237,7 @@ export default function ImageViewer({ src, alt }: { src: string; alt: string }) 
         className="pointer-events-none absolute rounded-sm border border-white/90 bg-white/10"
       />}
       <div role="toolbar" aria-label="Zoom" className="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-0.5 rounded-xl border border-white/15 bg-[#161616]/90 p-1 shadow-lg backdrop-blur">
-        <button type="button" onClick={() => setTool('magnify')} aria-pressed={tool === 'magnify'} aria-label="Magnifier" title="Magnifier: click to zoom in (150%, 200%…), drag to zoom to a region, Alt-click to step back out" className={toolButton(tool === 'magnify')}><ZoomIn className="h-4 w-4" /></button>
+        <button type="button" onClick={() => setTool('magnify')} aria-pressed={tool === 'magnify'} aria-label="Magnifier" title="Magnifier: click to zoom in (150%, then 200%), drag to zoom to a region, Alt-click to step back out" className={toolButton(tool === 'magnify')}><ZoomIn className="h-4 w-4" /></button>
         <button type="button" onClick={() => setTool('pan')} aria-pressed={tool === 'pan'} aria-label="Pan" title="Pan: drag a zoomed image" className={toolButton(tool === 'pan')}><Hand className="h-4 w-4" /></button>
         <span aria-hidden="true" className="mx-1 h-5 w-px bg-white/15" />
         <button type="button" onClick={() => zoomTo((scale) => stepScale(scale, -1))} disabled={view.scale <= MIN_SCALE} aria-label="Zoom out" title="Zoom out (−)" className={button}><Minus className="h-4 w-4" /></button>
