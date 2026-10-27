@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import { PostHog } from 'posthog-node';
 import { DEFAULT_POSTHOG_HOST } from './config';
+import { appEnvironment } from '@/src/lib/observability/environment';
 import type { AnalyticsEventName, AnalyticsEventProps } from './events';
 
 type PostHogClient = InstanceType<typeof PostHog>;
@@ -67,7 +68,7 @@ export function captureServerEvent<E extends AnalyticsEventName>(
   if (!client || !userId) return;
 
   try {
-    client.capture({ distinctId: userId, event, properties: { ...props } });
+    client.capture({ distinctId: userId, event, properties: { ...props, environment: appEnvironment() } });
     scheduleFlush();
   } catch {
     // Ignore: analytics is never worth a failed request.

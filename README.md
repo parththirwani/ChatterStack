@@ -67,6 +67,21 @@ The Docker app can use the same Blob store when its `.env.local` contains
 `GET /api/cron/cleanup-documents` daily with
 `Authorization: Bearer <CRON_SECRET>`.
 
+## Environments in Sentry, PostHog and OpenObserve
+
+All three tag what they send with the same value, so local testing never mixes
+with real traffic: `development` (local `next dev`), `preview` (Vercel preview
+deploys) or `production`. It comes from `src/lib/observability/environment.ts`:
+`APP_ENV` if set, else Vercel's `VERCEL_ENV`, else `NODE_ENV` (the browser uses
+`NEXT_PUBLIC_APP_ENV` / `NEXT_PUBLIC_VERCEL_ENV`). Filter with:
+
+| Service | Where |
+| --- | --- |
+| Sentry | the environment selector at the top of Issues (`environment:development`) |
+| PostHog | event property `environment` (filters, insights, breakdowns) |
+| OpenObserve logs | field `environment` in `llm_calls` |
+| OpenObserve traces | resource attribute `deployment.environment` |
+
 ## Error tracking (Sentry)
 
 Optional error monitoring for the browser and the Node server
