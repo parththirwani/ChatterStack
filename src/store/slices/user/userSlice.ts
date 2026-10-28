@@ -48,9 +48,10 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
 
   logout: async () => {
     try {
-      resetUser();
       // Sign out using NextAuth - this clears the session
       await signOut({ redirect: false });
+      // Only forget the analytics identity once the session is really gone.
+      resetUser();
       
       // Reset the entire store
       const fullStore = get() as typeof get extends () => infer T ? T : never;

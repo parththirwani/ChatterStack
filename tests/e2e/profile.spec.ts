@@ -88,6 +88,20 @@ test('sign out from the sidebar menu signs out without a confirmation', async ({
   }
 });
 
+test('a failed sign out keeps the user signed in and shows a toast', async ({ page }) => {
+  await openApp(page);
+  // next-auth's signOut posts here; drop the request as a lost connection would.
+  await page.route('**/api/auth/signout', (route) => route.abort('internetdisconnected'));
+
+  const menu = await openAccountMenu(page);
+  await menu.getByRole('menuitem', { name: 'Sign out' }).click();
+
+  await expect(page.getByRole('alert').filter({ hasText: "Couldn't sign out" })).toBeVisible();
+  await expect(trigger(page)).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
+  await page.unrouteAll();
+});
+
 test('the profile modal heatmap shows the days the user chatted', async ({ page }) => {
   // Three messages minutes ago (today's column) and one from yesterday.
   seedConversation({

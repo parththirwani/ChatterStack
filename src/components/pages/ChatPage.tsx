@@ -23,6 +23,8 @@ import type { Conversation } from '@/src/types/conversation.types';
 import ChatInterface from '@/src/components/chat/interface/ChatInterface';
 import Sidebar from '@/src/components/sidebar/Sidebar';
 import LoginModal from '@/src/components/auth/AuthModal';
+import Toaster from '@/src/components/ui/toast/Toaster';
+import { toast } from '@/src/lib/client/toast';
 
 export interface ChatPageProps {
   initialUser: User | null;
@@ -269,7 +271,13 @@ const ChatPage: React.FC<ChatPageProps> = ({
 
   // Sign out from the sidebar menu happens at once, without a confirmation step; the menu shows its progress.
   const handleLogoutClick = useCallback(async () => {
-    await logout();
+    try {
+      await logout();
+    } catch {
+      // The session is still there, so stay on the page and say so.
+      toast.error("Couldn't sign out. Check your connection and try again.");
+      return;
+    }
     startTransition(() => {
       router.push('/');
       router.refresh();
@@ -385,6 +393,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
         message="Sign in to save your conversations"
         initialError={authError}
       />
+
+      <Toaster />
     </>
   );
 };
