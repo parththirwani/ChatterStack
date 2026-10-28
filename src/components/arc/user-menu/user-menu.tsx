@@ -97,12 +97,22 @@ export function PresenceDot({ status, className }: { status: UserStatus | "offli
 
 function Portrait({ user }: { user: UserMenuUser }) {
   const [failed, setFailed] = useState<string>();
+  const imageRef = useRef<HTMLImageElement>(null);
+
+  // A remote photo can fail before React hydrates and attaches onError (a
+  // provider rate limit, for instance), which would leave a broken-image icon.
+  // Check the settled element after mount so the initials still appear.
+  useEffect(() => {
+    const image = imageRef.current;
+    if (user.avatarSrc && image?.complete && image.naturalWidth === 0) setFailed(user.avatarSrc);
+  }, [user.avatarSrc]);
+
   if (!user.avatarSrc || failed === user.avatarSrc) {
     const initials = user.name.trim().split(/\s+/).slice(0, 2).map(part => part[0]?.toUpperCase()).join("");
     return <span className={`${styles.portrait} ${styles.initials}`}>{initials}</span>;
   }
   // eslint-disable-next-line @next/next/no-img-element -- registry components stay framework agnostic; pass optimized URLs as avatarSrc and avatarSrcSet.
-  return <img className={styles.portrait} src={user.avatarSrc} srcSet={user.avatarSrcSet} alt="" decoding="async" draggable={false} onError={() => setFailed(user.avatarSrc)} />;
+  return <img ref={imageRef} className={styles.portrait} src={user.avatarSrc} srcSet={user.avatarSrcSet} alt="" decoding="async" draggable={false} onError={() => setFailed(user.avatarSrc)} />;
 }
 
 function Face({ user, status, size }: { user: UserMenuUser; status?: UserStatus; size: "sm" | "md" }) {

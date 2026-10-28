@@ -40,5 +40,11 @@ export const useProfileStore = create<ProfileState>()(
 /** The saved edits for `userId`, or none if they were made by another account on this device. */
 export function overridesFor(state: ProfileOverrides, userId: string | undefined): Omit<ProfileOverrides, 'ownerId'> {
   if (!userId || state.ownerId !== userId) return { name: '', bio: '', avatarUrl: null };
-  return { name: state.name, bio: state.bio, avatarUrl: state.avatarUrl };
+  return {
+    name: state.name ?? '',
+    bio: state.bio ?? '',
+    // Profiles persisted before the photo field existed have no avatarUrl.
+    // A missing value means "never edited", not "removed" (which is '').
+    avatarUrl: state.avatarUrl ?? null,
+  };
 }

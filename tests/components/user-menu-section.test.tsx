@@ -1,6 +1,6 @@
 import React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import UserSection from '@/src/components/sidebar/user/UserSection';
 import { useProfileStore } from '@/src/store/profileStore';
@@ -86,5 +86,56 @@ describe('UserSection', () => {
   it('keeps the sign-in buttons for guests', () => {
     renderSection({ isAuthenticated: false });
     expect(screen.getByRole('button', { name: /sign in/i })).toBeInTheDocument();
+  });
+
+  describe('provider avatar', () => {
+    const googlePhoto = 'https://lh3.googleusercontent.com/a/abc=s96-c';
+    const avatarTrigger = () => screen.getByRole('button', { name: /account menu, ada/i });
+
+    it('routes the provider photo through the image optimizer', () => {
+      renderSection({ user: { ...user, avatarUrl: googlePhoto } });
+
+      const image = avatarTrigger().querySelector('img');
+      const encoded = encodeURIComponent(googlePhoto);
+      expect(image).toHaveAttribute('src', `/_next/image?url=${encoded}&w=64&q=75`);
+      expect(image).toHaveAttribute('srcSet', expect.stringContaining(`w=128&q=75 2x`));
+    });
+
+    it('falls back to initials when the photo fails to load', async () => {
+      renderSection({ user: { ...user, avatarUrl: googlePhoto } });
+
+      const trigger = avatarTrigger();
+      fireEvent.error(trigger.querySelector('img')!);
+
+      expect(await within(trigger).findByText('A')).toBeInTheDocument();
+      expect(trigger.querySelector('img')).toBeNull();
+    });
+
+    it('falls back to initials when the photo failed before hydration', async () => {
+      vi.spyOn(HTMLImageElement.prototype, 'complete', 'get').mockReturnValue(true);
+      vi.spyOn(HTMLImageElement.prototype, 'naturalWidth', 'get').mockReturnValue(0);
+
+      try {
+        renderSection({ user: { ...user, avatarUrl: googlePhoto } });
+
+        const trigger = avatarTrigger();
+        expect(await within(trigger).findByText('A')).toBeInTheDocument();
+        expect(trigger.querySelector('img')).toBeNull();
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('leaves a locally picked photo as a data URL', async () => {
+      useProfileStore.getState().updateProfile({
+        ownerId: user.id,
+        avatarUrl: 'data:image/png;base64,abc',
+      });
+      renderSection();
+
+      await waitFor(() => {
+        expect(avatarTrigger().querySelector('img')).toHaveAttribute('src', 'data:image/png;base64,abc');
+      });
+    });
   });
 });
