@@ -14,6 +14,7 @@ import { dropSnapshotIfBoundaryMissing } from '@/src/lib/api/chat/context-snapsh
 import type { CompactionInfo, ContextMessage } from '@/src/lib/api/chat/model-context';
 import { truncateToTokenBudget } from '@/src/lib/api/chat/prompt-budget';
 import { prisma } from '@/src/lib/prisma';
+import { MESSAGE_ORDER } from '@/src/lib/server/message-order';
 
 import { recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
@@ -85,7 +86,7 @@ async function loadHistory(conversationId: string, dropLastExchange = false): Pr
 async function readMessages(conversationId: string): Promise<RedisMessage[]> {
   const rows = await prisma.message.findMany({
     where: { conversationId },
-    orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+    orderBy: MESSAGE_ORDER,
     select: { id: true, role: true, content: true, modelId: true, attachments: true, createdAt: true },
   });
   return rows.map((m) => ({
@@ -477,6 +478,7 @@ export async function POST(request: NextRequest) {
         { role: 'user', content: data.message, attachments },
         ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
       ];
+      let savedMessageIds: { userMessageId: string; assistantMessageId?: string } | undefined;
       try {
         await traceStep(traceId, 'db.persist', async () => {
           // A retry that produced nothing (failed, or stopped before the first
@@ -496,6 +498,7 @@ export async function POST(request: NextRequest) {
             );
             const userRow = saved.find((message) => message.role === 'user');
             const assistantRow = saved.find((message) => message.role === 'assistant');
+            if (userRow) savedMessageIds = { userMessageId: userRow.id, assistantMessageId: assistantRow?.id };
             exchange = [
               {
                 id: userRow?.id,
@@ -530,6 +533,7 @@ export async function POST(request: NextRequest) {
           }
           await markDocumentsUsed(userId, attachments);
         });
+        if (savedMessageIds) send({ savedMessages: savedMessageIds });
       } catch (error) {
         captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'persist', userId });
         throw error;

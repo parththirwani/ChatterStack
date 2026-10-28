@@ -134,6 +134,25 @@ describe('starting a new chat', () => {
     call.finish();
   });
 
+  it('replaces local message ids with saved ids during the same chat session', async () => {
+    const { call, id, pending } = await startNewChat();
+    const before = state().chatState[id].messages.map((message) => message.id);
+    const renderKeys = state().chatState[id].messages.map((message) => message.clientKey);
+    expect(before.every((value) => value?.includes('-local-'))).toBe(true);
+
+    act(() => call.handlers.onSavedMessages?.({
+      userMessageId: '11111111-1111-4111-8111-111111111111',
+      assistantMessageId: '22222222-2222-4222-8222-222222222222',
+    }));
+    expect(state().chatState[id].messages.map((message) => message.id)).toEqual([
+      '11111111-1111-4111-8111-111111111111',
+      '22222222-2222-4222-8222-222222222222',
+    ]);
+    expect(state().chatState[id].messages.map((message) => message.clientKey)).toEqual(renderKeys);
+    act(() => call.finish());
+    await act(() => pending);
+  });
+
   it('shows the generated title as soon as it arrives', async () => {
     const { call, id } = await startNewChat();
     act(() => call.handlers.onTitle?.('TCP Congestion Control'));

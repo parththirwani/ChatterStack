@@ -5,12 +5,11 @@ import type { Message } from '../../../types/chat.types';
 import type { ChatState } from '../chat/chatSlice';
 
 
-const sortMessagesByCreatedAt = (messages: Message[]): Message[] => {
-  return [...messages].sort((a, b) => {
-    const timeA = new Date(a.createdAt || 0).getTime();
-    const timeB = new Date(b.createdAt || 0).getTime();
-    return timeA - timeB;
-  });
+/** Same order the server reads in: saved position, then time. */
+const sortMessages = (messages: Message[]): Message[] => {
+  const time = (message: Message) => new Date(message.createdAt || 0).getTime();
+  // Messages with no position predate the column, so they sort first.
+  return [...messages].sort((a, b) => (a.position ?? 0) - (b.position ?? 0) || time(a) - time(b));
 };
 
 /** Pinned chats first (most recently pinned on top), then most recent activity. */
@@ -39,6 +38,11 @@ export interface ConversationsSlice {
 
   renameConversation: (id: string, title: string) => Promise<void>;
   setConversationPinned: (id: string, pinned: boolean) => Promise<void>;
+  /**
+   * Forks a chat at one saved message and makes the copy the active chat.
+   * Resolves with the conversation the server created.
+   */
+  forkConversation: (conversationId: string, messageId: string) => Promise<Conversation>;
 
   loadConversations: (force?: boolean) => Promise<void>;
   /**
@@ -61,6 +65,7 @@ interface StoreWithChat {
   conversationsLoading: boolean;
   chatState: Record<string, ChatState>;
   setChatState: (id: string, state: Partial<ChatState>) => void;
+  setCurrentConversationId: (id: string | undefined) => void;
   clearChatState: (id: string) => void;
   clearQueue: (id: string) => void;
 }
@@ -151,6 +156,17 @@ export const createConversationsSlice: StateCreator<
     }
   },
 
+  forkConversation: async (conversationId, messageId) => {
+    // Nothing is created client-side: the saved rows are the answer, so the
+    // fork only appears once the server has written them.
+    const conversation = await ApiService.forkConversation(conversationId, messageId);
+    // hydrateConversation puts it in Recents and seeds its messages, and leaves
+    // any chat that is streaming right now exactly as it is.
+    get().hydrateConversation({ ...conversation, messages: sortMessages(conversation.messages ?? []) });
+    (get() as unknown as StoreWithChat).setCurrentConversationId(conversation.id);
+    return conversation;
+  },
+
   loadConversations: async (force = false) => {
     const state = get() as unknown as StoreWithChat;
     const { user, conversations, conversationsLoading } = state;
@@ -191,7 +207,7 @@ export const createConversationsSlice: StateCreator<
         if (result?.conversation) {
           get().hydrateConversation({
             ...result.conversation,
-            messages: sortMessagesByCreatedAt(result.conversation.messages ?? []),
+            messages: sortMessages(result.conversation.messages ?? []),
           });
         } else {
           set((state) => ({ missingConversationIds: { ...state.missingConversationIds, [conversationId]: true } }));

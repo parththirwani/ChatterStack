@@ -3,10 +3,14 @@ import type { Conversation } from '@/src/types/conversation.types';
 
 const updateConversation = vi.fn();
 const getConversation = vi.fn<(id: string) => Promise<unknown>>(async () => null);
+const forkConversation = vi.fn<(id: string, messageId: string) => Promise<Conversation>>(
+  async () => { throw new Error('no fork response configured'); }
+);
 vi.mock('@/src/services/api', () => ({
   ApiService: {
     updateConversation: (...args: unknown[]) => updateConversation(...args),
     getConversation: (id: string) => getConversation(id),
+    forkConversation: (id: string, messageId: string) => forkConversation(id, messageId),
   },
 }));
 
@@ -186,5 +190,60 @@ describe('fetchConversation', () => {
     await useAppStore.getState().fetchConversation('gone');
     expect(useAppStore.getState().missingConversationIds.gone).toBeUndefined();
     expect(useAppStore.getState().chatState.gone.messages).toHaveLength(2);
+  });
+});
+
+describe('forkConversation', () => {
+  const source = conv('source', '2026-10-20T09:00:00Z', null, 'Caching plan');
+  const fork = (): Conversation => ({
+    ...conv('fork', '2026-10-26T09:00:00Z', null, 'Fork of Caching plan'),
+    // Deliberately out of order: the store has to read it the way the server does.
+    messages: [
+      { id: 'f2', role: 'assistant', content: 'It defers writes.', position: 2, createdAt: '2026-10-20T09:00:01Z' },
+      { id: 'f1', role: 'user', content: 'How does caching work?', position: 1, createdAt: '2026-10-20T09:00:00Z' },
+    ],
+  });
+
+  beforeEach(() => {
+    forkConversation.mockReset();
+    useAppStore.setState({ currentConversationId: undefined, chatState: {}, drafts: {} });
+  });
+
+  it('opens the copy in Recents without disturbing the chat it came from', async () => {
+    // The source has an answer streaming and a draft typed into its composer.
+    useAppStore.setState({
+      conversations: [source],
+      currentConversationId: 'source',
+      chatState: { source: { messages: [{ id: 'live', role: 'assistant', content: 'Streaming…' }], loading: true, councilProgress: [] } },
+      drafts: { source: 'half-typed question' },
+    });
+    forkConversation.mockResolvedValue(fork());
+
+    const conversation = await useAppStore.getState().forkConversation('source', 'm3');
+
+    expect(forkConversation).toHaveBeenCalledWith('source', 'm3');
+    expect(conversation.id).toBe('fork');
+
+    const state = useAppStore.getState();
+    expect(state.conversations.map((item) => item.id)).toEqual(['fork', 'source']);
+    expect(state.currentConversationId).toBe('fork');
+    expect(state.chatState.fork.messages.map((message) => message.content)).toEqual([
+      'How does caching work?',
+      'It defers writes.',
+    ]);
+    expect(state.chatState.source).toMatchObject({ loading: true, messages: [{ id: 'live' }] });
+    expect(state.drafts.source).toBe('half-typed question');
+  });
+
+  it('creates nothing locally when the server refuses', async () => {
+    useAppStore.setState({ conversations: [source], currentConversationId: 'source' });
+    forkConversation.mockRejectedValueOnce(new Error('Conversation not found'));
+
+    await expect(useAppStore.getState().forkConversation('source', 'nope')).rejects.toThrow('Conversation not found');
+
+    const state = useAppStore.getState();
+    expect(state.conversations.map((item) => item.id)).toEqual(['source']);
+    expect(state.currentConversationId).toBe('source');
+    expect(state.chatState.fork).toBeUndefined();
   });
 });

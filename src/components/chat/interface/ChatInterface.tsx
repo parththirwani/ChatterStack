@@ -13,6 +13,7 @@ import { buildTurns } from '../navigation/turns';
 import type { Turn } from '../navigation/turns';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { useAppStore } from '@/src/store/rootStore';
+import { showConversation } from '@/src/lib/navigation';
 import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import type { QueuedMessage } from '@/src/store/slices/chat/chatSlice';
@@ -170,6 +171,10 @@ interface MessageListProps {
   councilProgress: CouncilProgress[];
   /** Regenerates the last answer; not offered while one is still streaming. */
   onRetry?: () => void;
+  /** Forks the chat at the saved message whose id it is given. */
+  onFork?: (messageId: string) => void;
+  /** Message whose fork request is still running. */
+  forkingMessageId?: string | null;
 }
 
 const MessageList = memo(function MessageList({
@@ -177,18 +182,29 @@ const MessageList = memo(function MessageList({
   loading,
   councilProgress,
   onRetry,
+  onFork,
+  forkingMessageId,
 }: MessageListProps) {
   return (
     <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
       {messages.map((msg, index) => {
         const isLastMessage = index === messages.length - 1;
-        const key = msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
+        const key = msg.clientKey ?? msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
+        // The menu itself stays hidden unless the row is one the database saved.
+        const forking = !!msg.id && msg.id === forkingMessageId;
 
         if (msg.role === 'user') {
           // Each question is an anchor the left rail jumps between.
           return (
-            <div key={key} data-turn-anchor={index}>
-              <UserMessage content={msg.content} attachments={msg.attachments} skills={msg.skills} />
+            <div key={key} data-turn-anchor={index} data-message-id={msg.id}>
+              <UserMessage
+                content={msg.content}
+                attachments={msg.attachments}
+                skills={msg.skills}
+                messageId={msg.id}
+                onFork={onFork}
+                forking={forking}
+              />
             </div>
           );
         }
@@ -206,6 +222,9 @@ const MessageList = memo(function MessageList({
             analytics={msg.analytics}
             contextCompacted={msg.contextCompacted}
             onRetry={isLastMessage && !loading ? onRetry : undefined}
+            messageId={msg.id}
+            onFork={onFork}
+            forking={forking}
             council={msg.council}
             councilProgress={isLastMessage ? councilProgress : undefined}
           />
@@ -571,6 +590,30 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     state.conversations.some((conversation) => conversation.id === conversationKey)
   );
   const renameConversation = useAppStore((state) => state.renameConversation);
+  const forkConversation = useAppStore((state) => state.forkConversation);
+  const setChatState = useAppStore((state) => state.setChatState);
+  // Which message's fork request is running: the button is disabled while it is,
+  // so a second click can't create a second copy.
+  const [forkingMessageId, setForkingMessageId] = useState<string | null>(null);
+
+  // The copy is the server's business: once it exists, the URL moves to it and
+  // the source chat is left exactly as it was (streaming answer and draft included).
+  const handleFork = useCallback((messageId: string) => {
+    if (forkingMessageId) return;
+    setForkingMessageId(messageId);
+    void forkConversation(conversationKey, messageId)
+      .then((conversation) => showConversation(conversation.id))
+      .catch((error: unknown) => {
+        console.error('Failed to fork chat:', error);
+        setChatState(conversationKey, {
+          error: error instanceof Error && error.message
+            ? error.message
+            : "Couldn't fork this conversation. Please try again.",
+        });
+      })
+      .finally(() => setForkingMessageId(null));
+  }, [forkingMessageId, conversationKey, forkConversation, setChatState]);
+
   const handleRename = useCallback(
     (title: string) => {
       renameConversation(conversationKey, title).catch((error) => console.error('Failed to rename chat:', error));
@@ -714,6 +757,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   loading={loading}
                   councilProgress={councilProgress}
                   onRetry={handleRetry}
+                  onFork={handleFork}
+                  forkingMessageId={forkingMessageId}
                 />
               )}
             </div>

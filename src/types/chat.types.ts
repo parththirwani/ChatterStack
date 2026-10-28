@@ -7,6 +7,8 @@ export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface Message {
   id?: string;
+  /** Stable React key while a local message receives its database id. */
+  clientKey?: string;
   role: MessageRole;
   content: string;
   createdAt?: string;
@@ -24,6 +26,8 @@ export interface Message {
   contextCompacted?: ContextCompactionInfo;
   /** Skills tagged on a user message. */
   skills?: SkillTag[];
+  /** Row order within the saved chat; absent on unsent or legacy messages. */
+  position?: number;
 }
 
 export interface AttachmentMeta {
@@ -211,6 +215,8 @@ export interface SSEData {
   title?: string;
   /** Tokens and timing for the completion that just finished. */
   analytics?: CompletionAnalytics;
+  /** Database ids for the exchange just saved. */
+  savedMessages?: { userMessageId: string; assistantMessageId?: string };
   /** Older turns were summarized for this request. */
   contextCompacted?: ContextCompactionInfo;
 }

@@ -58,3 +58,33 @@ This follows ChatGPT's documented web interaction: hover a message, open More ac
 - A fork of a long conversation duplicates its saved message rows and may exceed the model's token limit on the next prompt. The existing chat request limit should still report this cleanly; fork creation itself should not call a model.
 - The current per-conversation turn queue in `src/lib/api/chat/conversation-turns.ts` is in-process. The fork route must take a committed snapshot of the selected prefix; do not read optimistic client messages or assume an in-flight turn has already saved.
 - RAG retrieval excludes the current conversation ID. A fork gets a new ID, so its source conversation may appear in user-level retrieval results. Verify that this does not insert duplicate short-term context into the next answer; adjust retrieval if it does.
+
+## As built
+
+Notes on where the implementation differs from the steps above, and why.
+
+- **Step 1, migrations.** The repository commits no Prisma migrations
+  (`prisma/migrations/*` is gitignored; `npx prisma db push` is what both the
+  README and the Compose `schema` job use). So `Message.position` is nullable
+  rather than backfilled-then-required, with `@@unique([conversationId, position])`
+  (Postgres treats nulls as distinct, so the existing rows still load). Legacy rows
+  sort ahead of numbered ones, and every writer numbers its own rows, so both the
+  numbered and the partly numbered database read correctly.
+  `scripts/backfill-message-positions.mjs` numbers the old rows; the README says
+  when to run it.
+- **Steps 4 and 5, navigation.** `showConversation(newId)` is called by
+  `ChatInterface`, which owns the message action and its in-flight state, instead of
+  `ChatPage`. `forkConversation` in the conversation slice only validates the server
+  result, hydrates it into the store and makes it active.
+- **Step 1, origin fields.** `parentConversationId` and `forkedFromMessageId` are
+  stored but deliberately not serialized: nothing in the first release shows a
+  branch tree or a link back, and the `Conversation` shape is shared with the sidebar
+  and the server render.
+- **Step 6, RAG.** Retrieval is unchanged. It already excludes only the current
+  conversation, so a fork can retrieve chunks from its source. The short-term window
+  is built from the fork's own rows, so what can repeat is one retrieved chunk that
+  also appears in that window - the same thing that already happens between two
+  ordinary chats that mention the same text. No duplicate short-term context.
+- **Long chats.** Forking a long chat duplicates its rows, so the next prompt in a very long
+  fork can hit the existing chat request size limit, which reports it the way it already does.
+

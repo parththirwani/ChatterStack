@@ -4,6 +4,7 @@
  * timed exactly. Everything else (auth, conversations API, database) is real.
  */
 import http from 'node:http';
+import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { test as base, expect, type Page } from '@playwright/test';
 import { deleteTestConversations, E2E_USER_ID, literal, sql } from './db';
@@ -78,9 +79,16 @@ export const test = base.extend<{ mockChat: MockChat; cleanDatabase: void }>({
           stream.send({ conversationCreated: id });
         },
         saveMessages: (answer) => {
-          sql(`INSERT INTO messages (id, "conversationId", content, role, "modelId", "createdAt", "updatedAt") VALUES
-               (gen_random_uuid(), ${literal(id)}, ${literal(body.message)}, 'user', NULL, now(), now()),
-               (gen_random_uuid(), ${literal(id)}, ${literal(answer)}, 'assistant', ${literal(body.selectedModel)}, now() + interval '1 second', now())`);
+          // The same rows the app writes: numbered after whatever the chat holds
+          // already, question then answer.
+          const next = (offset: number) =>
+            `(SELECT coalesce(max(position), 0) + ${offset} FROM messages WHERE "conversationId" = ${literal(id)})`;
+          const userMessageId = randomUUID();
+          const assistantMessageId = randomUUID();
+          sql(`INSERT INTO messages (id, "conversationId", content, role, "modelId", position, "createdAt", "updatedAt") VALUES
+               (${literal(userMessageId)}, ${literal(id)}, ${literal(body.message)}, 'user', NULL, ${next(1)}, now(), now()),
+               (${literal(assistantMessageId)}, ${literal(id)}, ${literal(answer)}, 'assistant', ${literal(body.selectedModel)}, ${next(2)}, now() + interval '1 second', now())`);
+          stream.send({ savedMessages: { userMessageId, assistantMessageId } });
         },
       };
 

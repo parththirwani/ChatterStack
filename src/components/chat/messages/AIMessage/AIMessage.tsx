@@ -28,6 +28,10 @@ interface AIMessageProps {
   contextCompacted?: ContextCompactionInfo;
   /** Set on the reply that can be regenerated (the last one). */
   onRetry?: () => void;
+  /** Saved reply: its id goes into the More actions menu. */
+  messageId?: string;
+  onFork?: (messageId: string) => void;
+  forking?: boolean;
   council?: CouncilDetails;
   councilProgress?: CouncilProgress[];
 }
@@ -46,6 +50,9 @@ const AIMessage: React.FC<AIMessageProps> = ({
   analytics,
   contextCompacted,
   onRetry,
+  messageId,
+  onFork,
+  forking = false,
   council,
   councilProgress = [],
 }) => {
@@ -55,7 +62,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
   const showPending = streaming && !content && !reasoning && !showCouncilCard;
 
   return (
-    <div className="w-full">
+    <div className="w-full" data-message-id={messageId}>
       <div className="mx-auto max-w-3xl">
         <div className="flex flex-col gap-2">
           {/* Model Avatar - Responsive size */}
@@ -98,6 +105,9 @@ const AIMessage: React.FC<AIMessageProps> = ({
                   showCopy={showCopy}
                   showDownload={showDownload}
                   onRetry={onRetry}
+                  messageId={messageId}
+                  onFork={onFork}
+                  forking={forking}
                 />
                 {analytics && <MessageAnalytics analytics={analytics} />}
                 {contextCompacted && (
@@ -129,6 +139,9 @@ export default memo(AIMessage, (prev, next) => {
     prev.analytics === next.analytics &&
     prev.contextCompacted === next.contextCompacted &&
     prev.onRetry === next.onRetry &&
+    prev.messageId === next.messageId &&
+    prev.onFork === next.onFork &&
+    prev.forking === next.forking &&
     prev.council === next.council &&
     prev.councilProgress === next.councilProgress
   );

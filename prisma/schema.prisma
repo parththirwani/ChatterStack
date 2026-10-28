@@ -81,6 +81,10 @@ model Conversation {
   // Set on a scheduled task's run chats, which stay out of Recents. Cleared
   // when the task is deleted, so its runs become ordinary chats.
   scheduledTaskId String?
+  // Where a forked chat came from: the source chat and the message it was cut
+  // at. Plain ids, not relations, so a fork outlives its source.
+  parentConversationId String?
+  forkedFromMessageId  String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   
@@ -90,6 +94,7 @@ model Conversation {
   contextSnapshot ConversationContextSnapshot?
 
   @@index([userId, scheduledTaskId])
+  @@index([parentConversationId])
   @@map("conversations")
 }
 
@@ -103,6 +108,11 @@ model Message {
   // Skills tagged on a user message: [{ id, name }]. References only, so
   // later edits to a skill don't rewrite history.
   skills         Json?
+  // Order within the conversation, 1-based. createdAt ties or lands out of
+  // order (rows are saved together), so history and forks order by this.
+  // Null only on rows saved before the column existed; see
+  // scripts/backfill-message-positions.mjs.
+  position       Int?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
@@ -110,6 +120,7 @@ model Message {
 
   @@index([modelId])
   @@index([conversationId, modelId])
+  @@unique([conversationId, position])
   @@map("messages")
 }
 

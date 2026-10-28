@@ -144,6 +144,36 @@ by exactly one of them. Apply the Prisma schema (`npx prisma db push`) before
 deploying this version. See [docs/scheduled-tasks-plan.md](docs/scheduled-tasks-plan.md)
 for the design.
 
+## Forking a chat from a message
+
+Every saved message has a **More actions** menu (`...`) with **Fork in new chat**.
+It opens a separate conversation holding everything from the start of the chat
+through that message, message included, and leaves the source as it was.
+
+- A fork at a question ends with that question and does not generate a new answer;
+  the next prompt you send is appended as usual. A fork at an answer includes it.
+- The copy is a snapshot with its own URL and draft. It is titled `Fork of <source
+  title>` (capped at the 80 character title limit) and starts unpinned. Replies,
+  retries, renames and deletions in one chat never rewrite the other, and deleting
+  the source leaves its forks usable.
+- Attachments and tagged skills are copied as references, so an attachment deleted
+  in the source still shows as removed in the fork. Nothing is re-uploaded, no
+  embeddings are duplicated, and the fork's first send reads its own copied rows
+  rather than the source's Redis history.
+- Messages are numbered by a per-chat `position` assigned in the same write that
+  saves them. A question and its answer are saved together, so `createdAt` alone is
+  not enough to keep them in order, and a fork needs an exact cut point.
+- The menu appears once the database saves a message. The server sends its row id
+  back in the chat stream, so a new message can be forked without reloading.
+- `POST /api/conversations/[id]/fork` is the only way to fork. It checks ownership,
+  copies the prefix in one transaction (a failure leaves no empty chat behind) and
+  returns the new conversation.
+
+Apply the Prisma schema (`npx prisma db push`) before deploying this version, then
+run `node scripts/backfill-message-positions.mjs` once against that database to
+number messages saved before the column existed. See
+[docs/chat-fork-plan.md](docs/chat-fork-plan.md) for the design.
+
 ## Long chats and context compaction
 
 ChatterStack keeps every message in the transcript, but a long chat can exceed

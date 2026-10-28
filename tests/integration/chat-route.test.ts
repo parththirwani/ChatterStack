@@ -17,7 +17,38 @@ const skillRows = new Map<string, { id: string; userId: string; name: string; de
 const documentRows = new Map<string, { id: string; userId: string; name: string; mimeType: string; size: number; storageKey: string }>();
 const snapshotRows = new Map<string, Record<string, unknown>>();
 
+const conversationRows = {
+  create: vi.fn(async ({ data }: { data: { id: string } }) => {
+    log.push(`db:create:${data.id}`);
+    return { ...data, title: null };
+  }),
+  updateMany: vi.fn(async ({ data }: { data: { title?: string } }) => {
+    log.push(`db:title:${data.title}`);
+    return { count: 1 };
+  }),
+  update: vi.fn(async () => ({})),
+  findFirst: vi.fn(async ({ where }: { where: { id: string } }) => (where.id === OTHER_USERS_CHAT ? null : { id: where.id })),
+};
+
+const messageRows = {
+  findMany: vi.fn(async (): Promise<Array<{ role: string; content: string; modelId: string | null }>> => []),
+  createMany: vi.fn(async ({ data }: { data: Array<{ role: string; content: string; attachments?: unknown }> }) => {
+    log.push(`db:messages:${data.map((m) => `${m.role}=${m.content}`).join('|')}`);
+    return { count: data.length };
+  }),
+  // What a retry removes: the question row and the answer saved after it.
+  findFirst: vi.fn(async () => ({ createdAt: new Date('2026-01-01T00:00:00Z') })),
+  deleteMany: vi.fn(async () => {
+    log.push('db:deleteExchange');
+    return { count: 2 };
+  }),
+  // Where the next exchange's position starts: an empty chat with no rows yet.
+  aggregate: vi.fn(async () => ({ _max: { position: null } })),
+  count: vi.fn(async () => 0),
+};
+
 const db = {
+  $queryRaw: vi.fn(async () => [{ id: PLAN_ID }]),
   skill: {
     findMany: vi.fn(async ({ where }: { where: { id: { in: string[] }; userId: string } }) =>
       [...skillRows.values()].filter((row) => row.userId === where.userId && where.id.in.includes(row.id))),
@@ -27,31 +58,8 @@ const db = {
       [...documentRows.values()].filter((row) => row.userId === where.userId && where.id.in.includes(row.id))),
     updateMany: vi.fn(async () => ({ count: 1 })),
   },
-  conversation: {
-    create: vi.fn(async ({ data }: { data: { id: string } }) => {
-      log.push(`db:create:${data.id}`);
-      return { ...data, title: null };
-    }),
-    updateMany: vi.fn(async ({ data }: { data: { title?: string } }) => {
-      log.push(`db:title:${data.title}`);
-      return { count: 1 };
-    }),
-    update: vi.fn(async () => ({})),
-    findFirst: vi.fn(async ({ where }: { where: { id: string } }) => (where.id === OTHER_USERS_CHAT ? null : { id: where.id })),
-  },
-  message: {
-    findMany: vi.fn(async (): Promise<Array<{ role: string; content: string; modelId: string | null }>> => []),
-    createMany: vi.fn(async ({ data }: { data: Array<{ role: string; content: string; attachments?: unknown }> }) => {
-      log.push(`db:messages:${data.map((m) => `${m.role}=${m.content}`).join('|')}`);
-      return { count: data.length };
-    }),
-    // What a retry removes: the question row and the answer saved after it.
-    findFirst: vi.fn(async () => ({ createdAt: new Date('2026-01-01T00:00:00Z') })),
-    deleteMany: vi.fn(async () => {
-      log.push('db:deleteExchange');
-      return { count: 2 };
-    }),
-  },
+  conversation: conversationRows,
+  message: messageRows,
   conversationContextSnapshot: {
     findUnique: vi.fn(async ({ where }: { where: { conversationId: string } }) => snapshotRows.get(where.conversationId) ?? null),
     create: vi.fn(async ({ data }: { data: Record<string, unknown> }) => {
@@ -71,7 +79,10 @@ const db = {
       count: snapshotRows.delete(where.conversationId) ? 1 : 0,
     })),
   },
-  $transaction: vi.fn(async (operations: Promise<unknown>[]) => Promise.all(operations)),
+  // $transaction takes either a list of operations or a callback that is handed
+  // the transactional client; both use the same fakes here.
+  $transaction: vi.fn(async (work: Promise<unknown>[] | ((tx: unknown) => unknown)) =>
+    typeof work === 'function' ? work({ $queryRaw: db.$queryRaw, conversation: conversationRows, message: messageRows }) : Promise.all(work)),
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
@@ -121,6 +132,8 @@ beforeEach(() => {
   db.message.findMany.mockClear();
   db.message.findFirst.mockClear();
   db.message.deleteMany.mockClear();
+  db.message.aggregate.mockClear();
+  db.message.count.mockClear();
   redis.get.mockReset().mockImplementation(async () => []);
   redis.set.mockReset().mockImplementation(async () => {});
   redis.delete.mockReset().mockImplementation(async () => {});
@@ -192,6 +205,11 @@ describe('POST /api/chat, new conversation', () => {
     expect(events).toContainEqual({ reasoning: 'Thinking it over' });
     expect(events.filter((e) => e !== '[DONE]' && 'chunk' in e).map((e) => (e as { chunk: string }).chunk).join('')).toBe('Slow start doubles cwnd.');
     expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start doubles cwnd.');
+    const saved = events.find((event) => event !== '[DONE]' && 'savedMessages' in event);
+    expect(saved).toMatchObject({ savedMessages: {
+      userMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      assistantMessageId: expect.stringMatching(/^[0-9a-f-]{36}$/),
+    } });
     expect(events.at(-1)).toBe('[DONE]');
   });
 });
