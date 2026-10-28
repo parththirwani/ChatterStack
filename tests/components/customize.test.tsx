@@ -86,6 +86,13 @@ describe('Customize → Skills → Yours', () => {
     expect(screen.getByRole('radio', { name: 'Yours' })).toHaveAttribute('aria-checked', 'true');
   });
 
+  it('credits the upstream source for an added catalog skill', async () => {
+    skills.push({ ...added, id: 'external-1', name: 'ask-matt', catalogId: 'mattpocock-ask-matt' });
+    render(<SkillsPage view={{ kind: 'skills', tab: 'yours' }} />);
+    const external = await screen.findByRole('region', { name: 'From other creators' });
+    expect(within(external).getByText(/from mattpocock\/skills/)).toBeInTheDocument();
+  });
+
   it('turns a skill off and removes one after confirming', async () => {
     const user = userEvent.setup();
     render(<SkillsPage view={{ kind: 'skills', tab: 'yours' }} />);
@@ -196,17 +203,19 @@ describe('Customize → Skills → Discover', () => {
     expect(within(stacks).getAllByRole('button').map((button) => button.textContent)).toEqual(['Coding', 'UI', 'Writing']);
 
     await user.click(within(stacks).getByRole('button', { name: 'UI' }));
+    const sources = screen.getByRole('region', { name: 'Sources' });
+    await user.click(within(sources).getByRole('button', { name: 'lucasmarkes/hairline 2' }));
     const suggested = screen.getByRole('region', { name: 'Suggested skills' });
     expect(within(suggested).getByRole('heading', { name: 'UI', level: 3 })).toBeInTheDocument();
-    expect(within(suggested).getByText('design-taste')).toBeInTheDocument();
-    expect(within(suggested).getByText('hairline')).toBeInTheDocument();
-    expect(within(suggested).getByText('anatomy')).toBeInTheDocument();
+    expect(within(suggested).getByText('hairline-create')).toBeInTheDocument();
+    expect(within(suggested).getByText('hairline-adopt')).toBeInTheDocument();
+    expect(within(suggested).queryByText('design-taste')).toBeNull();
     expect(within(suggested).queryByText('ponytail')).toBeNull();
-    expect(within(suggested).getByRole('link', { name: 'lucasmarkes/hairline' })).toHaveAttribute('href', 'https://github.com/lucasmarkes/hairline');
+    expect(within(suggested).getAllByRole('link', { name: 'lucasmarkes/hairline' })).toHaveLength(2);
 
     await user.click(within(suggested).getByRole('button', { name: 'Add UI stack' }));
     await waitFor(() => expect(calls('POST', '/api/skills/catalog').map(bodyOf)).toEqual([
-      { id: 'design-taste' }, { id: 'hairline' }, { id: 'anatomy' },
+      { id: 'hairline-hairline-adopt' }, { id: 'hairline-hairline-create' },
     ]));
     await waitFor(() => expect(within(suggested).getByRole('button', { name: 'Added' })).toBeDisabled());
   });

@@ -6,6 +6,7 @@ import { navigateTo, skillsPath } from '@/src/lib/navigation';
 import { useAppStore } from '@/src/store/rootStore';
 import { createSkillWithAI, openSkillEditor, useSkills } from '@/src/lib/client/skills';
 import type { Skill } from '@/src/types/skill.types';
+import { findCatalogEntry } from '@/src/config/skill-catalog';
 import Menu from './Menu';
 import SkillsYours from './SkillsYours';
 import SkillsDiscover from './SkillsDiscover';
@@ -64,7 +65,11 @@ export function AddSkillMenu() {
   );
 }
 
-export const sourceLabel = (skill: Pick<Skill, 'source'>) => (skill.source === 'catalog' ? 'from ChatterStack' : 'by you');
+export const sourceLabel = (skill: Pick<Skill, 'source' | 'catalogId'>) => {
+  if (skill.source !== 'catalog') return 'by you';
+  const source = findCatalogEntry(skill.catalogId)?.sourceName;
+  return source ? `from ${source}` : 'from ChatterStack';
+};
 
 export default function SkillsPage({ view }: { view: SkillsView }) {
   const userId = useAppStore((state) => state.user?.id);

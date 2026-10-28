@@ -125,10 +125,10 @@ describe('skill routes', () => {
   });
 
   it('caps the number of skills per user', async () => {
-    for (let index = 0; index < 50; index += 1) await createOne({ ...skill, name: `skill-${index}` });
+    for (let index = 0; index < 200; index += 1) await createOne({ ...skill, name: `skill-${index}` });
     const over = await createOne({ ...skill, name: 'one-more' });
     expect(over.response.status).toBe(409);
-    expect(over.body.error).toMatch(/up to 50/);
+    expect(over.body.error).toMatch(/up to 200/);
   });
 
   it("never exposes or changes another user's skill", async () => {
@@ -159,6 +159,15 @@ describe('skill routes', () => {
     expect(again.skill).toMatchObject({ id: added.skill.id, enabled: true });
     expect(rows.size).toBe(1);
     expect((await addFromCatalog(json('skills/catalog', { id: 'nope' }))).status).toBe(404);
+  });
+
+  it('saves full upstream instructions for an external catalog skill', async () => {
+    const response = await addFromCatalog(json('skills/catalog', { id: 'mattpocock-ask-matt' }));
+    expect(response.status).toBe(200);
+    const { skill: added } = await response.json();
+    expect(added).toMatchObject({ name: 'ask-matt', catalogId: 'mattpocock-ask-matt', categories: ['Coding'] });
+    expect(added.instructions).toContain('# Ask Matt');
+    expect(added.instructions.length).toBeGreaterThan(1000);
   });
 
   it('adds a Discover skill under a free name when the user has one with its name', async () => {
