@@ -1,8 +1,9 @@
 'use client';
 import React, { useMemo, useState } from 'react';
 import { Check, Plus, Sparkles } from 'lucide-react';
-import { SKILL_CATALOG, type CatalogSkill } from '@/src/config/skill-catalog';
+import { SKILL_CATALOG, SKILL_STACKS, type CatalogSkill } from '@/src/config/skill-catalog';
 import { addCatalogSkill, trySkillInChat } from '@/src/lib/client/skills';
+import { MAX_SKILLS_PER_USER } from '@/src/lib/skills/skill-file';
 import type { Skill } from '@/src/types/skill.types';
 
 function useCatalogActions(skills: Skill[]) {
@@ -29,7 +30,26 @@ function useCatalogActions(skills: Skill[]) {
     if (skill) await trySkillInChat(skill);
   };
 
-  return { added, busy, error, add, tryIt };
+  const addStack = async (entries: CatalogSkill[]) => {
+    const newSkills = entries.filter((entry) => !added.has(entry.id));
+    if (skills.length + newSkills.length > MAX_SKILLS_PER_USER) {
+      setError(`This stack needs ${newSkills.length} free skill slots. You can keep up to ${MAX_SKILLS_PER_USER} skills.`);
+      return;
+    }
+    setBusy(`stack:${entries[0]?.stack}`);
+    setError('');
+    try {
+      for (const entry of entries) {
+        if (!added.get(entry.id)?.enabled) await addCatalogSkill(entry.id);
+      }
+    } catch (failure) {
+      setError((failure as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return { added, busy, error, add, tryIt, addStack };
 }
 
 function CatalogCard({ entry, actions }: { entry: CatalogSkill; actions: ReturnType<typeof useCatalogActions> }) {
@@ -45,11 +65,13 @@ function CatalogCard({ entry, actions }: { entry: CatalogSkill; actions: ReturnT
         </div>
       </div>
       <div className="mt-3 flex items-center gap-2 pl-12">
-        <span className="flex-1 text-[11px] text-[#8f8b86]">by ChatterStack</span>
-        <button type="button" onClick={() => void actions.tryIt(entry)} disabled={actions.busy === entry.id} aria-label={isAdded ? `Try ${entry.name} in chat` : `Add ${entry.name} and try it in chat`} className="rounded-md border border-white/[0.1] px-2.5 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07] disabled:opacity-50">Try</button>
+        <span className="flex-1 text-[11px] text-[#8f8b86]">
+          {entry.sourceUrl ? <a href={entry.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2 hover:text-white">{entry.sourceName}</a> : 'by ChatterStack'}
+        </span>
+        <button type="button" onClick={() => void actions.tryIt(entry)} disabled={!!actions.busy} aria-label={isAdded ? `Try ${entry.name} in chat` : `Add ${entry.name} and try it in chat`} className="rounded-md border border-white/[0.1] px-2.5 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07] disabled:opacity-50">Try</button>
         {isAdded
           ? <span aria-label={`${entry.name} added`} className="flex h-7 w-7 items-center justify-center text-[#9fd49f]"><Check className="h-4 w-4" /></span>
-          : <button type="button" onClick={() => void actions.add(entry)} disabled={actions.busy === entry.id} aria-label={`Add ${entry.name}`} className="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.1] text-[#d7d4d0] hover:bg-white/[0.07] disabled:opacity-50"><Plus className="h-4 w-4" /></button>}
+          : <button type="button" onClick={() => void actions.add(entry)} disabled={!!actions.busy} aria-label={`Add ${entry.name}`} className="flex h-7 w-7 items-center justify-center rounded-md border border-white/[0.1] text-[#d7d4d0] hover:bg-white/[0.07] disabled:opacity-50"><Plus className="h-4 w-4" /></button>}
       </div>
     </li>
   );
@@ -69,7 +91,12 @@ export default function SkillsDiscover({ skills, query }: { skills: Skill[]; que
   const featured = !q && !category ? SKILL_CATALOG.find((entry) => entry.featured) : undefined;
   const shown = SKILL_CATALOG.filter((entry) => entry !== featured &&
     (!category || entry.categories.includes(category)) &&
-    (!q || entry.name.includes(q) || entry.description.toLowerCase().includes(q)));
+    (!q || entry.name.includes(q) || entry.description.toLowerCase().includes(q) || entry.sourceName?.toLowerCase().includes(q) || entry.stack?.toLowerCase().includes(q)));
+  const stackEntries = SKILL_STACKS.map((stack) => ({
+    ...stack,
+    entries: shown.filter((entry) => entry.stack === stack.name),
+  })).filter((stack) => stack.entries.length);
+  const otherEntries = shown.filter((entry) => !entry.stack);
 
   const featuredAdded = featured && actions.added.get(featured.id)?.enabled;
 
@@ -92,9 +119,31 @@ export default function SkillsDiscover({ skills, query }: { skills: Skill[]; que
 
       <section aria-label="Suggested skills" className="mb-8">
         <h2 className="mb-3 text-sm font-medium text-[#d8d5d1]">{category ?? (q ? 'Results' : 'Suggested skills')}</h2>
-        {shown.length
-          ? <ul className="grid gap-3 sm:grid-cols-2">{shown.map((entry) => <CatalogCard key={entry.id} entry={entry} actions={actions} />)}</ul>
-          : <p className="text-sm text-[#aaa6a2]">No suggested skills match.</p>}
+        {otherEntries.length > 0 && <ul className="grid gap-3 sm:grid-cols-2">{otherEntries.map((entry) => <CatalogCard key={entry.id} entry={entry} actions={actions} />)}</ul>}
+        {stackEntries.map((stack) => {
+          const allEntries = SKILL_CATALOG.filter((entry) => entry.stack === stack.name);
+          const remaining = allEntries.filter((entry) => !actions.added.get(entry.id)?.enabled).length;
+          return <div key={stack.name} className="mt-7" aria-label={`${stack.name} stack`}>
+            <div className="mb-3 flex flex-wrap items-center gap-3">
+              <div className="flex-1">
+                <h3 className="text-base font-medium text-white">{stack.name}</h3>
+                <p className="text-xs text-[#aaa6a2]">{stack.description}</p>
+              </div>
+              <button type="button" onClick={() => void actions.addStack(allEntries)} disabled={!remaining || !!actions.busy} className="rounded-lg border border-white/[0.14] px-3 py-1.5 text-xs text-[#e5e2de] hover:bg-white/[0.06] disabled:opacity-50">
+                {remaining ? `Add ${stack.name} stack` : 'Added'}
+              </button>
+            </div>
+            <ul className="grid gap-3 sm:grid-cols-2">{stack.entries.map((entry) => <CatalogCard key={entry.id} entry={entry} actions={actions} />)}</ul>
+          </div>;
+        })}
+        {!shown.length && <p className="text-sm text-[#aaa6a2]">No suggested skills match.</p>}
+      </section>
+
+      <section aria-label="Stacks" className="mb-7">
+        <h2 className="mb-3 text-sm font-medium text-[#d8d5d1]">Stacks</h2>
+        <div className="flex flex-wrap gap-2">
+          {SKILL_STACKS.map((stack) => <button key={stack.name} type="button" aria-pressed={category === stack.name} onClick={() => setCategory((current) => current === stack.name ? null : stack.name)} className={`rounded-lg border px-3 py-1.5 text-sm ${category === stack.name ? 'border-white/30 bg-white/[0.09] text-white' : 'border-white/[0.08] text-[#c9c5c0] hover:bg-white/[0.05]'}`}>{stack.name}</button>)}
+        </div>
       </section>
 
       <section aria-label="Categories">

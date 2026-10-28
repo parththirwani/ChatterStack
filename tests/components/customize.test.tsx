@@ -188,6 +188,28 @@ describe('Customize → Skills → Discover', () => {
     const suggested = screen.getByRole('region', { name: 'Suggested skills' });
     expect(within(suggested).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual(['cover-letter']);
   });
+
+  it('filters the three stacks and adds a whole stack', async () => {
+    const user = userEvent.setup();
+    render(<SkillsPage view={{ kind: 'skills', tab: 'discover' }} />);
+    const stacks = await screen.findByRole('region', { name: 'Stacks' });
+    expect(within(stacks).getAllByRole('button').map((button) => button.textContent)).toEqual(['Coding', 'UI', 'Writing']);
+
+    await user.click(within(stacks).getByRole('button', { name: 'UI' }));
+    const suggested = screen.getByRole('region', { name: 'Suggested skills' });
+    expect(within(suggested).getByRole('heading', { name: 'UI', level: 3 })).toBeInTheDocument();
+    expect(within(suggested).getByText('design-taste')).toBeInTheDocument();
+    expect(within(suggested).getByText('hairline')).toBeInTheDocument();
+    expect(within(suggested).getByText('anatomy')).toBeInTheDocument();
+    expect(within(suggested).queryByText('ponytail')).toBeNull();
+    expect(within(suggested).getByRole('link', { name: 'lucasmarkes/hairline' })).toHaveAttribute('href', 'https://github.com/lucasmarkes/hairline');
+
+    await user.click(within(suggested).getByRole('button', { name: 'Add UI stack' }));
+    await waitFor(() => expect(calls('POST', '/api/skills/catalog').map(bodyOf)).toEqual([
+      { id: 'design-taste' }, { id: 'hairline' }, { id: 'anatomy' },
+    ]));
+    await waitFor(() => expect(within(suggested).getByRole('button', { name: 'Added' })).toBeDisabled());
+  });
 });
 
 describe('Upload a skill', () => {

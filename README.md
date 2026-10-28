@@ -81,6 +81,9 @@ Claude accepts. The UI follows claude.ai's Customize → Skills.
 - **Find:** the sidebar's **Customize** row opens Skills. **Yours** lists the
   skills you made and the ones you added, each with an on/off toggle.
   **Discover** suggests built-in skills to **Try** or **Add**.
+- **Stacks:** Discover groups chat-ready skills into Coding, UI and Writing.
+  Filter by stack or add every skill in one stack. Each adapted skill links to
+  its original project; adding a stack saves the individual skills to Yours.
 - **Upload skill:** drag in several `.md`, `.zip` or `.skill` files at once. A
   `.md` must have the YAML frontmatter; an archive must contain a `SKILL.md` at
   its root or in one top-level folder. Uploads are checked for a valid
