@@ -52,6 +52,21 @@ export const duplicateSkill = (id: string) =>
 export const addCatalogSkill = (id: string) =>
   withChange(request<{ skill: Skill }>('/api/skills/catalog', { method: 'POST', body: JSON.stringify({ id }) }).then((body) => body.skill));
 
+/** Adds a stack in order and refreshes the shared list once at the end. */
+export async function addCatalogSkills(ids: string[], onProgress?: (completed: number) => void) {
+  const result: Skill[] = [];
+  try {
+    for (const id of ids) {
+      const { skill } = await request<{ skill: Skill }>('/api/skills/catalog', { method: 'POST', body: JSON.stringify({ id }) });
+      result.push(skill);
+      onProgress?.(result.length);
+    }
+    return result;
+  } finally {
+    if (result.length) changed();
+  }
+}
+
 /** Uploads .md, .zip or .skill files; each file gets its own result. */
 export function uploadSkills(files: File[], replaceId?: string) {
   const form = new FormData();

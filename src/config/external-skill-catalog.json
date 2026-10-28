@@ -1,0 +1,1679 @@
+[
+  {
+    "id": "mattpocock-ask-matt",
+    "name": "ask-matt",
+    "description": "Ask which skill or flow fits your situation. A router over the skills in this repo.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/ask-matt/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-code-review",
+    "name": "code-review",
+    "description": "Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes: Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to \"review since X\".",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/code-review/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-codebase-design",
+    "name": "codebase-design",
+    "description": "Shared vocabulary for designing deep modules. Use when the user wants to design or improve a module's interface, find deepening opportunities, decide where a seam goes, make code more testable or AI-navigable, or when another skill needs the deep-module vocabulary.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/codebase-design/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-diagnosing-bugs",
+    "name": "diagnosing-bugs",
+    "description": "Diagnosis loop for hard bugs and performance regressions. Use when the user says \"diagnose\"/\"debug this\", or reports something broken/throwing/failing/slow.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/diagnosing-bugs/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-domain-modeling",
+    "name": "domain-modeling",
+    "description": "Build and sharpen a project's domain model. Use when discussing codebase terminology, writing or editing a GLOSSARY.md, or recording or editing an ADR.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/domain-modeling/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-grill-with-docs",
+    "name": "grill-with-docs",
+    "description": "A relentless interview to sharpen a plan or design, which also creates docs (ADR's and glossary) as we go.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/grill-with-docs/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-implement-spec",
+    "name": "implement-spec",
+    "description": "Implement the result of /to-spec and /to-tickets in code.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/implement-spec/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-implement",
+    "name": "implement",
+    "description": "Implement a piece of work based on a spec or set of tickets.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/implement/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-improve-codebase-architecture",
+    "name": "improve-codebase-architecture",
+    "description": "Scan a codebase for deepening opportunities, present them as a visual HTML report, then grill through whichever one you pick.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/improve-codebase-architecture/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-pr",
+    "name": "pr",
+    "description": "Use when writing a PR body.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/pr/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-prototype",
+    "name": "prototype",
+    "description": "Build a throwaway prototype to answer a design question. Use when the user wants to sanity-check whether a state model or logic feels right, or explore what a UI should look like.",
+    "categories": [
+      "Coding",
+      "UI"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/prototype/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-research",
+    "name": "research",
+    "description": "Investigate a question against high-trust primary sources and capture the findings as a Markdown file in the repo. Use when the user wants a topic researched, docs or API facts gathered, or reading legwork delegated to a background agent.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/research/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-retro",
+    "name": "retro",
+    "description": "Conduct a retrospective on a coding session.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/retro/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-setup-matt-pocock-skills",
+    "name": "setup-matt-pocock-skills",
+    "description": "Configure this repo for the engineering skills: set up its issue tracker, triage label vocabulary, and domain doc layout. Run once before first use of the other engineering skills.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/setup-matt-pocock-skills/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-tdd",
+    "name": "tdd",
+    "description": "Test-driven development. Use when the user wants to build features or fix bugs test-first, mentions \"red-green-refactor\", or wants integration tests.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/tdd/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-to-spec",
+    "name": "to-spec",
+    "description": "Turn the current conversation into a spec and publish it to the project issue tracker: no interview, just synthesis of what you've already discussed.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/to-spec/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-to-tickets",
+    "name": "to-tickets",
+    "description": "Break a plan, spec, or the current conversation into a set of tracer-bullet tickets, each declaring its blocking edges, published to the configured tracker (edges as text in one file per ticket locally, or native blocking links on a real tracker).",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/to-tickets/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-triage",
+    "name": "triage",
+    "description": "Move issues and external PRs through a state machine of triage roles, categorise, verify, grill if needed, and write agent-ready briefs.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/triage/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-wayfinder",
+    "name": "wayfinder",
+    "description": "Plan a huge chunk of work (more than one agent session can hold) as a shared map of decision tickets on your issue tracker, and resolve them one at a time until the way to the destination is clear.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/wayfinder/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-wizard",
+    "name": "wizard",
+    "description": "Generate an interactive bash wizard that walks a human through steps only they can perform. Use when provisioning infrastructure, setting up credentials or CI secrets, walking an unfamiliar third-party dashboard, or running a one-off migration or cutover. Don't invoke this for steps the agent can perform itself.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/engineering/wizard/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-chief-of-staff",
+    "name": "chief-of-staff",
+    "description": "Pursue a long-running goal in a single session by co-ordinating subagents.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/chief-of-staff/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-claude-handoff",
+    "name": "claude-handoff",
+    "description": "Hand the current conversation off to a fresh background agent that picks up the work immediately.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/claude-handoff/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-loop-me",
+    "name": "loop-me",
+    "description": "Grill me about specs for the workflows I want to build, within this workspace.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/loop-me/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-setup-ts-deep-modules",
+    "name": "setup-ts-deep-modules",
+    "description": "Wire dependency-cruiser into a TypeScript repo so each package is a deep module, with implementation hidden in subfolders and reachable only through its entry-point files. User-invoked.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/setup-ts-deep-modules/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-writing-beats",
+    "name": "writing-beats",
+    "description": "Writing, exploit; assemble raw material into a journey of beats, grounding each term before a beat leans on it.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/writing-beats/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-writing-fragments",
+    "name": "writing-fragments",
+    "description": "Writing, explore: mine raw fragments, no structure yet.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/writing-fragments/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-writing-shape",
+    "name": "writing-shape",
+    "description": "Writing, exploit: shape raw material into an article, paragraph by paragraph.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/in-progress/writing-shape/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-git-guardrails-claude-code",
+    "name": "git-guardrails-claude-code",
+    "description": "Set up Claude Code hooks to block dangerous git commands (push, reset --hard, clean, branch -D, etc.) before they execute. Use when user wants to prevent destructive git operations, add git safety hooks, or block git push/reset in Claude Code.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/misc/git-guardrails-claude-code/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-migrate-to-shoehorn",
+    "name": "migrate-to-shoehorn",
+    "description": "Migrate test files from `as` type assertions to @total-typescript/shoehorn. Use when user mentions shoehorn, wants to replace `as` in tests, or needs partial test data.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/misc/migrate-to-shoehorn/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-scaffold-exercises",
+    "name": "scaffold-exercises",
+    "description": "Create exercise directory structures with sections, problems, solutions, and explainers that pass linting. Use when user wants to scaffold exercises, create exercise stubs, or set up a new course section.",
+    "categories": [
+      "Coding",
+      "UI"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/misc/scaffold-exercises/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-setup-pre-commit",
+    "name": "setup-pre-commit",
+    "description": "Set up Husky pre-commit hooks with lint-staged (Prettier), type checking, and tests in the current repo. Use when user wants to add pre-commit hooks, set up Husky, configure lint-staged, or add commit-time formatting/typechecking/testing.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/misc/setup-pre-commit/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-grill-me",
+    "name": "grill-me",
+    "description": "A relentless interview to sharpen a plan or design.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/grill-me/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-grilling",
+    "name": "grilling",
+    "description": "Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/grilling/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-handoff",
+    "name": "handoff",
+    "description": "Compact the current conversation into a handoff document for another agent to pick up.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/handoff/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-teach",
+    "name": "teach",
+    "description": "Teach the user a new skill or concept, within this workspace.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/teach/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-to-questionnaire",
+    "name": "to-questionnaire",
+    "description": "Turn a decision you can't fully answer into a questionnaire for someone else to fill in.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/to-questionnaire/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-wait-what",
+    "name": "wait-what",
+    "description": "Stop. That last message did not land: re-pitch it.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/wait-what/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "mattpocock-writing-for-agents",
+    "name": "writing-for-agents",
+    "description": "Writing documents for agents. Use when creating or editing skills, or modifying AGENTS.md or CLAUDE.md.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "mattpocock/skills",
+    "sourceUrl": "https://github.com/mattpocock/skills/blob/59db609eb1e18aaf59b63284d0e52255aff0c63c/skills/productivity/writing-for-agents/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "theo-babysit-pr",
+    "name": "babysit-pr",
+    "description": "Monitor a pull request through review and CI. Use when the user asks to monitor, watch, or babysit a PR.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/babysit-pr/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "theo-council",
+    "name": "council",
+    "description": "Trigger this if the user says 'council'.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/council/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "theo-file-pr",
+    "name": "file-pr",
+    "description": "File a concise pull request. Use when the user asks to file, open, or create a PR.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/file-pr/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "theo-full-send",
+    "name": "full-send",
+    "description": "Trigger this if the user says 'full send'.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/full-send/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "theo-full-stop",
+    "name": "full-stop",
+    "description": "Trigger this if the user says 'full stop', even as a closing \"Full stop.\" that reads like emphasis.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/full-stop/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "theo-leaving-pr-comments",
+    "name": "leaving-pr-comments",
+    "description": "Use whenever leaving comments on GitHub.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/leaving-pr-comments/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "theo-modernize",
+    "name": "modernize",
+    "description": "For getting old prs up to date. Use when asked to rebase a pr or \"modernize\".",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/modernize/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "theo-sol-loop",
+    "name": "sol-loop",
+    "description": "Use when the user says \"sol loop\".",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/sol-loop/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "theo-takeover",
+    "name": "takeover",
+    "description": "Take over existing work. Use when the user asks to take over a PR, branch, or agent thread, or requests a takeover.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "t3dotgg/tstack",
+    "sourceUrl": "https://github.com/t3dotgg/tstack/blob/1085050f3baed1ac724caa4a8166145fb2ac88af/skills/takeover/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-architect",
+    "name": "architect",
+    "description": "Sketch types, signatures, and module structure before code, then stay in the loop while implementation fills in. Use for /architect, 'architect this', 'design this', or non-trivial work where jumping to code would lock in the wrong shape.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/architect/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-arena",
+    "name": "arena",
+    "description": "Spawn N parallel candidates at the same task, pick a base, graft the strongest parts of the losers into it. Use for /arena, 'arena this', 'throw it in the arena', or when one attempt at a non-trivial artifact would lock in the wrong shape.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/arena/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-automate-me",
+    "name": "automate-me",
+    "description": "Use for \"automate me\", \"create/update/refresh my -mode skill\", \"turn/capture my preferences or working style into a skill\", or wanting agents to follow how the user works. Drafts or revises a personal -mode skill via create-skill + unslop, optionally pulling fresh evidence from recent transcripts.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/automate-me/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-benchmark-checklist",
+    "name": "benchmark-checklist",
+    "description": "Vet a perf measurement (limiter, tuning, limits, errors, repeatability, relevance, and whether the work happened) before you report or act on it. Use when you run a benchmark or report a speedup or regression you measured.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/benchmark-checklist/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-blast-radius",
+    "name": "blast-radius",
+    "description": "Find what a change could break somewhere else before it ships, beyond the diff, and prove the one fact it's safe because of by running real code instead of writing it up. Use for 'blast radius of X', 'what could this break', or reviewing a small diff you don't trust.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/blast-radius/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-bro",
+    "name": "bro",
+    "description": "Restate the last message in plain human language, with no jargon.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/bro/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-correct",
+    "name": "correct",
+    "description": "Find the mistakes agents keep repeating in this repo and make each one impossible. Try architecture first, then types, then a lint whose error names the fix, then a test, and write docs last. Prove each check fails on a real past mistake. Repeat this each time the operator corrects you. Use for /correct.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/correct/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-create-formal-verification-skill",
+    "name": "create-formal-verification-skill",
+    "description": "Generate a project-local skill that formally verifies the code where a bug costs the most and tests reach the least, in any language, with whichever verification tool fits. Use for /create-formal-verification-skill, \"model-check this race\", \"prove this invariant\", or when concurrency, retries, state machines, parsers, or unsafe code need more than tests.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/create-formal-verification-skill/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-create-verification-skill",
+    "name": "create-verification-skill",
+    "description": "Generate a project-local verification skill that drives your app the way a user does — any language, framework, or platform. Use for /create-verification-skill, \"make a control skill for this repo\", or when a project has no scripted way to prove UI/CLI/service behavior.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/create-verification-skill/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-figure-it-out",
+    "name": "figure-it-out",
+    "description": "Design an auditable playbook when no narrower one fits: a large migration, an ambitious multi-part change, or work a human reviews after stepping away. Scales rigor to the task, runs a hypothesis loop, and logs decisions. Use for /figure-it-out or 'figure it out'.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/figure-it-out/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-how",
+    "name": "how",
+    "description": "Use for \"how does X work\", code walkthroughs before changing something, and placement / ownership / layering questions (\"where should this live\", \"which package owns this\", \"is this the right layer\"). Explains subsystem architecture, runtime flow, onboarding mental models. Use why for motivation.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/how/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-in-your-own-words",
+    "name": "in-your-own-words",
+    "description": "Restate in your own words what you think the user's goals are and what problem they're trying to solve. Use for /in-your-own-words.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/in-your-own-words/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-interrogate",
+    "name": "interrogate",
+    "description": "Use for \"interrogate\", \"adversarial review\", \"multi-model review\", \"challenge this\", \"stress test this code\", \"find blind spots\", or \"tear this apart\". Adversaries try to break a change or design, and only findings proven by a run survive.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/interrogate/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-ketchup-video",
+    "name": "ketchup-video",
+    "description": "Catch the user up like /ketchup, with a short subtitled video of slides for what happened and the waiting calls as text under it. Use for /ketchup-video.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/ketchup-video/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-ketchup",
+    "name": "ketchup",
+    "description": "Catch the user up on what changed in this chat since their last message, in plain words and small visuals. List every item waiting on them with what they need to decide it from the reply alone. Use for /ketchup.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/ketchup/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-maintain-formal-verification-skill",
+    "name": "maintain-formal-verification-skill",
+    "description": "Bring a project's formal verification back in line with the code after the code changes: find the commits that touched verified code, update the model, harness, or properties to describe the code as it is now, rerun, and say whether each failure is drift in the verification or a bug in the code. Use for /maintain-formal-verification-skill, \"is the model still true to the code\", or after merges and refactors that touched verified code without rechecking it.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/maintain-formal-verification-skill/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-maintain-verification-skill",
+    "name": "maintain-verification-skill",
+    "description": "Periodic pass that keeps a project's verification skill and feature map honest: parallel source readers per feature, one live session driving every feature, at most one PR of proven corrections. Use for /maintain-verification-skill or \"audit the verify skill\".",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/maintain-verification-skill/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-make-bot-ui",
+    "name": "make-bot-ui",
+    "description": "Use when building a custom UI (page, dashboard, buttons) that should wake a Grok Bot over a webhook, when the user must provide a webhook sender key, or when exposing that UI on Tailscale.",
+    "categories": [
+      "UI",
+      "Coding"
+    ],
+    "stack": "UI",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/make-bot-ui/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-no-comments",
+    "name": "no-comments",
+    "description": "Spawn Comment Sicko, fix accepted findings, and offer encodings for claimed constraints.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/no-comments/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-poteto-help",
+    "name": "poteto-help",
+    "description": "Guides users through pstack setup, /poteto-mode, and picking the skill, playbook, or principle for a task. Type /poteto-help with a question.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/poteto-help/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-poteto-mode",
+    "name": "poteto-mode",
+    "description": "poteto's agent style for concise, detailed responses, deliberate subagents, unslopped prose, simple code, and verified work. Use for poteto, /poteto-mode, or requests to work in this style.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/poteto-mode/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-principle-attack-the-premise",
+    "name": "principle-attack-the-premise",
+    "description": "Apply when two or more fixes that share one premise have failed the same gate. Write the premise down and test it directly before you write another fix that assumes it.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-attack-the-premise/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-boundary-discipline",
+    "name": "principle-boundary-discipline",
+    "description": "Apply when wiring validation, error handling, or framework adapters. Concentrate guards at system boundaries (CLI, config, network, external APIs); trust internal types and keep business logic in pure functions.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-boundary-discipline/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-build-the-lever",
+    "name": "principle-build-the-lever",
+    "description": "Apply to any non-trivial work, not just bulk work: edits, migrations, analyses, checks. Build the tool that does it or proves it (codemod, script, generator, or a skill your subagents follow) instead of working by hand. The tool is the artifact a reviewer can rerun.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-build-the-lever/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-encode-lessons-in-structure",
+    "name": "principle-encode-lessons-in-structure",
+    "description": "Apply when you catch yourself writing the same instruction a second time, or notice a recurring correction. Encode the rule as a lint, metadata flag, runtime check, or script instead of more text.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-encode-lessons-in-structure/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-exhaust-the-design-space",
+    "name": "principle-exhaust-the-design-space",
+    "description": "Apply when facing a novel UI interaction or architectural decision with no precedent in the codebase. Build 2-3 competing prototypes and compare side by side before committing.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-exhaust-the-design-space/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-experience-first",
+    "name": "principle-experience-first",
+    "description": "Apply when product, UX, or feature-scope tradeoffs come up. Choose user delight over implementation convenience; ship fewer polished features over more rough ones.",
+    "categories": [
+      "UI",
+      "Coding"
+    ],
+    "stack": "UI",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-experience-first/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-explain-the-number",
+    "name": "principle-explain-the-number",
+    "description": "Apply before you measure, and before you trust, report, or act on a number you measured: a speedup, a regression, a throughput, a latency, or an eval result. Find what limits it, and rule out that it measured something other than the work you think.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-explain-the-number/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-fix-root-causes",
+    "name": "principle-fix-root-causes",
+    "description": "Apply when debugging. Trace each symptom back to the first place the system went wrong and fix it there. A guard is a fix only when the state it handles is legitimate.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-fix-root-causes/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-foundational-thinking",
+    "name": "principle-foundational-thinking",
+    "description": "Apply before writing logic: choosing core types and data structures, sequencing scaffold-vs-feature work, asking what concurrent actors share. Get the data structures right so downstream code becomes obvious.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-foundational-thinking/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-guard-the-context-window",
+    "name": "principle-guard-the-context-window",
+    "description": "Apply when context is filling up: large outputs, long files, repeated reads, fan-out planning. Route bulk to subagents; keep summaries in the main thread, not raw payloads.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-guard-the-context-window/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-laziness-protocol",
+    "name": "principle-laziness-protocol",
+    "description": "Apply when refactoring, evaluating diff size, or tempted to add abstractions, layers, or signal threading. Bias toward deletion and the smallest change that solves the problem.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-laziness-protocol/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-make-operations-idempotent",
+    "name": "principle-make-operations-idempotent",
+    "description": "Apply when designing commands, lifecycle steps, or processing loops that run amid crashes, restarts, and retries. Converge to the same end state regardless of partial prior runs.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-make-operations-idempotent/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-migrate-callers-then-delete-legacy-apis",
+    "name": "principle-migrate-callers-then-delete-legacy-apis",
+    "description": "Apply when introducing a new internal API while old callers still exist. Migrate callers and delete the old API in the same wave instead of preserving compatibility layers.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-migrate-callers-then-delete-legacy-apis/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-minimize-reader-load",
+    "name": "principle-minimize-reader-load",
+    "description": "Apply when reviewing or shaping code that's hard to trace. Count layers between question and answer, and hidden state in the reader's head; collapse one-caller wrappers and shrink mutable scope.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-minimize-reader-load/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-model-the-domain",
+    "name": "principle-model-the-domain",
+    "description": "Apply when writing stateful logic, or when code branches a lot or repeats a shape assumption across files.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-model-the-domain/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-never-block-on-the-human",
+    "name": "principle-never-block-on-the-human",
+    "description": "Apply when tempted to ask 'should I do X?' on reversible work.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-never-block-on-the-human/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-outcome-oriented-execution",
+    "name": "principle-outcome-oriented-execution",
+    "description": "Apply during planned rewrites and migrations with explicit phase boundaries. Converge on the target architecture; don't preserve smooth intermediate states with throwaway compatibility code.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-outcome-oriented-execution/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-prove-it-works",
+    "name": "principle-prove-it-works",
+    "description": "Apply after completing a task, before declaring done. Verify against the real artifact (run the feature, read the actual value, inspect the diff), not a proxy, self-report, or 'it compiles.'",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-prove-it-works/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-redesign-from-first-principles",
+    "name": "principle-redesign-from-first-principles",
+    "description": "Apply when integrating a new requirement into an existing design.",
+    "categories": [
+      "UI",
+      "Coding"
+    ],
+    "stack": "UI",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-redesign-from-first-principles/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-separate-before-serializing-shared-state",
+    "name": "principle-separate-before-serializing-shared-state",
+    "description": "Apply when concurrent actors might write to the same file, branch, key, or state object. Eliminate the sharing first; serialize structurally only when one shared writer is a real invariant.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-separate-before-serializing-shared-state/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-sequence-verifiable-units",
+    "name": "principle-sequence-verifiable-units",
+    "description": "Apply to multi-step work (sweeps, migrations, runs of similar edits) and to how you stack commits and PRs. Break work into small units that each end in a verifiable state, check each before the next, and order delivery so the sequence proves itself to a reviewer.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-sequence-verifiable-units/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-subtract-before-you-add",
+    "name": "principle-subtract-before-you-add",
+    "description": "Apply when sequencing an addition, refactor, or rewrite. Remove dead code, redundant validators, and stub references first, then build on the simpler base.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-subtract-before-you-add/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-test-behavior-not-implementation",
+    "name": "principle-test-behavior-not-implementation",
+    "description": "Apply when you write, change, or keep a test. Assert what the code's users can observe, so that the test fails when that behavior breaks and keeps passing when only the internals change.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-test-behavior-not-implementation/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-principle-type-system-discipline",
+    "name": "principle-type-system-discipline",
+    "description": "Apply when designing types, reviewing a function signature, or writing code in any statically-typed language. Make illegal states unrepresentable, brand semantic primitives, parse external data at boundaries, exhaust variants, derive from authoritative schemas.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/principle-type-system-discipline/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-recall",
+    "name": "recall",
+    "description": "Reconstruct your recent working context from your own chat history, live state, and the shared record (user reports, prior fixes, incidents), then hand back a tight current-state brief. Use for 'recall my work on X', 'catch me up', 'what have I been working on', 'where did I leave off', before starting or resuming work.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/recall/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-reflect",
+    "name": "reflect",
+    "description": "Spawn three parallel review subagents over the active transcript, surface learnings, and route each to a concrete edit on an existing skill. Use when the user says reflect.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/reflect/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-setup-pstack",
+    "name": "setup-pstack",
+    "description": "Configure which models pstack uses per role and at what reasoning budget. Detects your available models and writes an always-applied rule that overrides the skill defaults. Use for /setup-pstack, \"configure pstack models\", \"pstack budget\", or changing pstack's model choices.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/setup-pstack/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-sharpen",
+    "name": "sharpen",
+    "description": "Make a task deeper, not bigger, then rewrite the prompt. Use for /sharpen.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/sharpen/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-show-me-your-work",
+    "name": "show-me-your-work",
+    "description": "Keep a reviewable decision trail for long-running or unattended work: a TSV log with one row per decision (what, why, evidence, result). Local by default; commit it when a reviewer needs the trail to trust the result. Use for /show-me-your-work, autonomous or multi-phase runs, or work a human reviews after stepping away.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/show-me-your-work/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-statechart",
+    "name": "statechart",
+    "description": "Check a TLA+ model of a system that moves between states, such as a product flow, a protocol, or a service, and draw it as a Mermaid statechart. The report gives the shortest path to each state that breaks a rule. Use for /statechart, or to show a bug as a path through states.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/statechart/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-swarm",
+    "name": "swarm",
+    "description": "Fan out N parallel workers, drain them, and return one report. Use for /swarm, 'swarm this', or parallel coverage, races, gauntlets, and exploration.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/swarm/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-tdd",
+    "name": "tdd",
+    "description": "Use only when the user explicitly asks for TDD, a failing test, or a regression test, OR when the bug has an obvious cheap local test target. Skip when the test path is unclear, expensive, integration-heavy, or not requested.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/tdd/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-teach",
+    "name": "teach",
+    "description": "Explain a body of work plainly so a person actually understands it. Runs the `how` and `why` skills and weaves what they find into one clear explanation. Use for 'teach me this', 'help me really understand X', 'explain this change or subsystem to me'.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/teach/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-technical-writing",
+    "name": "technical-writing",
+    "description": "Layered technical-writing standard: Diátaxis structure, Google developer style sentences, STE instruction rules, Global English syntax. Use for /technical-writing or when writing or reviewing docs, RFCs, readmes, PR descriptions, or commit messages.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/technical-writing/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-typescript-best-practices",
+    "name": "typescript-best-practices",
+    "description": "TypeScript best practices. Use when reading or editing any .ts or .tsx file.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/typescript-best-practices/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "poteto-unslop",
+    "name": "unslop",
+    "description": "Cut AI tells from any writing.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/unslop/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "poteto-why",
+    "name": "why",
+    "description": "Use for 'why does X work this way', 'why we picked Y', design rationale, regressions, postmortems, or data-backed thresholds. Discovers available MCPs and queries each evidence category (source control, issue tracker, long-form docs, real-time chat, infrastructure observability, error tracking, product analytics warehouse) in parallel, then returns a cited read on decisions and tradeoffs. Use how for runtime behavior.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "pstack by poteto",
+    "sourceUrl": "https://github.com/cursor/plugins/blob/c742dd61706fbacc1b95f1a20b7b988cf096ce6c/pstack/skills/why/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "design-taste-brutalist-industrial",
+    "name": "brutalist-industrial",
+    "description": "Genre pack: raw mechanical interface — Swiss typographic print fused with military/industrial terminal aesthetics. Rigid visible grids, extreme type-scale contrast, utilitarian color (paper, ink, one signal color), hard edges, zero decoration. Use for data-heavy platforms, developer tools, portfolios, studios, or any brief wanting to feel like a declassified blueprint. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/brutalist-industrial/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-cinematic-motion",
+    "name": "cinematic-motion",
+    "description": "Genre pack: the site-of-the-day aesthetic — the page as a film projected on studio print. Warm paper canvas, near-black ink type, one vivid electric-blue accent, grotesk display, alternating scene canvases, a scrubbed index counter, text-dissolve pins, and a drag-driven card carousel. For portfolios, product launches, agencies, and any brief that wants premium scroll-driven storytelling. Requires taste-gsap for the implementation. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/cinematic-motion/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-corporate-trust",
+    "name": "corporate-trust",
+    "description": "Genre pack: trust-first enterprise — white surfaces, one deep-blue accent, system typography, precise tables, zero decoration. For fintech, health, government, B2B platforms, and any audience whose decision rests on credibility. The identity IS the restraint: boring, on purpose, and honest. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/corporate-trust/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-dark-tech",
+    "name": "dark-tech",
+    "description": "Genre pack: dark, precise, developer-adjacent minimalism — the Linear/Vercel/Stripe-dark school. Near-black surfaces, one restrained accent, fine hairline borders, compact type, subtle glow only on the accent, dashboard-ready density. Use for developer tools, infra products, AI platforms, and technical audiences. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/dark-tech/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-design-taste",
+    "name": "design-taste",
+    "description": "Anti-slop design skill for landing pages, portfolios, and marketing sites. The agent reads the brief, infers a deliberate design direction, and ships interfaces that do not look AI-generated. Ban the LLM defaults, set typography and color deliberately, run the pre-flight checklist before finishing.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/design-taste/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-editorial-minimal",
+    "name": "editorial-minimal",
+    "description": "Genre pack: Swiss-editorial design identity. Warm paper background, ink-black type, one vermillion accent, oversized serif display with monospaced labels, hairline grids, indexed sections, strict asymmetric composition. Use when the brief asks for a calm, editorial, print-inspired, or quietly premium feel. Stack on top of the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/editorial-minimal/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-japanese-minimal",
+    "name": "japanese-minimal",
+    "description": "Genre pack: wabi-sabi minimalism — rice paper, sumi ink, one seal-red accent, a Japanese mincho serif, negative space as the design, one vertical text element allowed. Calm, deliberate, quiet-luxury's unpolished cousin. Use for studios, tea/food brands, wellness, personal sites, and any brief wanting meditative restraint. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/japanese-minimal/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-neo-brutalism",
+    "name": "neo-brutalism",
+    "description": "Genre pack: neo-brutalism for the web — loud consumer energy with hard discipline. Bright warm paper, ink-black 2.5px borders on everything, hard offset shadows, one dominant hot accent plus one supporting accent, chunky pills and stickers, playful copy. Use for consumer apps, agencies, crypto/tech novelty brands, and anything wanting maximum personality. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/neo-brutalism/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-playful-color",
+    "name": "playful-color",
+    "description": "Genre pack: bold, joyful consumer design — giant display type, thick ink outlines, flat vibrant color fields, sticker-like shapes, chunky buttons. For D2C brands, consumer apps, events, education, and youth-facing products. Fun without looking childish: the structure stays strict, only the attitude is loud. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/playful-color/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-quiet-luxury",
+    "name": "quiet-luxury",
+    "description": "Genre pack: quiet luxury for premium consumer products, private banking, fashion, high-end SaaS, and personal brands. Ivory and deep ink, one metal or oxblood accent, serif display with italic emphasis, thin rules, generous whitespace, restrained motion. The expensive look comes from calm, not decoration. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/quiet-luxury/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-retro-print",
+    "name": "retro-print",
+    "description": "Genre pack: Risograph / 70s–80s print revival. Warm paper, pigment inks (one red + one blue maximum), halftone dot textures, misregistered ink offsets, rubber-stamp details, poster typography. Use for zines, events, agencies, food/drink brands, music, and anything wanting a warm analog voice. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/retro-print/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-accessibility",
+    "name": "taste-accessibility",
+    "description": "Accessibility built into generation, not bolted on after: WCAG 2.2 AA compliance checks (contrast, keyboard, focus, labels, semantics, target size, reduced motion, autocomplete, error handling), baked into every page or component the agent builds. Run before calling any UI done. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-accessibility/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-brand-identity",
+    "name": "taste-brand-identity",
+    "description": "Brand identity generation for agents: logo mark concepting, wordmark typography, lockups, clear space and minimum sizes, color application, favicon and og-image construction, and the one-page brand sheet. Use when asked to create a logo, identity, or brand assets for a product or site. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-brand-identity/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-code-craft",
+    "name": "taste-code-craft",
+    "description": "Code-level craft for agent-built UI: semantic HTML, token-driven CSS (no hardcoded values), specificity discipline, component hygiene, zero inline styles, no dead code. The engineering half of \"designed, not generated\" — a beautiful page is betrayed by sloppy markup. Use when generating or auditing any frontend code. Stack on the design-taste core skill.",
+    "categories": [
+      "UI",
+      "Coding"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-code-craft/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-code-review",
+    "name": "taste-code-review",
+    "description": "Structured review of agent-generated code: a fixed pass order (behavior → structure → taste → security → performance → accessibility), severity-ranked findings, diff discipline, and a review checklist that stops \"it works\" from being the bar. Use when auditing any generated or changed code. Stack on the design-taste core skill.",
+    "categories": [
+      "UI",
+      "Coding"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-code-review/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-color",
+    "name": "taste-color",
+    "description": "Color craft for agent-built interfaces: palette construction in OKLCH, the 60-30-10 discipline, one-accent rule, WCAG 2.2 contrast math, semantic tokens, color-blind-safe pairs, and dark mode mapping. Use whenever picking colors, building palettes, or reviewing UI color. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-color/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-design-review",
+    "name": "taste-design-review",
+    "description": "Structured visual and usability audit of existing interfaces — landing pages, SaaS apps, portfolios. Screenshot-first review against taste rules, Nielsen heuristics, and accessibility floor; severity-ranked findings with specific fixes; before/after verification. Use when asked to critique, review, or improve an existing UI.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-design-review/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-design-system",
+    "name": "taste-design-system",
+    "description": "Builds and audits design systems for agentic workflows: three-tier design tokens (primitive → semantic → component), W3C DTCG token format, spacing and type scales, color ramps, component anatomy, documentation, governance, and adoption metrics. Use when creating tokens, scaffolding a component library, or auditing an existing system for consistency. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-design-system/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-gsap",
+    "name": "taste-gsap",
+    "description": "GSAP implementation craft for agent-built sites: timeline architecture, gsap.context and matchMedia, ScrollTrigger pin and scrub hygiene, SplitText discipline, transform-only animation, refresh-after-fonts, and full prefers-reduced-motion gating. The 90% of award-tier motion is structure, not effects — this is that 90%. Use whenever generating GSAP animation code. Stack on the design-taste core skill and taste-motion.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-gsap/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-landing-page",
+    "name": "taste-landing-page",
+    "description": "Landing page structure and conversion craft: the 8-second rule, audience-driven hero patterns, section order that sells (hook → problem → proof → price → close), CTA discipline, social proof placement, pricing psychology, and mobile-first section behavior. Use when generating or restructuring any marketing page. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-landing-page/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-motion",
+    "name": "taste-motion",
+    "description": "Motion craft for agent-built interfaces: duration and easing tokens, entrance choreography, hover/active micro-interactions, scroll-driven reveals, layout transitions, and prefers-reduced-motion compliance. Prevents the two AI-motion crimes: nothing moves at all, or everything moves forever. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-motion/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-typography",
+    "name": "taste-typography",
+    "description": "Typography craft for agent-built interfaces: pairing rules, fluid type scales, line lengths, baseline rhythm, weight discipline, legibility minimums, and the typography reasons most AI-generated pages read as cheap. Use whenever generating or reviewing any UI with text. Stack on the design-taste core skill.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-typography/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-ux-copy",
+    "name": "taste-ux-copy",
+    "description": "UX writing for agent-built interfaces: voice and tone, headline formulas, button labels, microcopy, error messages, empty states, loading text, pricing labels, and inclusive language — with before/after pairs and a copy checklist. Use whenever generating any interface text. Stack on the design-taste core skill.",
+    "categories": [
+      "UI",
+      "Writing"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-ux-copy/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "design-taste-taste-web-performance",
+    "name": "taste-web-performance",
+    "description": "Core Web Vitals discipline for agent-built pages: LCP, CLS, INP budgets, font loading that doesn't shift layout, images that don't bloat, CSS/JS that doesn't block. A designed page that loads like a template is half a page. Use when generating or auditing any web page or component. Stack on the design-taste core skill.",
+    "categories": [
+      "UI",
+      "Coding"
+    ],
+    "stack": "UI",
+    "sourceName": "madebymustafa/design-taste",
+    "sourceUrl": "https://github.com/madebymustafa/design-taste/blob/c4a6bff0871eb4b15371b0e7d2751628b0ed4608/skills/taste-web-performance/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "hairline-hairline-adopt",
+    "name": "hairline-adopt",
+    "description": "Use when someone has an SVG (an icon, a logo, an illustration) and wants it as a Hairline figure, or runs /hairline-adopt with a file. Reads the drawing, rebuilds its object as an isometric line figure on the engine of @lucasmarkes/hairline, and gives it a gesture that answers the pointer.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "lucasmarkes/hairline",
+    "sourceUrl": "https://github.com/lucasmarkes/hairline/blob/37d2e78dcb333ab30c3338e28ed4a690364ea014/skills/hairline-adopt/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "hairline-hairline-create",
+    "name": "hairline-create",
+    "description": "Use when someone asks for a new Hairline figure, or runs /hairline-create with an idea. Draws one isometric line figure that answers the pointer, in the style and on the engine of @lucasmarkes/hairline, and hands it over as a single self-contained HTML file.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "lucasmarkes/hairline",
+    "sourceUrl": "https://github.com/lucasmarkes/hairline/blob/37d2e78dcb333ab30c3338e28ed4a690364ea014/skills/hairline-create/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "anatomy-anatomy",
+    "name": "anatomy",
+    "description": "Build crafted, highly detailed, interactive isometric SVG figures that explain a technical idea as a real physical object (a test rig, a dial gauge, a cabinet of drawers, a plotter, a lock), with many small precise solid parts, four-tone shading, correct painter's order, a framed card with title, hint and live readout, and calm eased motion. Use this whenever someone wants an isometric illustration, an explanatory diagram or figure for docs, a blog post, a landing page or an article, a \"Linear-style\" or \"premium\" technical drawing, an interactive explainer, or an SVG that shows how a system, algorithm or component works, even if they never say \"isometric\". Works framework-free (TypeScript/JS that writes SVG and HTML) and in React/Next.js, and can add realistic WebGL shaders (fire, exhaust, water, caustics, lamp light) that live inside the drawing in the same isometric perspective. Also prints a figure as an A4 PDF (poster, drawing or handout) and publishes it to the Anatomy community gallery when asked.",
+    "categories": [
+      "UI"
+    ],
+    "stack": "UI",
+    "sourceName": "wheresryan22/anatomy",
+    "sourceUrl": "https://github.com/wheresryan22/anatomy/blob/1482e8469b0a9e0d8cc18ea2740a01423d29ae80/SKILL.md",
+    "requiresFiles": true
+  },
+  {
+    "id": "ponytail-ponytail-audit",
+    "name": "ponytail-audit",
+    "description": "Quality audit of a whole repo: bugs, security holes, what breaks under real load, risky code without tests, slow paths, and what to delete, merge or split. Ranked, each finding explained in plain English. One-shot report, changes nothing. Use for \"audit this codebase\", \"review the whole repo\", \"find bloat\", \"what can I delete\", /ponytail-audit.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "DietrichGebert/ponytail",
+    "sourceUrl": "https://github.com/DietrichGebert/ponytail/blob/09c434ab73ca43761c5d8b0c5d341926c2fba710/skills/ponytail-audit/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "ponytail-ponytail-debt",
+    "name": "ponytail-debt",
+    "description": "List every `shortcut:` comment (and older `ponytail:` ones) as a debt ledger. One-shot report, changes nothing. Use for \"ponytail debt\", \"what did ponytail defer\", \"list the shortcuts\", /ponytail-debt.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "DietrichGebert/ponytail",
+    "sourceUrl": "https://github.com/DietrichGebert/ponytail/blob/09c434ab73ca43761c5d8b0c5d341926c2fba710/skills/ponytail-debt/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "ponytail-ponytail-gain",
+    "name": "ponytail-gain",
+    "description": "Show ponytail's measured savings (code, cost, speed) from the benchmark. One-shot display. Use for /ponytail-gain, \"what does ponytail save\", \"ponytail impact\".",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "DietrichGebert/ponytail",
+    "sourceUrl": "https://github.com/DietrichGebert/ponytail/blob/09c434ab73ca43761c5d8b0c5d341926c2fba710/skills/ponytail-gain/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "ponytail-ponytail-help",
+    "name": "ponytail-help",
+    "description": "Quick reference for ponytail levels, skills and commands. One-shot display. Use for /ponytail-help, \"ponytail help\", \"how do I use ponytail\".",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "DietrichGebert/ponytail",
+    "sourceUrl": "https://github.com/DietrichGebert/ponytail/blob/09c434ab73ca43761c5d8b0c5d341926c2fba710/skills/ponytail-help/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "ponytail-ponytail-review",
+    "name": "ponytail-review",
+    "description": "Quality review of a change: is the logic right, is it safe, does it hold under real load, is risky code tested, is it fast enough, and is every line needed. Reads the connected code, not only the diff. Each finding is explained in plain English. Use for \"review this\", \"code review\", \"review the last commit\", \"review my PR\", \"is this over-engineered\", /ponytail-review.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "DietrichGebert/ponytail",
+    "sourceUrl": "https://github.com/DietrichGebert/ponytail/blob/09c434ab73ca43761c5d8b0c5d341926c2fba710/skills/ponytail-review/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "ponytail-ponytail",
+    "name": "ponytail",
+    "description": "Lazy senior dev mode: the smallest change that fully solves the task, and a reply a busy human understands in one read. Use on any coding task (writing, fixing, refactoring, reviewing, choosing dependencies) and when the user says \"ponytail\", \"be lazy\", \"simplest solution\", \"yagni\", or complains about over-engineering or bloat. Levels: lite, full (default), ultra.",
+    "categories": [
+      "Coding"
+    ],
+    "stack": "Coding",
+    "sourceName": "DietrichGebert/ponytail",
+    "sourceUrl": "https://github.com/DietrichGebert/ponytail/blob/09c434ab73ca43761c5d8b0c5d341926c2fba710/skills/ponytail/SKILL.md",
+    "requiresFiles": false
+  },
+  {
+    "id": "technical-writing-technical-article-writer",
+    "name": "technical-article-writer",
+    "description": "Write technical articles and blog posts for developer audiences — tutorials, explainers, benchmarks, bug hunts, postmortems, and 'we rewrote it in X' posts — with title variants and developer-grade article structure. Use whenever the user asks to write a blog post, technical article, dev.to or Medium post, or any long-form technical content, including 'write about [technical topic]', 'turn this into a blog post', or 'I want to publish something about X', even without naming a format. Do NOT use for newsletter or Substack issues — use samber/cc-skills@substack-ghostwriting instead. Do NOT use for codifying an author's voice — use samber/cc-skills@copywriting-prose-creator instead.",
+    "categories": [
+      "Writing"
+    ],
+    "stack": "Writing",
+    "sourceName": "samber/cc-skills",
+    "sourceUrl": "https://github.com/samber/cc-skills/blob/123cb155f5ab5751fc13c8027fbfa5eb0d3773c6/skills/technical-article-writer/SKILL.md",
+    "requiresFiles": true
+  }
+]

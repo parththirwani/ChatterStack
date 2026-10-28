@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '@/src/lib/prisma';
-import { findCatalogSkill } from '@/src/config/skill-catalog';
+import { findCatalogSkill } from '@/src/config/skill-catalog.server';
 import {
   inferCategories,
   MAX_SKILL_NAME,

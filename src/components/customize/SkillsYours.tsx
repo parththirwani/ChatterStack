@@ -4,6 +4,7 @@ import { MoreHorizontal, Sparkles, Upload } from 'lucide-react';
 import { navigateTo, skillsPath } from '@/src/lib/navigation';
 import { openSkillEditor } from '@/src/lib/client/skills';
 import type { Skill } from '@/src/types/skill.types';
+import { findCatalogEntry } from '@/src/config/skill-catalog';
 import Menu from './Menu';
 import { shortDate } from './format';
 import { sourceLabel } from './SkillsPage';
@@ -52,7 +53,8 @@ export default function SkillsYours({ skills, loading, query }: { skills: Skill[
   const actions = useSkillActions();
   if (loading) return <p className="text-sm text-[#aaa6a2]">Loading skills…</p>;
   const mine = skills.filter((skill) => skill.source !== 'catalog');
-  const added = skills.filter((skill) => skill.source === 'catalog');
+  const added = skills.filter((skill) => skill.source === 'catalog' && !findCatalogEntry(skill.catalogId)?.sourceName);
+  const external = skills.filter((skill) => skill.source === 'catalog' && !!findCatalogEntry(skill.catalogId)?.sourceName);
   return (
     <>
       {actions.host}
@@ -72,6 +74,7 @@ export default function SkillsYours({ skills, loading, query }: { skills: Skill[
         <>
           <Section title="Created by you" skills={mine} actions={actions} />
           <Section title="From ChatterStack" skills={added} actions={actions} />
+          <Section title="From other creators" skills={external} actions={actions} />
         </>
       )}
     </>

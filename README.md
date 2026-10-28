@@ -81,6 +81,10 @@ Claude accepts. The UI follows claude.ai's Customize → Skills.
 - **Find:** the sidebar's **Customize** row opens Skills. **Yours** lists the
   skills you made and the ones you added, each with an on/off toggle.
   **Discover** suggests built-in skills to **Try** or **Add**.
+- **Stacks:** Discover includes the full skill lists from Matt Pocock, Theo,
+  Poteto, Design Taste, Hairline, Anatomy, Ponytail and the Technical Article
+  Writer. Filter by Coding, UI, Writing or source. Each entry links to its
+  original SKILL.md. Adding a stack saves its individual skills to Yours.
 - **Upload skill:** drag in several `.md`, `.zip` or `.skill` files at once. A
   `.md` must have the YAML frontmatter; an archive must contain a `SKILL.md` at
   its root or in one top-level folder. Uploads are checked for a valid
@@ -102,7 +106,9 @@ Claude accepts. The UI follows claude.ai's Customize → Skills.
 
 Only the SKILL.md body is sent to the model: ChatterStack models can't open
 bundled files or run scripts, and skills run only when tagged (Claude can also
-pick skills automatically). Each user can keep 50 skills. Apply the Prisma
+pick skills automatically). Some catalog skills require tools or supporting
+files from their source repository; Discover marks those entries. Each user
+can keep 200 skills. Apply the Prisma
 schema (`npx prisma db push`) before deploying this version.
 
 ## Scheduled tasks

@@ -11,7 +11,7 @@ export const MAX_SKILL_DESCRIPTION = 1024;
 // Large enough for real Agent Skills. Skill text is sent with every message
 // it's tagged on, so it adds to each prompt; the editor shows the cost per use.
 export const MAX_SKILL_INSTRUCTIONS = 60000;
-export const MAX_SKILLS_PER_USER = 50;
+export const MAX_SKILLS_PER_USER = 200;
 export const MAX_SKILLS_PER_MESSAGE = 3;
 export const MAX_SKILL_FILE_SIZE = 64 * 1024;
 // Supporting files (references, templates, scripts) bundled with a skill.

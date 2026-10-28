@@ -9,6 +9,7 @@ import type { Skill } from '@/src/types/skill.types';
 import Menu from './Menu';
 import { shortDate } from './format';
 import { Breadcrumb, sourceLabel } from './SkillsPage';
+import { findCatalogEntry } from '@/src/config/skill-catalog';
 import { useSkillActions } from './useSkillActions';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -136,7 +137,8 @@ export default function SkillDetail({ skillId, section, skills, loading }: {
                 ? <span className="flex flex-wrap gap-1.5">{skill.categories.map((category) => <span key={category} className="rounded-md bg-white/[0.06] px-2 py-0.5 text-xs text-[#c9c5c0]">{category}</span>)}</span>
                 : <span className="text-[#8f8b86]">None</span>}
             </Field>
-            <Field label="Created by">{skill.source === 'catalog' ? 'ChatterStack' : 'You'}</Field>
+            <Field label="Created by">{skill.source === 'catalog' ? (findCatalogEntry(skill.catalogId)?.sourceName ?? 'ChatterStack') : 'You'}</Field>
+            {findCatalogEntry(skill.catalogId)?.sourceUrl && <Field label="Original skill"><a href={findCatalogEntry(skill.catalogId)!.sourceUrl} target="_blank" rel="noopener noreferrer" className="underline underline-offset-2">View source</a></Field>}
             <Field label="How it runs">
               Only adds instructions for the model, when you tag <span className="font-mono text-[#d9ceff]">/{skill.name}</span> in a message.
               {skill.files.length > 0 && <span className="mt-1 block text-[#aaa6a2]">Its {skill.files.length} other file{skill.files.length === 1 ? ' is' : 's are'} stored and downloadable, but not sent to the model.</span>}

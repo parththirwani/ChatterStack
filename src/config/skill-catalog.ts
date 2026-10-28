@@ -1,3 +1,5 @@
+import externalSkills from './external-skill-catalog.json';
+
 /**
  * Skills suggested on Customize → Skills → Discover. Adding one copies it into
  * the user's skills (source "catalog"), where it can be edited like any other.
@@ -10,11 +12,22 @@ export interface CatalogSkill {
   description: string;
   categories: string[];
   instructions: string;
+  /** Discover domain and original project, when this entry comes from one. */
+  stack?: 'Coding' | 'UI' | 'Writing';
+  sourceName?: string;
+  sourceUrl?: string;
+  requiresFiles?: boolean;
   /** Shown in the large card at the top of Discover. */
   featured?: boolean;
 }
 
 export const SKILL_CREATOR_ID = 'skill-creator';
+
+export const SKILL_STACKS = [
+  { name: 'Coding', description: 'Plan, build, review and simplify code.' },
+  { name: 'UI', description: 'Shape interfaces and explain ideas visually.' },
+  { name: 'Writing', description: 'Draft articles, documentation and clear explanations.' },
+] as const;
 
 export const SKILL_CATALOG: CatalogSkill[] = [
   {
@@ -159,6 +172,7 @@ Ask for the job description and the user's résumé or background if they're mis
 4. Explain how it works in a short list, and note edge cases: NULLs, duplicates, time zones, empty results.
 5. Suggest an index if the query would scan a large table.`,
   },
+  ...(externalSkills as CatalogSkill[]).map((skill) => ({ ...skill, instructions: '' })),
 ];
 
-export const findCatalogSkill = (id: string) => SKILL_CATALOG.find((skill) => skill.id === id);
+export const findCatalogEntry = (id: string | null) => SKILL_CATALOG.find((skill) => skill.id === id);
