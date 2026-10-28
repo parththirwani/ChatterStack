@@ -10,6 +10,15 @@ import {
 } from '@/src/config/models';
 
 describe('chat model registry', () => {
+  it('dates every model with a real release day, not in the future', () => {
+    for (const model of CHAT_MODELS) {
+      expect(model.released, model.id).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      const day = new Date(`${model.released}T00:00:00Z`);
+      expect(day.toISOString().slice(0, 10), model.id).toBe(model.released);
+      expect(day.getTime(), model.id).toBeLessThanOrEqual(Date.now());
+    }
+  });
+
   it('has no duplicate ids', () => {
     const ids = CHAT_MODELS.map((model) => model.id);
     expect(new Set(ids).size).toBe(ids.length);
