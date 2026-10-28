@@ -178,7 +178,7 @@ export default function ScheduledTaskDialog({ task, onClose, onSaved }: Schedule
           </div>
 
           <footer className="flex items-center gap-2 border-t border-white/10 px-5 py-3">
-            <p className="flex-1 text-xs text-[#8f8b86]">{error ? <span role="alert" className="text-red-300">{error}</span> : 'Each run counts toward your daily token limit.'}</p>
+            <p className="flex-1 text-xs text-[#8f8b86]">{error ? <span role="alert" className="text-red-300">{error}</span> : null}</p>
             <button type="button" onClick={onClose} className="rounded-lg px-3 py-2 text-sm text-[#c9c6c2] hover:bg-white/10">Cancel</button>
             <button type="submit" disabled={saving} className="rounded-lg bg-[#f0eeeb] px-4 py-2 text-sm font-medium text-[#1c1b19] hover:bg-white disabled:opacity-50">
               {saving ? 'Saving…' : editing ? 'Save changes' : 'Create'}

@@ -121,13 +121,14 @@ export async function POST(request: NextRequest) {
   const traced: { userId?: string; model?: string; council?: boolean; conversationId?: string } = {};
   // A request answered without streaming (rejected, or failed before the stream)
   // still gets a root-only trace, so throttled and refused requests are visible.
-  const finish = (response: Response, error?: unknown) => {
+  const finish = (response: Response, error?: unknown, attributes?: Parameters<typeof recordRequestSpan>[0]['attributes']) => {
     recordRequestSpan({
       traceId,
       startedAt: requestStartedAt,
       status: response.status >= 500 ? 'error' : 'rejected',
       httpStatus: response.status,
       error,
+      attributes,
       ...traced,
     });
     return response;
@@ -252,7 +253,11 @@ export async function POST(request: NextRequest) {
 
       if (!context.ok) {
         turn.end();
-        return finish(jsonError(context.error, context.status));
+        // A summarizer call may already have run before the turn was refused.
+        return finish(jsonError(context.error, context.status), undefined, context.usage.input + context.usage.output > 0 ? {
+          'chatterstack.compaction_input_tokens': context.usage.input,
+          'chatterstack.compaction_output_tokens': context.usage.output,
+        } : undefined);
       }
 
       prepared = {
@@ -338,7 +343,7 @@ export async function POST(request: NextRequest) {
       })));
 
       // On Stop/disconnect the model call is cancelled and resolves with the
-      // text written so far, which is still saved and counted below.
+      // text written so far, which is still saved below.
       let fullContent = '';
       const modelStartedAt = Date.now();
       // Council mode measures every member call, so the total can be broken
@@ -347,13 +352,6 @@ export async function POST(request: NextRequest) {
       const promptText = messagesForAI
         .map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n'))
         .join('\n');
-      let measured: { input: number; output: number } | undefined;
-      // Counted once and shared by the analytics event and the rate-limit record.
-      const measureTokens = () =>
-        measured ??= {
-          input: countTokens(skillText) + countTokens(promptText) + prepared.usage.input,
-          output: countTokens(fullContent) + prepared.usage.output,
-        };
       let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
@@ -401,7 +399,8 @@ export async function POST(request: NextRequest) {
         // Tokens and timing of the reply that just finished, for the client to
         // show under it. A counting failure must never lose the answer.
         try {
-          const { input, output } = measureTokens();
+          const input = countTokens(skillText) + countTokens(promptText) + prepared.usage.input;
+          const output = countTokens(fullContent) + prepared.usage.output;
           const analytics: CompletionAnalytics = {
             durationMs: Date.now() - modelStartedAt,
             inputTokens: input,

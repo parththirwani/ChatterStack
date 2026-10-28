@@ -2,7 +2,7 @@
  * Skills suggested on Customize → Skills → Discover. Adding one copies it into
  * the user's skills (source "catalog"), where it can be edited like any other.
  * Instructions are kept short: they are sent with every message they're
- * tagged on and count toward the daily token limit.
+ * tagged on and add to each prompt.
  */
 export interface CatalogSkill {
   id: string;

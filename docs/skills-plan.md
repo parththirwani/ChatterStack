@@ -14,7 +14,7 @@ New Prisma model `Skill`, owned by a user:
 | `userId` | cascade delete with the user |
 | `name` | kebab-case slug, 1–64 chars, unique per user. This is what the user types after `/`. |
 | `description` | 1–1024 chars. Says when to use the skill; shown in the picker. |
-| `instructions` | Markdown body, up to 8,000 characters. Kept short because skill text counts toward the 4,000-token daily limit. |
+| `instructions` | Markdown body, up to 8,000 characters. Kept short because skill text is sent with every tagged message. |
 | `source` | `created`, `generated` (skill creator), or `imported` |
 | `createdAt`, `updatedAt` | |
 

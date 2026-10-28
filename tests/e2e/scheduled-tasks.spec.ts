@@ -75,7 +75,7 @@ test('lists runs, opens a run as a chat, and keeps run chats out of Recents', as
   sql(`INSERT INTO scheduled_task_runs (id, "taskId", trigger, status, "conversationId", "startedAt", "finishedAt") VALUES
        ('r-ok', ${literal(TASK_ID)}, 'manual', 'succeeded', '8d1f3a5b-7c9e-4b2d-a6f8-0e2c4a6b8d0f', now() - interval '1 hour', now()),
        ('r-skip', ${literal(TASK_ID)}, 'schedule', 'skipped', NULL, now() - interval '2 hours', now())`);
-  sql(`UPDATE scheduled_task_runs SET error = 'Daily limit reached.' WHERE id = 'r-skip'`);
+  sql(`UPDATE scheduled_task_runs SET error = 'The previous run was still in progress.' WHERE id = 'r-skip'`);
 
   await openApp(page);
   const recents = page.getByRole('complementary', { name: 'Chat navigation' });
@@ -84,7 +84,7 @@ test('lists runs, opens a run as a chat, and keeps run chats out of Recents', as
   await page.goto(`/scheduled/${TASK_ID}`);
   const history = page.getByRole('region', { name: 'History' });
   await expect(history.getByText('Skipped')).toBeVisible();
-  await expect(history.getByText(/Daily limit reached\./)).toBeVisible();
+  await expect(history.getByText(/The previous run was still in progress\./)).toBeVisible();
   await history.getByRole('button', { name: /^Open the run from/ }).click();
   await expect(page).toHaveURL(/\/8d1f3a5b-7c9e-4b2d-a6f8-0e2c4a6b8d0f$/);
   await expect(page.getByText("Here is today's brief.")).toBeVisible();

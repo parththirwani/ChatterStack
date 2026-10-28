@@ -102,6 +102,14 @@ describe('POST /api/chat traces: requests refused before streaming', () => {
     expect(response.status).toBe(400);
     expect(rootSpans[0]).toMatchObject({ status: 'rejected', httpStatus: 400, userId: 'user-1' });
   });
+});
+
+describe('POST /api/chat traces: streamed turns', () => {
+  it('records a finished turn as ok, with the answer', async () => {
+    await readEvents(await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, newConversation: true }));
+    expect(rootSpans).toHaveLength(1);
+    expect(rootSpans[0]).toMatchObject({ status: 'ok', model: 'openai/gpt-6.1-sol', answer: 'An answer.' });
+  });
 
   it('records the turn as an error when saving fails after the model answered', async () => {
     db.message.createMany.mockRejectedValue(new Error('database is down'));
