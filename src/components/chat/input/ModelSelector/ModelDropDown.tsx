@@ -108,7 +108,7 @@ interface ProviderSummary {
   text: string;
   /** Spoken after the provider name. */
   label: string;
-  /** The row holds something already chosen (the current model, or council members). */
+  /** The row holds something already chosen; it takes the keyboard tab stop. */
   active: boolean;
 }
 
@@ -155,7 +155,7 @@ const ProviderList: React.FC<{
             tabIndex={company === activeCompany ? 0 : -1}
             aria-label={`${company}, ${summary.label}`}
             onClick={() => onOpen(company)}
-            className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${summary.active ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}`}
+            className="flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors hover:bg-white/[0.045]"
           >
             <ModelLogo model={models[0]} />
             <div className="min-w-0 flex-1">
