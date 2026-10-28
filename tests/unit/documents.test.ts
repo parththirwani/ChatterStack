@@ -132,8 +132,11 @@ describe('document storage rules', () => {
     expect(db.document.findMany).toHaveBeenCalledWith({
       where: {
         favoritedAt: null,
-        createdAt: { lt: new Date('2026-09-27T00:00:00.000Z') },
-        OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: new Date('2026-09-27T00:00:00.000Z') } }],
+        OR: [
+          // Never sent in a chat: not a resource, so it only lingers for a day.
+          { lastUsedAt: null, createdAt: { lt: new Date('2026-10-26T00:00:00.000Z') } },
+          { createdAt: { lt: new Date('2026-09-27T00:00:00.000Z') }, lastUsedAt: { lt: new Date('2026-09-27T00:00:00.000Z') } },
+        ],
       },
       select: { id: true, userId: true },
       take: 100,

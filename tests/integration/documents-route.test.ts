@@ -6,8 +6,9 @@ const auth = vi.fn();
 const records = new Map<string, Record<string, unknown>>();
 const db = {
   document: {
-    findMany: vi.fn(async ({ where }: { where: { userId?: string; id?: { in: string[] } } }) =>
-      [...records.values()].filter((row) => (!where.userId || row.userId === where.userId) && (!where.id || where.id.in.includes(String(row.id))))),
+    findMany: vi.fn(async ({ where }: { where: { userId?: string; id?: { in: string[] }; lastUsedAt?: { not: null } } }) =>
+      [...records.values()].filter((row) => (!where.userId || row.userId === where.userId) && (!where.id || where.id.in.includes(String(row.id)))
+        && (!where.lastUsedAt || row.lastUsedAt !== null))),
     findUnique: vi.fn(async ({ where }: { where: { id?: string; userId_sha256?: { userId: string; sha256: string } } }) =>
       [...records.values()].find((row) => where.id ? row.id === where.id : row.userId === where.userId_sha256?.userId && row.sha256 === where.userId_sha256?.sha256) ?? null),
     findUniqueOrThrow: vi.fn(async ({ where }: { where: { id: string } }) => records.get(where.id)),
@@ -82,13 +83,16 @@ describe('document routes', () => {
     expect((await content(request('documents/1/content', {}), context('1'))).status).toBe(401);
   });
 
-  it('confirms a private upload and lists only the current user’s metadata', async () => {
+  it('confirms a private upload and lists only the current user’s metadata once it has been sent', async () => {
     const result = await confirm(request('documents', input));
     expect(result.status).toBe(201);
     const { document } = await result.json();
     expect(document).toMatchObject({ name: 'notes.md', size: file.length, sha256 });
     expect(JSON.stringify(document)).not.toContain(storageKey);
-    records.set('other', { id: 'other', userId: 'user-2', name: 'private.pdf', createdAt: new Date(), favoritedAt: null, lastUsedAt: null });
+    // Uploaded but not yet sent in a chat: stored, yet not a resource.
+    expect((await (await list()).json()).documents).toEqual([]);
+    records.get(document.id)!.lastUsedAt = new Date();
+    records.set('other', { id: 'other', userId: 'user-2', name: 'private.pdf', createdAt: new Date(), favoritedAt: null, lastUsedAt: new Date() });
     const listed = await (await list()).json();
     expect(listed.documents.map((item: { id: string }) => item.id)).toEqual([document.id]);
     expect((await (await check(request('documents/check', { sha256 }))).json()).document.id).toBe(document.id);

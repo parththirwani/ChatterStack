@@ -318,6 +318,8 @@ async function sendToConversation(
       flushTimer = null;
     }
     flushNow();
+    // Sent files become resources only once the server has saved the message.
+    if (attachments.length && typeof window !== 'undefined') window.dispatchEvent(new Event('chatterstack:documents-changed'));
     // The reply is final now: attach the tokens it used and how long it took.
     if (analytics) patchStreamingMessage(() => ({ analytics }));
 
