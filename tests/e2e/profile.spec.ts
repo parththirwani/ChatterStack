@@ -3,7 +3,7 @@
  * footer, saving name, bio, or photo changes what the menu shows (mock, local
  * only), and the heatmap tracks the days the user actually chatted.
  */
-import { seedConversation } from './support/db';
+import { seedConversation, seedSession } from './support/db';
 import { expect, openApp, test } from './support/fixtures';
 
 // 1x1 blue PNG; the mock upload only needs any image bytes.
@@ -74,12 +74,18 @@ test('the profile modal saves name, bio, and photo to the mock profile', async (
   await expect(dialog.getByRole('textbox', { name: 'Bio' })).toHaveValue('Rear Admiral. Ships, software.');
 });
 
-test('sign out routes to the logout confirmation', async ({ page }) => {
+test('sign out from the sidebar menu signs out without a confirmation', async ({ page }) => {
   await openApp(page);
 
-  const menu = await openAccountMenu(page);
-  await menu.getByRole('menuitem', { name: 'Sign out' }).click();
-  await expect(page.getByRole('dialog', { name: 'Sign out?' })).toBeVisible();
+  try {
+    const menu = await openAccountMenu(page);
+    await menu.getByRole('menuitem', { name: 'Sign out' }).click();
+    await expect(page.getByRole('dialog', { name: 'Sign out?' })).toHaveCount(0);
+    await expect(trigger(page)).toHaveCount(0);
+  } finally {
+    // Signing out deletes the shared test session; restore it for the tests that follow.
+    seedSession();
+  }
 });
 
 test('the profile modal heatmap shows the days the user chatted', async ({ page }) => {

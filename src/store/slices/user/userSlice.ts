@@ -3,6 +3,7 @@
 import { StateCreator } from 'zustand';
 import { ApiService } from '../../../services/api';
 import { signOut } from 'next-auth/react';
+import { resetUser } from '@/src/lib/analytics/posthog-client';
 import type { User } from '@/src/types/user.types';
 
 export interface UserSlice {
@@ -47,6 +48,7 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
 
   logout: async () => {
     try {
+      resetUser();
       // Sign out using NextAuth - this clears the session
       await signOut({ redirect: false });
       

@@ -21,6 +21,13 @@ export function sql(query: string): string {
 
 export const literal = (value: string | null) => (value === null ? 'NULL' : `'${value.replace(/'/g, "''")}'`);
 
+/** Writes (or restores, after a test signs out) the test user's database session. */
+export function seedSession() {
+  sql(`INSERT INTO sessions (id, "sessionToken", "userId", expires)
+       VALUES ('e2e-test-session', ${literal(E2E_SESSION_TOKEN)}, ${literal(E2E_USER_ID)}, now() + interval '1 day')
+       ON CONFLICT (id) DO UPDATE SET "sessionToken" = EXCLUDED."sessionToken", expires = EXCLUDED.expires`);
+}
+
 export function deleteTestConversations() {
   sql(`DELETE FROM conversations WHERE "userId" = ${literal(E2E_USER_ID)}`);
 }
