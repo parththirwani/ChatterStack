@@ -361,7 +361,7 @@ export function ActivityHeatmap({ days, label, period, unit: unitProp = CONTRIBU
     </div>
 
     <div ref={scrollerRef} className={styles.scroller}>
-      <div className={styles.canvas} style={{ "--weeks": model.weeks } as CSSProperties}>
+      <div className={styles.canvas} style={{ "--weeks": Math.max(1, model.weeks) } as CSSProperties}>
         <div className={styles.months} aria-hidden="true">
           {model.months.map((month, order) => <span key={`${month.month % 12}-${model.months.findIndex(item => item.month % 12 === month.month % 12) === order ? 0 : 1}`} className={styles.month} style={{ "--col": month.col } as CSSProperties}>{month.label}</span>)}
         </div>
