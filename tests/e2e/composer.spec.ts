@@ -94,10 +94,14 @@ test.describe('council settings', () => {
 
     await modelButton(page).click();
     const dialog = page.getByRole('dialog', { name: 'Council settings' });
-    // Any model can join; the four defaults start checked.
+    // Providers first; rows with members name them. Any model can join.
+    const providers = dialog.getByRole('list', { name: 'Providers' });
+    await expect(providers.getByRole('button', { name: /, members / })).not.toHaveCount(0);
+    await providers.getByRole('button', { name: /^OpenAI,/ }).click();
     const members = dialog.getByRole('group', { name: 'Council members' });
-    await expect(members.getByRole('checkbox', { checked: true })).toHaveCount(4);
-    expect(await members.getByRole('checkbox').count()).toBeGreaterThan(4);
+    expect(await members.getByRole('checkbox').count()).toBeGreaterThan(1);
+    await dialog.getByRole('button', { name: 'Back to providers from OpenAI' }).click();
+    await expect(providers).toBeVisible();
     await expect(dialog.getByRole('button', { name: /Chair/ })).toBeVisible();
   });
 

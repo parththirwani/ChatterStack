@@ -103,17 +103,29 @@ function moveFocus(event: React.KeyboardEvent<HTMLElement>, selector: string): n
 
 const COMPANY_GROUPS = groupByCompany(AVAILABLE_MODELS);
 
+interface ProviderSummary {
+  /** Second line of the row. */
+  text: string;
+  /** Spoken after the provider name. */
+  label: string;
+  /** The row holds something already chosen (the current model, or council members). */
+  active: boolean;
+}
+
+const modelCount = (models: readonly ModelInfo[]) => `${models.length} ${models.length === 1 ? 'model' : 'models'}`;
+
 /**
- * Step one of the picker: one row per provider. The provider of the current
- * model shows that model's name; the others show how many models they offer.
+ * Step one of a picker: one row per provider, each opening that provider's
+ * models. `summarize` fills in the second line, e.g. the current model.
  */
 const ProviderList: React.FC<{
-  selected: ModelInfo | undefined;
+  summarize: (company: string, models: readonly ModelInfo[]) => ProviderSummary;
   focusCompany: string | null;
   onOpen: (company: string) => void;
-}> = ({ selected, focusCompany, onOpen }) => {
+}> = ({ summarize, focusCompany, onOpen }) => {
   const listRef = useRef<HTMLDivElement>(null);
-  const activeCompany = focusCompany ?? selected?.company ?? COMPANY_GROUPS[0]?.[0];
+  const rows = COMPANY_GROUPS.map(([company, models]) => ({ company, models, summary: summarize(company, models) }));
+  const activeCompany = focusCompany ?? rows.find((row) => row.summary.active)?.company ?? rows[0]?.company;
 
   // Coming back from a provider's models puts focus on the row it came from.
   useLayoutEffect(() => {
@@ -135,33 +147,72 @@ const ProviderList: React.FC<{
         moveFocus(event, '[data-company]');
       }}
     >
-      {COMPANY_GROUPS.map(([company, models]) => {
-        const current = selected?.company === company;
-        return (
-          <div role="listitem" key={company}>
-            <button
-              type="button"
-              data-company={company}
-              tabIndex={company === activeCompany ? 0 : -1}
-              aria-label={`${company}, ${current ? `current model ${selected.name}` : `${models.length} models`}`}
-              onClick={() => onOpen(company)}
-              className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${current ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}`}
-            >
-              <ModelLogo model={models[0]} />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-[13px] font-medium text-[#f0eeeb]">{company}</div>
-                <div className="truncate text-[12px] leading-[17px] text-[#a9a5a0]">
-                  {current ? selected.name : `${models.length} ${models.length === 1 ? 'model' : 'models'}`}
-                </div>
-              </div>
-              <ChevronRight className="h-4 w-4 shrink-0 text-[#aaa6a2]" aria-hidden="true" />
-            </button>
-          </div>
-        );
-      })}
+      {rows.map(({ company, models, summary }) => (
+        <div role="listitem" key={company}>
+          <button
+            type="button"
+            data-company={company}
+            tabIndex={company === activeCompany ? 0 : -1}
+            aria-label={`${company}, ${summary.label}`}
+            onClick={() => onOpen(company)}
+            className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${summary.active ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}`}
+          >
+            <ModelLogo model={models[0]} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] font-medium text-[#f0eeeb]">{company}</div>
+              <div className="truncate text-[12px] leading-[17px] text-[#a9a5a0]">{summary.text}</div>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-[#aaa6a2]" aria-hidden="true" />
+          </button>
+        </div>
+      ))}
     </div>
   );
 };
+
+/** The "‹ Provider" row above a provider's models. */
+const BackRow: React.FC<{ company: string; onBack: () => void }> = ({ company, onBack }) => (
+  <div className="px-1 pt-1">
+    <button
+      type="button"
+      data-back
+      onClick={onBack}
+      aria-label={`Back to providers from ${company}`}
+      className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] font-medium text-[#cfcbc5] transition-colors hover:bg-white/[0.045] hover:text-white"
+    >
+      <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+      <span className="truncate">{company}</span>
+    </button>
+  </div>
+);
+
+/**
+ * Which provider is open in a two-step picker, plus the keyboard rule that
+ * Escape or ArrowLeft inside a provider steps back instead of closing.
+ */
+function useProviderStep() {
+  const [company, setCompany] = useState<string | null>(null);
+  // The provider whose models were last open, so going back can focus its row.
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+
+  const open = (next: string) => {
+    setReturnTo(null);
+    setCompany(next);
+  };
+  const back = () => {
+    setReturnTo(company);
+    setCompany(null);
+  };
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    if (!company || (event.key !== 'Escape' && event.key !== 'ArrowLeft')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    back();
+  };
+  const models = COMPANY_GROUPS.find(([name]) => name === company)?.[1] ?? [];
+
+  return { company, models, returnTo, open, back, onKeyDown };
+}
 
 const ModelOptions: React.FC<{
   models: readonly ModelInfo[];
@@ -237,21 +288,11 @@ const ModelOptions: React.FC<{
 const ModelList: React.FC<{ onPicked: () => void }> = ({ onPicked }) => {
   const { selectedModel, getModelInfo } = useModelSelection();
   const [query, setQuery] = useState('');
-  const [company, setCompany] = useState<string | null>(null);
-  // The provider whose models were last open, so going back can focus its row.
-  const [returnTo, setReturnTo] = useState<string | null>(null);
+  const step = useProviderStep();
   const bodyRef = useRef<HTMLDivElement>(null);
   const searching = query.trim() !== '';
   const filtered = useMemo(() => AVAILABLE_MODELS.filter((model) => matchesQuery(model, query)), [query]);
-  const providerModels = useMemo(
-    () => COMPANY_GROUPS.find(([name]) => name === company)?.[1] ?? [],
-    [company]
-  );
-
-  const back = () => {
-    setReturnTo(company);
-    setCompany(null);
-  };
+  const selected = getModelInfo(selectedModel);
 
   return (
     <>
@@ -260,44 +301,23 @@ const ModelList: React.FC<{ onPicked: () => void }> = ({ onPicked }) => {
         onChange={setQuery}
         onArrowDown={() => bodyRef.current?.querySelector<HTMLElement>('[role="option"], [data-company], [data-back]')?.focus()}
       />
-      <div
-        ref={bodyRef}
-        onKeyDown={(event) => {
-          if (searching || !company) return;
-          // Escape or ArrowLeft steps back to the providers instead of closing the menu.
-          if (event.key === 'Escape' || event.key === 'ArrowLeft') {
-            event.preventDefault();
-            event.stopPropagation();
-            back();
-          }
-        }}
-      >
+      <div ref={bodyRef} onKeyDown={searching ? undefined : step.onKeyDown}>
         {searching ? (
           <ModelOptions models={filtered} grouped label="Model" onPicked={onPicked} />
-        ) : company ? (
+        ) : step.company ? (
           <>
-            <div className="px-1 pt-1">
-              <button
-                type="button"
-                data-back
-                onClick={back}
-                aria-label={`Back to providers from ${company}`}
-                className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] font-medium text-[#cfcbc5] transition-colors hover:bg-white/[0.045] hover:text-white"
-              >
-                <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
-                <span className="truncate">{company}</span>
-              </button>
-            </div>
-            <ModelOptions key={company} models={providerModels} grouped={false} label={`${company} models`} autoFocus onPicked={onPicked} />
+            <BackRow company={step.company} onBack={step.back} />
+            <ModelOptions key={step.company} models={step.models} grouped={false} label={`${step.company} models`} autoFocus onPicked={onPicked} />
           </>
         ) : (
           <ProviderList
-            selected={getModelInfo(selectedModel)}
-            focusCompany={returnTo}
-            onOpen={(next) => {
-              setReturnTo(null);
-              setCompany(next);
-            }}
+            focusCompany={step.returnTo}
+            onOpen={step.open}
+            summarize={(company, models) =>
+              selected?.company === company
+                ? { text: selected.name, label: `current model ${selected.name}`, active: true }
+                : { text: modelCount(models), label: modelCount(models), active: false }
+            }
           />
         )}
       </div>
@@ -388,25 +408,94 @@ const ChairPicker: React.FC = () => {
   );
 };
 
-const CouncilMemberList: React.FC = () => {
+/** Member checkboxes, either one provider's models or grouped search results. */
+const CouncilCheckboxes: React.FC<{ models: readonly ModelInfo[]; grouped: boolean; autoFocus?: boolean }> = ({
+  models,
+  grouped,
+  autoFocus = false,
+}) => {
   const { councilMembers, toggleCouncilMember } = useModelSelection();
-  const [query, setQuery] = useState('');
-  const [activeIndex, setActiveIndex] = useState(0);
   const listRef = useRef<HTMLDivElement>(null);
-  const filtered = useMemo(() => AVAILABLE_MODELS.filter((model) => matchesQuery(model, query)), [query]);
-  const groups = useMemo(() => groupByCompany(filtered), [filtered]);
-  const shown = useMemo(() => groups.flatMap(([, group]) => group), [groups]);
+  const groups = useMemo(() => (grouped ? groupByCompany(models) : null), [grouped, models]);
+  // The order on screen, so the roving tab stop matches what arrow keys move through.
+  const shown = useMemo(() => (groups ? groups.flatMap(([, group]) => group) : models), [groups, models]);
+  const firstMember = () => (shown.length ? Math.max(0, shown.findIndex((model) => councilMembers.includes(model.id))) : 0);
+  const [activeIndex, setActiveIndex] = useState(firstMember);
 
   useEffect(() => {
-    setActiveIndex(shown.length ? Math.max(0, shown.findIndex((model) => councilMembers.includes(model.id))) : 0);
-  }, [shown, councilMembers]);
+    setActiveIndex(firstMember());
+    // Only when the list changes; toggling a member keeps focus where it is.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown]);
+
+  useLayoutEffect(() => {
+    if (autoFocus) listRef.current?.querySelector<HTMLElement>('[role="checkbox"][tabindex="0"]')?.focus();
+  }, [autoFocus]);
+
+  const renderModel = (model: ModelInfo) => {
+    const checked = councilMembers.includes(model.id);
+    const locked = checked ? councilMembers.length <= COUNCIL_MIN_MEMBERS : councilMembers.length >= COUNCIL_MAX_MEMBERS;
+    return (
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={checked}
+        aria-disabled={locked || undefined}
+        title={locked && checked ? `A council needs at least ${COUNCIL_MIN_MEMBERS} members` : undefined}
+        key={model.id}
+        tabIndex={activeIndex === shown.indexOf(model) ? 0 : -1}
+        onClick={() => !locked && toggleCouncilMember(model.id)}
+        className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:bg-white/[0.045]'}`}
+      >
+        <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border-[1.5px] transition-colors ${checked ? 'border-[#f0eeeb] bg-[#f0eeeb] text-[#1c1b19]' : 'border-[#6f6b66]'} ${locked ? 'opacity-60' : ''}`}>
+          {checked && <Check className="h-3 w-3" strokeWidth={3} />}
+        </span>
+        <ModelLogo model={model} />
+        <ModelText model={model} />
+      </button>
+    );
+  };
+
+  return (
+    <div
+      ref={listRef}
+      role="group"
+      aria-labelledby="council-members-label"
+      className="p-1"
+      onKeyDown={(event) => {
+        const nextIndex = moveFocus(event, '[role="checkbox"]');
+        if (nextIndex !== undefined) setActiveIndex(nextIndex);
+      }}
+    >
+      {!models.length && <EmptySearch />}
+      {groups
+        ? groups.map(([company, group]) => (
+            <ModelGroup key={company} company={company} models={group} renderModel={renderModel} />
+          ))
+        : models.map(renderModel)}
+    </div>
+  );
+};
+
+/**
+ * Council members in the same two steps as the model picker: a provider,
+ * then its models (newest first) as checkboxes. Search lists matches from
+ * every provider at once.
+ */
+const CouncilMemberList: React.FC = () => {
+  const { councilMembers, getModelInfo } = useModelSelection();
+  const [query, setQuery] = useState('');
+  const step = useProviderStep();
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const searching = query.trim() !== '';
+  const filtered = useMemo(() => AVAILABLE_MODELS.filter((model) => matchesQuery(model, query)), [query]);
 
   return (
     <>
       <SearchField
         value={query}
         onChange={setQuery}
-        onArrowDown={() => listRef.current?.querySelector<HTMLElement>('[role="checkbox"]')?.focus()}
+        onArrowDown={() => bodyRef.current?.querySelector<HTMLElement>('[role="checkbox"], [data-company], [data-back]')?.focus()}
       />
       <div className={`${sectionLabel} flex items-baseline justify-between`}>
         <span id="council-members-label">Council members</span>
@@ -414,52 +503,29 @@ const CouncilMemberList: React.FC = () => {
           {councilMembers.length <= COUNCIL_MIN_MEMBERS ? `Minimum ${COUNCIL_MIN_MEMBERS}` : `${councilMembers.length} of ${COUNCIL_MAX_MEMBERS}`}
         </span>
       </div>
-      <div
-        ref={listRef}
-        role="group"
-        aria-labelledby="council-members-label"
-        className="p-1"
-        onKeyDown={(event) => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-          event.preventDefault();
-          const options = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="checkbox"]'));
-          const index = options.indexOf(document.activeElement as HTMLElement);
-          const nextIndex = (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-          setActiveIndex(nextIndex);
-          options[nextIndex]?.focus();
-        }}
-      >
-        {!filtered.length && <EmptySearch />}
-        {groups.map(([company, models]) => (
-          <ModelGroup
-            key={company}
-            company={company}
-            models={models}
-            renderModel={(model) => {
-              const checked = councilMembers.includes(model.id);
-              const locked = checked ? councilMembers.length <= COUNCIL_MIN_MEMBERS : councilMembers.length >= COUNCIL_MAX_MEMBERS;
-              return (
-                <button
-                  type="button"
-                  role="checkbox"
-                  aria-checked={checked}
-                  aria-disabled={locked || undefined}
-                  title={locked && checked ? `A council needs at least ${COUNCIL_MIN_MEMBERS} members` : undefined}
-                  key={model.id}
-                  tabIndex={activeIndex === shown.indexOf(model) ? 0 : -1}
-                  onClick={() => !locked && toggleCouncilMember(model.id)}
-                  className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:bg-white/[0.045]'}`}
-                >
-                  <span aria-hidden="true" className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-[4px] border-[1.5px] transition-colors ${checked ? 'border-[#f0eeeb] bg-[#f0eeeb] text-[#1c1b19]' : 'border-[#6f6b66]'} ${locked ? 'opacity-60' : ''}`}>
-                    {checked && <Check className="h-3 w-3" strokeWidth={3} />}
-                  </span>
-                  <ModelLogo model={model} />
-                  <ModelText model={model} />
-                </button>
-              );
+      <div ref={bodyRef} onKeyDown={searching ? undefined : step.onKeyDown}>
+        {searching ? (
+          <CouncilCheckboxes models={filtered} grouped />
+        ) : step.company ? (
+          <>
+            <BackRow company={step.company} onBack={step.back} />
+            <CouncilCheckboxes key={step.company} models={step.models} grouped={false} autoFocus />
+          </>
+        ) : (
+          <ProviderList
+            focusCompany={step.returnTo}
+            onOpen={step.open}
+            summarize={(company, models) => {
+              const members = councilMembers
+                .map((id) => getModelInfo(id))
+                .filter((model): model is ModelInfo => model?.company === company)
+                .map((model) => model.name);
+              return members.length
+                ? { text: members.join(', '), label: `members ${members.join(', ')}`, active: true }
+                : { text: modelCount(models), label: modelCount(models), active: false };
             }}
           />
-        ))}
+        )}
       </div>
       <ChairPicker />
       <p className="mx-3 mb-3 px-0.5 text-[12px] leading-[17px] text-[#a9a5a0]">The chair writes the final answer from everyone’s input.</p>

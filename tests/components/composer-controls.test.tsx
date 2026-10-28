@@ -227,20 +227,68 @@ describe('council mode', () => {
     expect(screen.getByRole('button', { name: 'Council settings' })).toHaveTextContent('Members');
   });
 
-  it('lets the user pick 2 to 4 members', async () => {
+  it('lets the user pick 2 to 4 members, one provider at a time', async () => {
     const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE, DEEPSEEK], chair: GEMINI }) });
     await user.click(screen.getByRole('button', { name: 'Council settings' }));
-    const group = screen.getByRole('group', { name: 'Council members' });
+    const dialog = screen.getByRole('dialog', { name: 'Council settings' });
+    const openProvider = (name: RegExp) => user.click(within(dialog).getByRole('button', { name }));
+    const back = () => user.click(within(dialog).getByRole('button', { name: /^Back to providers/ }));
 
-    await user.click(within(group).getByRole('checkbox', { name: /Claude Sonnet 5.5/ }));
-    await user.click(within(group).getByRole('checkbox', { name: /^DeepSeek V4\.1 Flash / }));
+    await openProvider(/^Anthropic,/);
+    await user.click(within(dialog).getByRole('checkbox', { name: /Claude Sonnet 5.5/ }));
+    await back();
+    await openProvider(/^DeepSeek,/);
+    await user.click(within(dialog).getByRole('checkbox', { name: /^DeepSeek V4\.1 Flash / }));
     expect(screen.getByText('Minimum 2')).toBeInTheDocument();
+    await back();
 
-    const gpt = within(group).getByRole('checkbox', { name: /GPT-6.1 Sol/ });
+    await openProvider(/^OpenAI,/);
+    const gpt = within(dialog).getByRole('checkbox', { name: /GPT-6.1 Sol/ });
     expect(gpt).toHaveAttribute('aria-disabled', 'true');
     await user.click(gpt);
     expect(gpt).toHaveAttribute('aria-checked', 'true');
     expect(JSON.parse(localStorage.getItem('councilSettings')!).members).toEqual([GPT, GEMINI]);
+  });
+
+  it('lists providers first, naming the members each one has', async () => {
+    const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE], chair: GEMINI }) });
+    await user.click(screen.getByRole('button', { name: 'Council settings' }));
+    const dialog = screen.getByRole('dialog', { name: 'Council settings' });
+
+    const providers = within(dialog).getByRole('list', { name: 'Providers' });
+    expect(within(providers).getByRole('button', { name: 'OpenAI, members GPT-6.1 Sol' })).toBeInTheDocument();
+    expect(within(providers).getByRole('button', { name: 'Anthropic, members Claude Sonnet 5.5' })).toBeInTheDocument();
+    expect(within(providers).getByRole('button', { name: /^DeepSeek, \d+ models$/ })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('checkbox')).toBeNull();
+  });
+
+  it('shows a provider’s models newest first, and Escape steps back before closing', async () => {
+    const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE], chair: GEMINI }) });
+    await user.click(screen.getByRole('button', { name: 'Council settings' }));
+    const dialog = screen.getByRole('dialog', { name: 'Council settings' });
+
+    await user.click(within(dialog).getByRole('button', { name: /^Anthropic,/ }));
+    const names = within(dialog).getAllByRole('checkbox').map((box) => box.querySelector('div > div')?.textContent);
+    const released = names.map((name) => CHAT_MODELS.find((model) => model.name === name)!.released);
+    expect(released).toEqual([...released].sort().reverse());
+    // Focus lands on the provider's member.
+    expect(within(dialog).getByRole('checkbox', { name: /Claude Sonnet 5.5/ })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(within(dialog).getByRole('button', { name: /^Anthropic,/ })).toHaveFocus();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Council settings' })).toBeNull();
+  });
+
+  it('search lists matching members from every provider', async () => {
+    const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE], chair: GEMINI }) });
+    await user.click(screen.getByRole('button', { name: 'Council settings' }));
+    const dialog = screen.getByRole('dialog', { name: 'Council settings' });
+
+    await user.type(within(dialog).getByRole('searchbox', { name: 'Search models' }), '5.5');
+    const group = within(dialog).getByRole('group', { name: 'Council members' });
+    expect(within(group).getByRole('group', { name: 'Anthropic' })).toBeInTheDocument();
+    expect(within(group).getByRole('group', { name: 'OpenAI' })).toBeInTheDocument();
   });
 
   it('uses a themed chair list instead of the browser’s native select', async () => {
