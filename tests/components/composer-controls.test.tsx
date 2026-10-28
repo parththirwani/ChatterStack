@@ -129,6 +129,72 @@ describe('menus open below the trigger', () => {
   });
 });
 
+describe('model picker', () => {
+  const openPicker = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(screen.getByRole('button', { name: /^Model:/ }));
+    return screen.getByRole('dialog', { name: 'Model settings' });
+  };
+
+  it('lists providers first, marking the one the current model belongs to', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    const providers = within(menu).getByRole('list', { name: 'Providers' });
+    expect(within(providers).getByRole('button', { name: 'Anthropic, current model Claude Sonnet 5.5' })).toBeInTheDocument();
+    expect(within(providers).getByRole('button', { name: /^Google, \d+ models$/ })).toBeInTheDocument();
+    expect(within(menu).queryByRole('option')).toBeNull();
+  });
+
+  it('picks a model in two clicks: provider, then model', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    await user.click(within(menu).getByRole('button', { name: /^Google,/ }));
+    const models = within(menu).getByRole('listbox', { name: 'Google models' });
+    expect(within(models).getAllByRole('option').every((option) => option.textContent?.includes('Gemini') || option.textContent?.includes('Gemma'))).toBe(true);
+
+    await user.click(within(models).getByRole('option', { name: /Gemini 4 Argon/ }));
+    expect(screen.queryByRole('dialog', { name: 'Model settings' })).toBeNull();
+    expect(screen.getByRole('button', { name: /^Model:/ })).toHaveAccessibleName('Model: Gemini 4 Argon');
+    expect(localStorage.getItem('selectedModel')).toBe(GEMINI);
+  });
+
+  it('opens a provider on its current model, and Escape steps back to the providers', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    await user.click(within(menu).getByRole('button', { name: /^Anthropic,/ }));
+    expect(within(menu).getByRole('option', { selected: true })).toHaveTextContent('Claude Sonnet 5.5');
+    expect(within(menu).getByRole('option', { selected: true })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: 'Model settings' })).toBeInTheDocument();
+    expect(within(menu).getByRole('button', { name: /^Anthropic,/ })).toHaveFocus();
+
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Model settings' })).toBeNull();
+  });
+
+  it('the back button returns to the providers', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    await user.click(within(menu).getByRole('button', { name: /^Google,/ }));
+    await user.click(within(menu).getByRole('button', { name: 'Back to providers from Google' }));
+    expect(within(menu).getByRole('list', { name: 'Providers' })).toBeInTheDocument();
+  });
+
+  it('search skips the steps and lists matches from every provider', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    await user.type(within(menu).getByRole('searchbox', { name: 'Search models' }), 'gemini 4 argon');
+    const results = within(menu).getByRole('listbox', { name: 'Model' });
+    await user.click(within(results).getByRole('option', { name: /Gemini 4 Argon/ }));
+    expect(screen.getByRole('button', { name: /^Model:/ })).toHaveAccessibleName('Model: Gemini 4 Argon');
+  });
+});
+
 describe('council mode', () => {
   it('is a toggle that turns the model picker into council settings', async () => {
     const user = setup({ selectedModel: GPT });

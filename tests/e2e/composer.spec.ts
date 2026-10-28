@@ -44,6 +44,7 @@ test.describe('thinking level', () => {
     await page.keyboard.press('Escape');
 
     await modelButton(page).click();
+    await page.getByRole('button', { name: /^Google,/ }).click();
     await page.getByRole('option', { name: /Gemini 4 Argon/ }).click();
     await thinkingButton(page).click();
     await expect.poll(() => levelNames(page.getByRole('listbox', { name: 'Thinking' }))).toEqual(['Low', 'Medium', 'High']);

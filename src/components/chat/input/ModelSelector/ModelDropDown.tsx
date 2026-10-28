@@ -2,7 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Check, ChevronDown, Search } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { AVAILABLE_MODELS, useModelSelection, type ModelInfo } from '@/src/context/ModelSelectionContext';
 import { COUNCIL_MAX_MEMBERS, COUNCIL_MIN_MEMBERS } from '@/src/config/models';
 
@@ -87,71 +87,213 @@ const ModelGroup: React.FC<{
   </div>
 );
 
-const ModelList: React.FC<{ onPicked: () => void }> = ({ onPicked }) => {
-  const { selectedModel, setSelectedModel } = useModelSelection();
-  const [query, setQuery] = useState('');
+/** Arrow keys move focus between `selector` items inside the list. */
+function moveFocus(event: React.KeyboardEvent<HTMLElement>, selector: string): number | undefined {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return undefined;
+  event.preventDefault();
+  const items = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(selector));
+  const index = items.indexOf(document.activeElement as HTMLElement);
+  const nextIndex = (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  items[nextIndex]?.focus();
+  return nextIndex;
+}
+
+const COMPANY_GROUPS = groupByCompany(AVAILABLE_MODELS);
+
+/**
+ * Step one of the picker: one row per provider. The provider of the current
+ * model shows that model's name; the others show how many models they offer.
+ */
+const ProviderList: React.FC<{
+  selected: ModelInfo | undefined;
+  focusCompany: string | null;
+  onOpen: (company: string) => void;
+}> = ({ selected, focusCompany, onOpen }) => {
   const listRef = useRef<HTMLDivElement>(null);
-  const filtered = useMemo(() => AVAILABLE_MODELS.filter((model) => matchesQuery(model, query)), [query]);
-  const groups = useMemo(() => groupByCompany(filtered), [filtered]);
-  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, AVAILABLE_MODELS.findIndex((model) => model.id === selectedModel)));
+  const activeCompany = focusCompany ?? selected?.company ?? COMPANY_GROUPS[0]?.[0];
+
+  // Coming back from a provider's models puts focus on the row it came from.
+  useLayoutEffect(() => {
+    if (focusCompany) listRef.current?.querySelector<HTMLElement>(`[data-company="${CSS.escape(focusCompany)}"]`)?.focus();
+  }, [focusCompany]);
+
+  return (
+    <div
+      ref={listRef}
+      role="list"
+      aria-label="Providers"
+      className="p-1"
+      onKeyDown={(event) => {
+        if (event.key === 'ArrowRight' && document.activeElement instanceof HTMLElement && document.activeElement.dataset.company) {
+          event.preventDefault();
+          onOpen(document.activeElement.dataset.company);
+          return;
+        }
+        moveFocus(event, '[data-company]');
+      }}
+    >
+      {COMPANY_GROUPS.map(([company, models]) => {
+        const current = selected?.company === company;
+        return (
+          <div role="listitem" key={company}>
+            <button
+              type="button"
+              data-company={company}
+              tabIndex={company === activeCompany ? 0 : -1}
+              aria-label={`${company}, ${current ? `current model ${selected.name}` : `${models.length} models`}`}
+              onClick={() => onOpen(company)}
+              className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${current ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}`}
+            >
+              <ModelLogo model={models[0]} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] font-medium text-[#f0eeeb]">{company}</div>
+                <div className="truncate text-[12px] leading-[17px] text-[#a9a5a0]">
+                  {current ? selected.name : `${models.length} ${models.length === 1 ? 'model' : 'models'}`}
+                </div>
+              </div>
+              <ChevronRight className="h-4 w-4 shrink-0 text-[#aaa6a2]" aria-hidden="true" />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const ModelOptions: React.FC<{
+  models: readonly ModelInfo[];
+  grouped: boolean;
+  label: string;
+  autoFocus?: boolean;
+  onPicked: () => void;
+}> = ({ models, grouped, label, autoFocus = false, onPicked }) => {
+  const { selectedModel, setSelectedModel } = useModelSelection();
+  const listRef = useRef<HTMLDivElement>(null);
+  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, models.findIndex((model) => model.id === selectedModel)));
 
   useEffect(() => {
-    setActiveIndex(Math.max(0, filtered.findIndex((model) => model.id === selectedModel)));
-  }, [filtered, selectedModel]);
+    setActiveIndex(Math.max(0, models.findIndex((model) => model.id === selectedModel)));
+  }, [models, selectedModel]);
+
+  useLayoutEffect(() => {
+    if (autoFocus) listRef.current?.querySelector<HTMLElement>('[role="option"][tabindex="0"]')?.focus();
+  }, [autoFocus]);
+
+  const renderModel = (model: ModelInfo) => {
+    const isSelected = selectedModel === model.id;
+    return (
+      <button
+        type="button"
+        role="option"
+        aria-selected={isSelected}
+        tabIndex={activeIndex === models.indexOf(model) ? 0 : -1}
+        key={model.id}
+        onClick={() => {
+          setSelectedModel(model.id);
+          onPicked();
+        }}
+        className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}`}
+      >
+        <ModelLogo model={model} />
+        <ModelText model={model} />
+        {isSelected && <Check className="h-4 w-4 shrink-0 text-[#e6e3de]" strokeWidth={2.2} aria-hidden="true" />}
+      </button>
+    );
+  };
+
+  return (
+    <div
+      ref={listRef}
+      id="chat-model-label"
+      role="listbox"
+      aria-label={label}
+      className="p-1"
+      onKeyDown={(event) => {
+        const nextIndex = moveFocus(event, '[role="option"]');
+        if (nextIndex !== undefined) setActiveIndex(nextIndex);
+      }}
+    >
+      {!models.length && <EmptySearch />}
+      {grouped
+        ? groupByCompany(models).map(([company, group]) => (
+            <ModelGroup key={company} company={company} models={group} renderModel={renderModel} />
+          ))
+        : models.map(renderModel)}
+    </div>
+  );
+};
+
+/**
+ * Single-model picker in two steps: choose a provider, then one of its
+ * models. Typing in the search skips the steps and lists matches from every
+ * provider.
+ */
+const ModelList: React.FC<{ onPicked: () => void }> = ({ onPicked }) => {
+  const { selectedModel, getModelInfo } = useModelSelection();
+  const [query, setQuery] = useState('');
+  const [company, setCompany] = useState<string | null>(null);
+  // The provider whose models were last open, so going back can focus its row.
+  const [returnTo, setReturnTo] = useState<string | null>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const searching = query.trim() !== '';
+  const filtered = useMemo(() => AVAILABLE_MODELS.filter((model) => matchesQuery(model, query)), [query]);
+  const providerModels = useMemo(
+    () => COMPANY_GROUPS.find(([name]) => name === company)?.[1] ?? [],
+    [company]
+  );
+
+  const back = () => {
+    setReturnTo(company);
+    setCompany(null);
+  };
 
   return (
     <>
       <SearchField
         value={query}
         onChange={setQuery}
-        onArrowDown={() => listRef.current?.querySelector<HTMLElement>('[role="option"]')?.focus()}
+        onArrowDown={() => bodyRef.current?.querySelector<HTMLElement>('[role="option"], [data-company], [data-back]')?.focus()}
       />
       <div
-        ref={listRef}
-        id="chat-model-label"
-        role="listbox"
-        aria-label="Model"
-        className="p-1"
+        ref={bodyRef}
         onKeyDown={(event) => {
-          if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-          event.preventDefault();
-          const options = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('[role="option"]'));
-          const index = options.indexOf(document.activeElement as HTMLElement);
-          const nextIndex = (index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length;
-          setActiveIndex(nextIndex);
-          options[nextIndex]?.focus();
+          if (searching || !company) return;
+          // Escape or ArrowLeft steps back to the providers instead of closing the menu.
+          if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+            event.preventDefault();
+            event.stopPropagation();
+            back();
+          }
         }}
       >
-        {!filtered.length && <EmptySearch />}
-        {groups.map(([company, models]) => (
-          <ModelGroup
-            key={company}
-            company={company}
-            models={models}
-            renderModel={(model) => {
-              const isSelected = selectedModel === model.id;
-              const index = filtered.indexOf(model);
-              return (
-                <button
-                  type="button"
-                  role="option"
-                  aria-selected={isSelected}
-                  tabIndex={activeIndex === index ? 0 : -1}
-                  key={model.id}
-                  onClick={() => {
-                    setSelectedModel(model.id);
-                    onPicked();
-                  }}
-                  className={`flex w-full cursor-pointer items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${isSelected ? 'bg-white/[0.07]' : 'hover:bg-white/[0.045]'}`}
-                >
-                  <ModelLogo model={model} />
-                  <ModelText model={model} />
-                  {isSelected && <Check className="h-4 w-4 shrink-0 text-[#e6e3de]" strokeWidth={2.2} aria-hidden="true" />}
-                </button>
-              );
+        {searching ? (
+          <ModelOptions models={filtered} grouped label="Model" onPicked={onPicked} />
+        ) : company ? (
+          <>
+            <div className="px-1 pt-1">
+              <button
+                type="button"
+                data-back
+                onClick={back}
+                aria-label={`Back to providers from ${company}`}
+                className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-left text-[12.5px] font-medium text-[#cfcbc5] transition-colors hover:bg-white/[0.045] hover:text-white"
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <span className="truncate">{company}</span>
+              </button>
+            </div>
+            <ModelOptions key={company} models={providerModels} grouped={false} label={`${company} models`} autoFocus onPicked={onPicked} />
+          </>
+        ) : (
+          <ProviderList
+            selected={getModelInfo(selectedModel)}
+            focusCompany={returnTo}
+            onOpen={(next) => {
+              setReturnTo(null);
+              setCompany(next);
             }}
           />
-        ))}
+        )}
       </div>
     </>
   );
