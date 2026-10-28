@@ -23,7 +23,8 @@ import type { Conversation } from '@/src/types/conversation.types';
 import ChatInterface from '@/src/components/chat/interface/ChatInterface';
 import Sidebar from '@/src/components/sidebar/Sidebar';
 import LoginModal from '@/src/components/auth/AuthModal';
-import LogoutModal from '@/src/components/auth/LogoutModal';
+import Toaster from '@/src/components/ui/toast/Toaster';
+import { toast } from '@/src/lib/client/toast';
 
 export interface ChatPageProps {
   initialUser: User | null;
@@ -88,7 +89,6 @@ const ChatPage: React.FC<ChatPageProps> = ({
   // Modal states - AT ROOT LEVEL
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
-  const [showLogoutModal, setShowLogoutModal] = useState(false);
 
   // Seed the client store once from the server render. This removes the
   // "Loading…" spinner + follow-up /api/auth/session request that used to run
@@ -259,10 +259,6 @@ const ChatPage: React.FC<ChatPageProps> = ({
     setShowLoginModal(true);
   }, []);
 
-  const handleLogoutClick = useCallback(() => {
-    setShowLogoutModal(true);
-  }, []);
-
   const handleLoginSuccess = useCallback(async () => {
     setShowLoginModal(false);
     setAuthError(null);
@@ -273,16 +269,20 @@ const ChatPage: React.FC<ChatPageProps> = ({
     void loadConversations(true);
   }, [initializeUser, loadConversations]);
 
-  const handleLogoutConfirm = useCallback(async () => {
-    await logout();
-    setShowLogoutModal(false);
+  // Sign out from the sidebar menu happens at once, without a confirmation step; the menu shows its progress.
+  const handleLogoutClick = useCallback(async () => {
+    try {
+      await logout();
+    } catch {
+      // The session is still there, so stay on the page and say so.
+      toast.error("Couldn't sign out. Check your connection and try again.");
+      return;
+    }
     startTransition(() => {
       router.push('/');
       router.refresh();
     });
   }, [logout, router]);
-
-  const handleLogoutModalClose = useCallback(() => setShowLogoutModal(false), []);
 
   const handleLoginModalClose = useCallback(() => {
     setShowLoginModal(false);
@@ -394,13 +394,7 @@ const ChatPage: React.FC<ChatPageProps> = ({
         initialError={authError}
       />
 
-      {/* Logout Modal - AT ROOT LEVEL */}
-      <LogoutModal
-        isOpen={showLogoutModal}
-        onClose={handleLogoutModalClose}
-        onConfirm={handleLogoutConfirm}
-        userName={user?.name || undefined}
-      />
+      <Toaster />
     </>
   );
 };

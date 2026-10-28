@@ -7,7 +7,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 
 const posthog = vi.hoisted(() => ({
   init: vi.fn(),
@@ -23,7 +22,6 @@ vi.mock('next/navigation', () => ({ usePathname: () => path.current }));
 vi.mock('next-auth/react', () => ({ signOut: vi.fn(async () => {}) }));
 
 const { default: PostHogAnalytics } = await import('@/src/components/analytics/PostHogAnalytics');
-const { default: LogoutModal } = await import('@/src/components/auth/LogoutModal');
 const { resetPostHogClient, resetUser } = await import('@/src/lib/analytics/posthog-client');
 const { useAppStore } = await import('@/src/store/rootStore');
 
@@ -128,12 +126,11 @@ describe('PostHogAnalytics', () => {
     expect(posthog.identify).not.toHaveBeenCalled();
   });
 
-  it('resets the identity when the sign-out modal is confirmed', async () => {
+  it('resets the identity on sign out', async () => {
     render(<PostHogAnalytics config={config}>hi</PostHogAnalytics>);
-    const user = userEvent.setup();
-    render(<LogoutModal isOpen onClose={vi.fn()} onConfirm={vi.fn()} userName="Sam" />);
-
-    await user.click(screen.getByRole('button', { name: /sign out/i }));
+    await act(async () => {
+      await useAppStore.getState().logout();
+    });
     expect(posthog.reset).toHaveBeenCalledTimes(1);
   });
 

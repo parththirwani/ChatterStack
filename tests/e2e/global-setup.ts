@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { E2E_SESSION_TOKEN, E2E_USER_ID, literal, sql } from './support/db';
+import { E2E_SESSION_TOKEN, E2E_USER_ID, literal, seedSession, sql } from './support/db';
 
 /** Signs a throwaway user in by writing a database session and its cookie. */
 export default async function globalSetup() {
@@ -8,8 +8,7 @@ export default async function globalSetup() {
   sql(`DELETE FROM users WHERE id = ${literal(E2E_USER_ID)}`);
   sql(`INSERT INTO users (id, name, email, "createdAt", "updatedAt")
        VALUES (${literal(E2E_USER_ID)}, 'E2E Tester', 'e2e-tester@example.invalid', now(), now())`);
-  sql(`INSERT INTO sessions (id, "sessionToken", "userId", expires)
-       VALUES ('e2e-test-session', ${literal(E2E_SESSION_TOKEN)}, ${literal(E2E_USER_ID)}, now() + interval '1 day')`);
+  seedSession();
 
   mkdirSync('tests/e2e/.auth', { recursive: true });
   writeFileSync(

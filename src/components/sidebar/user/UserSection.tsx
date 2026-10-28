@@ -15,7 +15,7 @@ interface UserSectionProps {
   collapsed: boolean;
   isAuthenticated: boolean;
   onLoginClick: () => void;
-  onLogoutClick: () => void;
+  onLogoutClick: () => void | Promise<unknown>;
 }
 
 /**

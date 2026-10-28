@@ -19,7 +19,7 @@ interface SidebarProps {
   currentConversationId?: string;
   refreshTrigger?: number;
   onLoginClick?: () => void;
-  onLogoutClick?: () => void;
+  onLogoutClick?: () => void | Promise<unknown>;
   /** Server-rendered list, used until the client store is hydrated. */
   initialConversations?: Conversation[];
   /** The page open in the main area (Resources or Customize), if any. */
@@ -92,9 +92,7 @@ const SidebarOptimized: React.FC<SidebarProps> = ({
     if (onLoginClick) onLoginClick();
   }, [onLoginClick]);
 
-  const handleLogoutClick = useCallback(() => {
-    if (onLogoutClick) onLogoutClick();
-  }, [onLogoutClick]);
+  const handleLogoutClick = useCallback(() => onLogoutClick?.(), [onLogoutClick]);
 
   const filteredChats = useMemo(() => {
     // A scheduled task's run chats are opened from the task's page; opening
