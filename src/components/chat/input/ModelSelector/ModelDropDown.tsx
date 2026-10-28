@@ -20,7 +20,10 @@ function matchesQuery(model: ModelInfo, query: string): boolean {
   return `${model.name} ${model.company} ${model.description} ${model.id}`.toLowerCase().includes(needle);
 }
 
-/** Keep registry order, but collect each company into its own labelled block. */
+/** Newest release first; models released the same day keep registry order. */
+const byReleaseDesc = (a: ModelInfo, b: ModelInfo) => b.released.localeCompare(a.released);
+
+/** Collect each company into its own block (companies in registry order), newest model first. */
 function groupByCompany(models: readonly ModelInfo[]): Array<[string, ModelInfo[]]> {
   const groups = new Map<string, ModelInfo[]>();
   for (const model of models) {
@@ -28,7 +31,7 @@ function groupByCompany(models: readonly ModelInfo[]): Array<[string, ModelInfo[
     if (group) group.push(model);
     else groups.set(model.company, [model]);
   }
-  return [...groups.entries()];
+  return [...groups.entries()].map(([company, group]) => [company, group.sort(byReleaseDesc)]);
 }
 
 const SearchField: React.FC<{
@@ -169,11 +172,14 @@ const ModelOptions: React.FC<{
 }> = ({ models, grouped, label, autoFocus = false, onPicked }) => {
   const { selectedModel, setSelectedModel } = useModelSelection();
   const listRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, models.findIndex((model) => model.id === selectedModel)));
+  const groups = useMemo(() => (grouped ? groupByCompany(models) : null), [grouped, models]);
+  // The order on screen, so the roving tab stop matches what arrow keys move through.
+  const shown = useMemo(() => (groups ? groups.flatMap(([, group]) => group) : models), [groups, models]);
+  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, shown.findIndex((model) => model.id === selectedModel)));
 
   useEffect(() => {
-    setActiveIndex(Math.max(0, models.findIndex((model) => model.id === selectedModel)));
-  }, [models, selectedModel]);
+    setActiveIndex(Math.max(0, shown.findIndex((model) => model.id === selectedModel)));
+  }, [shown, selectedModel]);
 
   useLayoutEffect(() => {
     if (autoFocus) listRef.current?.querySelector<HTMLElement>('[role="option"][tabindex="0"]')?.focus();
@@ -186,7 +192,7 @@ const ModelOptions: React.FC<{
         type="button"
         role="option"
         aria-selected={isSelected}
-        tabIndex={activeIndex === models.indexOf(model) ? 0 : -1}
+        tabIndex={activeIndex === shown.indexOf(model) ? 0 : -1}
         key={model.id}
         onClick={() => {
           setSelectedModel(model.id);
@@ -214,8 +220,8 @@ const ModelOptions: React.FC<{
       }}
     >
       {!models.length && <EmptySearch />}
-      {grouped
-        ? groupByCompany(models).map(([company, group]) => (
+      {groups
+        ? groups.map(([company, group]) => (
             <ModelGroup key={company} company={company} models={group} renderModel={renderModel} />
           ))
         : models.map(renderModel)}
@@ -389,10 +395,11 @@ const CouncilMemberList: React.FC = () => {
   const listRef = useRef<HTMLDivElement>(null);
   const filtered = useMemo(() => AVAILABLE_MODELS.filter((model) => matchesQuery(model, query)), [query]);
   const groups = useMemo(() => groupByCompany(filtered), [filtered]);
+  const shown = useMemo(() => groups.flatMap(([, group]) => group), [groups]);
 
   useEffect(() => {
-    setActiveIndex(filtered.length ? Math.max(0, filtered.findIndex((model) => councilMembers.includes(model.id))) : 0);
-  }, [filtered, councilMembers]);
+    setActiveIndex(shown.length ? Math.max(0, shown.findIndex((model) => councilMembers.includes(model.id))) : 0);
+  }, [shown, councilMembers]);
 
   return (
     <>
@@ -439,7 +446,7 @@ const CouncilMemberList: React.FC = () => {
                   aria-disabled={locked || undefined}
                   title={locked && checked ? `A council needs at least ${COUNCIL_MIN_MEMBERS} members` : undefined}
                   key={model.id}
-                  tabIndex={activeIndex === filtered.indexOf(model) ? 0 : -1}
+                  tabIndex={activeIndex === shown.indexOf(model) ? 0 : -1}
                   onClick={() => !locked && toggleCouncilMember(model.id)}
                   className={`flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left transition-colors ${locked ? 'cursor-default' : 'cursor-pointer hover:bg-white/[0.045]'}`}
                 >

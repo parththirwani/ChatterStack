@@ -6,6 +6,7 @@ import { ModelSelectionProvider } from '@/src/context/ModelSelectionContext';
 import { ModelSelector } from '@/src/components/chat/input/ModelSelector/ModelSelector';
 import { ThinkingSelector } from '@/src/components/chat/input/ModelSelector/ThinkingSelector';
 import { CouncilToggle } from '@/src/components/chat/input/CouncilToggle';
+import { CHAT_MODELS } from '@/src/config/models';
 
 const GPT = 'openai/gpt-6.1-sol';
 const GEMINI = 'google/gemini-4-argon';
@@ -173,6 +174,27 @@ describe('model picker', () => {
 
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Model settings' })).toBeNull();
+  });
+
+  it('lists a provider’s models newest release first', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    await user.click(within(menu).getByRole('button', { name: /^Anthropic,/ }));
+    const names = optionNames(within(menu).getByRole('listbox', { name: 'Anthropic models' }));
+    const released = names.map((name) => CHAT_MODELS.find((model) => model.name === name)!.released);
+    expect(released).toEqual([...released].sort().reverse());
+    expect(names.slice(0, 3)).toEqual(['Claude Haiku 5.5', 'Claude Sonnet 5.5', 'Claude Opus 5.5']);
+  });
+
+  it('keeps search results newest first within each provider', async () => {
+    const user = setup({ selectedModel: CLAUDE });
+    const menu = await openPicker(user);
+
+    await user.type(within(menu).getByRole('searchbox', { name: 'Search models' }), 'sonnet');
+    expect(optionNames(within(menu).getByRole('listbox', { name: 'Model' }))).toEqual([
+      'Claude Sonnet 5.5', 'Claude Sonnet 5', 'Claude Sonnet 4.6', 'Claude Sonnet 4.5',
+    ]);
   });
 
   it('the back button returns to the providers', async () => {
