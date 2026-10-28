@@ -19,7 +19,8 @@ export async function GET() {
   const session = await auth();
   if (!session?.user?.id) return Response.json({ error: 'Unauthorized' }, { status: 401 });
   const documents = await prisma.document.findMany({
-    where: { userId: session.user.id },
+    // An upload only becomes a resource once a chat message has used it.
+    where: { userId: session.user.id, lastUsedAt: { not: null } },
     orderBy: [{ favoritedAt: 'desc' }, { createdAt: 'desc' }],
   });
   return Response.json({ documents: documents.map(documentMeta) });

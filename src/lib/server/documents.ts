@@ -7,6 +7,8 @@ import type { ChatAttachment, DocumentAttachment } from '@/src/types/chat.types'
 export const MAX_FILE_SIZE = 5 * 1024 * 1024;
 export const MAX_MESSAGE_SIZE = 10 * 1024 * 1024;
 export const RETENTION_DAYS = 30;
+/** Uploads never sent in a chat are not resources; they only wait this long. */
+export const UNSENT_RETENTION_HOURS = 24;
 
 export function safeFileName(name: string) {
   return name.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/\.{2,}/g, '_').slice(0, 180);
@@ -102,8 +104,15 @@ export async function removeDocument(userId: string, id: string) {
 
 export async function cleanupUnusedDocuments(now = new Date()) {
   const cutoff = new Date(now.getTime() - RETENTION_DAYS * 24 * 60 * 60 * 1000);
+  const unsentCutoff = new Date(now.getTime() - UNSENT_RETENTION_HOURS * 60 * 60 * 1000);
   const candidates = await prisma.document.findMany({
-    where: { favoritedAt: null, createdAt: { lt: cutoff }, OR: [{ lastUsedAt: null }, { lastUsedAt: { lt: cutoff } }] },
+    where: {
+      favoritedAt: null,
+      OR: [
+        { lastUsedAt: null, createdAt: { lt: unsentCutoff } },
+        { createdAt: { lt: cutoff }, lastUsedAt: { lt: cutoff } },
+      ],
+    },
     select: { id: true, userId: true },
     take: 100,
   });

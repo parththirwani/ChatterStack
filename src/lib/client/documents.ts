@@ -44,7 +44,6 @@ export async function uploadDocument(file: File, userId: string, onProgress?: Up
     body: JSON.stringify({ name: file.name, mimeType, size: file.size, sha256, storageKey: blob.pathname }),
   }));
   const { id, name, mimeType: type, size } = saved.document;
-  window.dispatchEvent(new Event('chatterstack:documents-changed'));
   onProgress?.(1);
   return { documentId: id, name, mimeType: type, size };
 }

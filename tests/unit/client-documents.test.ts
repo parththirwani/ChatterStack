@@ -45,6 +45,12 @@ describe('uploadDocument', () => {
     }));
   });
 
+  it('does not announce a new resource until the file is sent in a chat', async () => {
+    stubFetch({});
+    await uploadDocument(file, 'user-1');
+    expect(window.dispatchEvent).not.toHaveBeenCalled();
+  });
+
   it('skips the upload when the user already owns identical content', async () => {
     stubFetch({ document: saved });
     const progress: number[] = [];
