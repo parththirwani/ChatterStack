@@ -1,16 +1,28 @@
-import React from 'react';
-import { LogOut, User, LogIn } from 'lucide-react';
-import Image from 'next/image';
+'use client';
+
+import React, { memo, useEffect, useState } from 'react';
+import { LogIn, UserRound } from 'lucide-react';
 import { User as UserType } from '@/src/types/user.types';
+import { UserMenu } from '@/src/components/arc/user-menu/user-menu';
+import { useShallow } from 'zustand/react/shallow';
+import { overridesFor, useProfileStore } from '@/src/store/profileStore';
+import { useChatActivity } from '@/src/hooks/useChatActivity';
+import { avatarImageSource } from '@/src/lib/client/avatar';
+import ProfileModal, { ACTIVITY_WINDOW_DAYS } from '@/src/components/sidebar/user/ProfileModal';
 
 interface UserSectionProps {
   user?: UserType | null;
   collapsed: boolean;
   isAuthenticated: boolean;
   onLoginClick: () => void;
-  onLogoutClick: () => void;
+  onLogoutClick: () => void | Promise<unknown>;
 }
 
+/**
+ * Signed-in footer of the sidebar: the account menu (Arc registry UserMenu)
+ * opens upward from the avatar, with a mock profile modal for name, photo,
+ * and bio. Profile edits are kept in the local profile store only.
+ */
 const UserSection: React.FC<UserSectionProps> = ({
   user,
   collapsed,
@@ -18,118 +30,81 @@ const UserSection: React.FC<UserSectionProps> = ({
   onLoginClick,
   onLogoutClick,
 }) => {
+  const [profileOpen, setProfileOpen] = useState(false);
+  // Render the session identity on the first client paint (matching the
+  // server), then reveal the locally-persisted profile overrides.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+
+  // Edits saved on this device by a different account are not shown.
+  const { name: storedName, bio: storedBio, avatarUrl: storedAvatar } = useProfileStore(
+    useShallow((state) => overridesFor(state, user?.id))
+  );
+  const updateProfile = useProfileStore((state) => state.updateProfile);
+  const activity = useChatActivity(profileOpen, ACTIVITY_WINDOW_DAYS);
+
+  if (!isAuthenticated) {
+    return collapsed ? (
+      <button
+        onClick={onLoginClick}
+        className="flex h-8 w-8 items-center justify-center rounded-md border border-white/10 bg-white/[0.05] text-[#d8d4ce] transition-colors hover:bg-white/[0.09]"
+        title="Sign in"
+        aria-label="Sign in"
+      >
+        <LogIn className="h-3.5 w-3.5" />
+      </button>
+    ) : (
+      <button
+        onClick={onLoginClick}
+        className="flex h-10 w-full items-center gap-3 rounded-lg px-3 text-[13px] font-medium text-[#c9c5c0] transition-colors hover:bg-white/[0.06] hover:text-white"
+      >
+        <LogIn className="h-4 w-4 text-[#b3afa9]" strokeWidth={1.8} />
+        <span>Sign in</span>
+      </button>
+    );
+  }
+
+  const email = user?.email || '';
+  const name = (mounted && storedName) || user?.name || 'User';
+  // storedAvatar: null = never edited (use the provider's photo), '' = removed here.
+  const avatarSrc = mounted && storedAvatar !== null ? storedAvatar || undefined : user?.avatarUrl || undefined;
+  // Provider photos go through the image optimizer; picked photos are data: URLs.
+  const avatarImage = avatarImageSource(avatarSrc);
+  const bio = mounted ? storedBio : '';
+
+  const handleSaveProfile = ({ name: nextName, bio: nextBio, avatarUrl }: { name: string; bio: string; avatarUrl: string | null }) => {
+    updateProfile({ ownerId: user?.id ?? null, name: nextName, bio: nextBio, avatarUrl: avatarUrl ?? '' });
+  };
+
   return (
-    <div>
-      {isAuthenticated ? (
-        collapsed ? (
-          // Collapsed - Icon only
-          <div className="flex flex-col items-center space-y-2">
-            {/* Profile */}
-            <button
-              onClick={() => {}}
-              className="group relative cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-500/30 rounded-full"
-              title={user?.name || user?.email || 'Profile'}
-            >
-              {user?.avatarUrl ? (
-                <Image
-                  src={user.avatarUrl}
-                  alt={user.name || 'User'}
-                  width={28}
-                  height={28}
-                  className="w-7 h-7 rounded-full ring-1 ring-gray-700 hover:ring-gray-600 transition-all"
-                />
-              ) : (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center ring-1 ring-gray-700 hover:ring-gray-600 transition-all">
-                  <User className="w-3.5 h-3.5 text-black" />
-                </div>
-              )}
-            </button>
+    <>
+      <div className={collapsed ? 'flex justify-center' : undefined}>
+        <UserMenu
+          side="top"
+          align={collapsed ? 'center' : 'start'}
+          showName={!collapsed}
+          showTheme={false}
+          user={{ name, email, avatarSrc: avatarImage?.src, avatarSrcSet: avatarImage?.srcSet }}
+          items={[
+            {
+              label: 'View profile',
+              icon: <UserRound size={16} strokeWidth={1.75} />,
+              onSelect: () => setProfileOpen(true),
+            },
+          ]}
+          onSignOut={onLogoutClick}
+        />
+      </div>
 
-            {/* Logout */}
-            <button
-              onClick={onLogoutClick}
-              className="p-1 rounded-md hover:bg-red-500/10 text-gray-500 hover:text-red-400 
-                         transition-all duration-150 cursor-pointer 
-                         active:scale-95 focus:outline-none focus:ring-2 focus:ring-red-500/30"
-              title="Sign Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        ) : (
-          // Expanded - Full user card
-          <div className="space-y-2">
-            {/* User Card */}
-            <div className="flex items-center gap-3 p-2.5 rounded-lg bg-gray-900/50 border border-gray-800/50">
-              {user?.avatarUrl ? (
-                <Image
-                  src={user.avatarUrl}
-                  alt={user.name || 'User'}
-                  width={36}
-                  height={36}
-                  className="w-9 h-9 rounded-full ring-2 ring-gray-800"
-                />
-              ) : (
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-yellow-400 to-yellow-600 flex items-center justify-center ring-2 ring-gray-800">
-                  <User className="w-4 h-4 text-black" />
-                </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">
-                  {user?.name || 'User'}
-                </p>
-                <p className="text-xs text-gray-400 truncate">
-                  {user?.email || `Signed in with ${user?.provider}`}
-                </p>
-              </div>
-            </div>
-
-            {/* Logout Button */}
-            <button
-              onClick={onLogoutClick}
-              className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg 
-                         hover:bg-red-500/10 text-gray-400 hover:text-red-400 
-                         transition-all duration-150 text-sm font-medium 
-                         cursor-pointer active:scale-[0.98]
-                         focus:outline-none focus:ring-2 focus:ring-red-500/30"
-            >
-              <LogOut className="w-4 h-4" />
-              <span>Sign Out</span>
-            </button>
-          </div>
-        )
-      ) : collapsed ? (
-        // Collapsed - Login Icon
-        <button
-          onClick={onLoginClick}
-          className="w-7 h-7 flex items-center justify-center rounded-md 
-                     bg-gradient-to-br from-yellow-400 to-yellow-600 
-                     hover:from-yellow-500 hover:to-yellow-700 
-                     text-black transition-all duration-150 
-                     cursor-pointer active:scale-95
-                     focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
-          title="Sign In"
-        >
-          <LogIn className="w-3.5 h-3.5" />
-        </button>
-      ) : (
-        // Expanded - Login Button
-        <button
-          onClick={onLoginClick}
-          className="w-full px-4 py-2.5 flex items-center justify-center gap-2 
-                     rounded-lg bg-gradient-to-br from-yellow-400 to-yellow-600 
-                     hover:from-yellow-500 hover:to-yellow-700 
-                     text-black font-medium shadow-sm hover:shadow-md 
-                     transition-all duration-200 cursor-pointer 
-                     active:scale-[0.98]
-                     focus:outline-none focus:ring-2 focus:ring-yellow-500/30"
-        >
-          <LogIn className="w-4 h-4" />
-          <span className="text-sm">Sign In</span>
-        </button>
-      )}
-    </div>
+      <ProfileModal
+        isOpen={profileOpen}
+        onClose={() => setProfileOpen(false)}
+        profile={{ name, email, bio, avatarUrl: avatarSrc ?? null }}
+        activity={activity}
+        onSave={handleSaveProfile}
+      />
+    </>
   );
 };
 
-export default UserSection;
+export default memo(UserSection);

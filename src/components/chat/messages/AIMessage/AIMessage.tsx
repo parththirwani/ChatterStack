@@ -1,14 +1,14 @@
+"use client";
 import React, { memo } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import rehypeHighlight from 'rehype-highlight';
-import 'highlight.js/styles/github-dark.css';
-import 'katex/dist/katex.min.css';
+import MarkdownContent from './MarkdownContent';
+import { PendingIndicator, ThinkingBlock } from './ThinkingBlock';
+import CouncilProgressIndicator from '@/src/components/council/progress/ProgressIndicator';
+import { CouncilSummary } from '@/src/components/council/summary/CouncilSummary';
+import type { CompletionAnalytics, ContextCompactionInfo, CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
 
 import Image from 'next/image';
 import MessageActions from '../../actions/MessageActions';
+import MessageAnalytics from '../../analytics/MessageAnalytics';
 import { getModelMeta } from '@/src/lib/models';
 
 interface AIMessageProps {
@@ -19,6 +19,21 @@ interface AIMessageProps {
   filename?: string;
   showCopy?: boolean;
   showDownload?: boolean;
+  reasoning?: string;
+  reasoningStartedAt?: number;
+  reasoningDurationMs?: number;
+  /** Tokens and timing of this answer, once the server has reported them. */
+  analytics?: CompletionAnalytics;
+  /** Set when older turns were summarized for this reply. */
+  contextCompacted?: ContextCompactionInfo;
+  /** Set on the reply that can be regenerated (the last one). */
+  onRetry?: () => void;
+  /** Saved reply: its id goes into the More actions menu. */
+  messageId?: string;
+  onFork?: (messageId: string) => void;
+  forking?: boolean;
+  council?: CouncilDetails;
+  councilProgress?: CouncilProgress[];
 }
 
 const AIMessage: React.FC<AIMessageProps> = ({
@@ -29,147 +44,80 @@ const AIMessage: React.FC<AIMessageProps> = ({
   filename,
   showCopy = true,
   showDownload = true,
+  reasoning,
+  reasoningStartedAt,
+  reasoningDurationMs,
+  analytics,
+  contextCompacted,
+  onRetry,
+  messageId,
+  onFork,
+  forking = false,
+  council,
+  councilProgress = [],
 }) => {
   const model = getModelMeta(modelId);
+  const streaming = loading && isLastMessage;
+  const showCouncilCard = streaming && !!council && !content;
+  const showPending = streaming && !content && !reasoning && !showCouncilCard;
 
   return (
-    <div className="w-full">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6">
-        <div className="flex items-start gap-2 sm:gap-4">
+    <div className="w-full" data-message-id={messageId}>
+      <div className="mx-auto max-w-3xl">
+        <div className="flex flex-col gap-2">
           {/* Model Avatar - Responsive size */}
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-gray-800/80 flex items-center justify-center flex-shrink-0 mt-1 border border-gray-700/50">
+          <div className="flex items-center gap-2 text-[13px] font-medium text-[#aaa6a2]">
             {model ? (
               <Image
                 src={model.logo}
-                alt={model.name}
+                alt=""
                 width={18}
                 height={18}
-                className={`${model.invert ? 'invert brightness-0' : ''} w-4 h-4 sm:w-5 sm:h-5`}
+                className={`${model.invert ? 'invert brightness-0' : ''} h-4 w-4`}
               />
             ) : (
-              <span className="text-xs font-bold text-yellow-500">AI</span>
+              <span className="text-xs font-bold text-[#d8d4ce]">AI</span>
             )}
+            <span>{model?.name || 'Assistant'}</span>
           </div>
 
           {/* Message Content - Responsive */}
           <div className="flex-1 min-w-0">
-            <div className="prose prose-invert prose-sm sm:prose-base max-w-none">
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm, remarkMath]}
-                rehypePlugins={[rehypeKatex, rehypeHighlight]}
-                components={{
-                  h1: ({ children }) => (
-                    <h1 className="text-xl sm:text-2xl font-bold text-white mt-4 sm:mt-6 mb-2 sm:mb-3 first:mt-0">
-                      {children}
-                    </h1>
-                  ),
-                  h2: ({ children }) => (
-                    <h2 className="text-lg sm:text-xl font-semibold text-white mt-4 sm:mt-5 mb-2 sm:mb-3 first:mt-0">
-                      {children}
-                    </h2>
-                  ),
-                  h3: ({ children }) => (
-                    <h3 className="text-base sm:text-lg font-semibold text-white mt-3 sm:mt-4 mb-2 first:mt-0">
-                      {children}
-                    </h3>
-                  ),
-                  p: ({ children }) => (
-                    <p className="mb-3 sm:mb-4 leading-relaxed last:mb-0 text-gray-100 text-sm sm:text-base break-words">
-                      {children}
-                    </p>
-                  ),
-                  strong: ({ children }) => (
-                    <strong className="font-semibold text-white">
-                      {children}
-                    </strong>
-                  ),
-                  code: ({ className, children, ...props }) => {
-                    const match = /language-(\w+)/.exec(className || '');
-                    const isInline = !match;
-
-                    if (isInline) {
-                      return (
-                        <code className="bg-gray-800 text-yellow-300 px-1 sm:px-1.5 py-0.5 rounded text-xs sm:text-sm font-mono break-all" {...props}>
-                          {children}
-                        </code>
-                      );
-                    }
-
-                    return (
-                      <div className="relative group my-3 sm:my-4 -mx-4 sm:mx-0">
-                        <pre className="bg-gray-900 rounded-lg overflow-x-auto text-xs sm:text-sm border border-gray-800 p-3 sm:p-4">
-                          <code className={className} {...props}>
-                            {children}
-                          </code>
-                        </pre>
-                      </div>
-                    );
-                  },
-                  ul: ({ children }) => (
-                    <ul className="mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-gray-100 list-disc list-inside">
-                      {children}
-                    </ul>
-                  ),
-                  ol: ({ children }) => (
-                    <ol className="mb-3 sm:mb-4 space-y-1.5 sm:space-y-2 text-gray-100 list-decimal list-inside">
-                      {children}
-                    </ol>
-                  ),
-                  li: ({ children }) => (
-                    <li className="leading-relaxed text-sm sm:text-base">
-                      {children}
-                    </li>
-                  ),
-                  a: ({ href, children }) => (
-                    <a
-                      href={href}
-                      className="text-yellow-400 hover:text-yellow-300 underline cursor-pointer break-all"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >
-                      {children}
-                    </a>
-                  ),
-                  blockquote: ({ children }) => (
-                    <blockquote className="border-l-2 sm:border-l-4 border-gray-700 pl-3 sm:pl-4 italic text-gray-400 my-3 sm:my-4">
-                      {children}
-                    </blockquote>
-                  ),
-                  table: ({ children }) => (
-                    <div className="overflow-x-auto -mx-4 sm:mx-0 my-3 sm:my-4">
-                      <table className="min-w-full divide-y divide-gray-700">
-                        {children}
-                      </table>
-                    </div>
-                  ),
-                  th: ({ children }) => (
-                    <th className="px-3 sm:px-4 py-2 text-left text-xs sm:text-sm font-semibold text-white bg-gray-800">
-                      {children}
-                    </th>
-                  ),
-                  td: ({ children }) => (
-                    <td className="px-3 sm:px-4 py-2 text-xs sm:text-sm text-gray-300 border-t border-gray-700">
-                      {children}
-                    </td>
-                  ),
-                }}
-              >
-                {content}
-              </ReactMarkdown>
-              {loading && isLastMessage && (
-                <span className="inline-block w-1.5 sm:w-2 h-3 sm:h-4 bg-yellow-500 ml-1 animate-pulse"></span>
-              )}
+            {council && content && <CouncilSummary details={council} />}
+            {showCouncilCard && council && <CouncilProgressIndicator progress={councilProgress} details={council} />}
+            <ThinkingBlock
+              reasoning={reasoning}
+              startedAt={reasoningStartedAt}
+              durationMs={reasoningDurationMs}
+              active={streaming && !content}
+            />
+            {showPending && <PendingIndicator />}
+            <div aria-live={streaming ? 'polite' : undefined} aria-busy={streaming} className="prose prose-invert prose-sm sm:prose-base max-w-none">
+              <MarkdownContent content={content} streaming={streaming} />
             </div>
 
             {/* Actions - Responsive positioning */}
             {!loading && content && (
-              <div className="mt-2 sm:mt-3">
+              <div className="mt-1.5 flex items-center gap-1">
                 <MessageActions
                   content={content}
                   filename={filename}
                   showCopy={showCopy}
                   showDownload={showDownload}
+                  onRetry={onRetry}
+                  messageId={messageId}
+                  onFork={onFork}
+                  forking={forking}
                 />
+                {analytics && <MessageAnalytics analytics={analytics} />}
+                {contextCompacted && (
+                  <span
+                    className="text-[12px] text-[#8f8b86]"
+                    title={`Older turns were summarized for this reply (${contextCompacted.inputTokensBefore.toLocaleString()} → ${contextCompacted.inputTokensAfter.toLocaleString()} input tokens). The full transcript is still above.`}
+                  >
+                    Older turns summarized
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -185,6 +133,16 @@ export default memo(AIMessage, (prev, next) => {
     prev.content === next.content &&
     prev.modelId === next.modelId &&
     prev.loading === next.loading &&
-    prev.isLastMessage === next.isLastMessage
+    prev.isLastMessage === next.isLastMessage &&
+    prev.reasoning === next.reasoning &&
+    prev.reasoningDurationMs === next.reasoningDurationMs &&
+    prev.analytics === next.analytics &&
+    prev.contextCompacted === next.contextCompacted &&
+    prev.onRetry === next.onRetry &&
+    prev.messageId === next.messageId &&
+    prev.onFork === next.onFork &&
+    prev.forking === next.forking &&
+    prev.council === next.council &&
+    prev.councilProgress === next.councilProgress
   );
 });

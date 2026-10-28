@@ -3,11 +3,14 @@
 import { StateCreator } from 'zustand';
 import { ApiService } from '../../../services/api';
 import { signOut } from 'next-auth/react';
+import { resetUser } from '@/src/lib/analytics/posthog-client';
 import type { User } from '@/src/types/user.types';
 
 export interface UserSlice {
   user: User | null;
   userLoading: boolean;
+  /** True once the user has been resolved (SSR seed or client fetch). */
+  userHydrated: boolean;
   setUser: (user: User | null) => void;
   setUserLoading: (loading: boolean) => void;
   initializeUser: () => Promise<void>;
@@ -17,8 +20,9 @@ export interface UserSlice {
 export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
   user: null,
   userLoading: true,
+  userHydrated: false,
 
-  setUser: (user) => set({ user }),
+  setUser: (user) => set({ user, userHydrated: true }),
   setUserLoading: (userLoading) => set({ userLoading }),
 
   initializeUser: async () => {
@@ -46,6 +50,8 @@ export const createUserSlice: StateCreator<UserSlice> = (set, get) => ({
     try {
       // Sign out using NextAuth - this clears the session
       await signOut({ redirect: false });
+      // Only forget the analytics identity once the session is really gone.
+      resetUser();
       
       // Reset the entire store
       const fullStore = get() as typeof get extends () => infer T ? T : never;

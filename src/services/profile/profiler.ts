@@ -1,4 +1,5 @@
 import { prisma } from '@/src/lib/prisma';
+import { MESSAGE_ORDER_DESC } from '@/src/lib/server/message-order';
 import type { UserProfile } from './storage';
 import { saveUserProfile, getOrCreateProfile } from './storage';
 
@@ -11,7 +12,7 @@ export async function inferUserProfile(userId: string): Promise<UserProfile> {
     where: { userId },
     include: {
       messages: {
-        orderBy: { createdAt: 'desc' },
+        orderBy: MESSAGE_ORDER_DESC,
         take: 50, // Last 50 messages
       },
     },
@@ -132,22 +133,4 @@ function extractTopics(content: string): string[] {
   }
 
   return detected;
-}
-
-/**
- * Get profile summary for query enhancement
- */
-export function getProfileSummary(profile: UserProfile): string {
-  const topTopics = Object.entries(profile.topicFrequency)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
-    .map(([topic]) => topic);
-
-  return `
-User Profile:
-- Technical Level: ${profile.technicalLevel}
-- Preferred Style: ${profile.explanationStyle}
-- Main Interests: ${topTopics.join(', ') || 'general'}
-${profile.preferences.dislikes?.length ? `- Dislikes: ${profile.preferences.dislikes.join(', ')}` : ''}
-`.trim();
 }

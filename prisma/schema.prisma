@@ -26,6 +26,9 @@ model User {
   accounts       Account[]
   sessions       Session[]
   conversations  Conversation[]
+  documents      Document[]
+  skills         Skill[]
+  scheduledTasks ScheduledTask[]
 
   @@map("users")
 }
@@ -73,12 +76,25 @@ model Conversation {
   id        String    @id @default(uuid())
   title     String?
   userId    String
+  // Set when the user pins the chat; pinned chats sort first, most recent pin on top.
+  pinnedAt  DateTime?
+  // Set on a scheduled task's run chats, which stay out of Recents. Cleared
+  // when the task is deleted, so its runs become ordinary chats.
+  scheduledTaskId String?
+  // Where a forked chat came from: the source chat and the message it was cut
+  // at. Plain ids, not relations, so a fork outlives its source.
+  parentConversationId String?
+  forkedFromMessageId  String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  messages  Message[]
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scheduledTask ScheduledTask? @relation(fields: [scheduledTaskId], references: [id], onDelete: SetNull)
+  messages      Message[]
+  contextSnapshot ConversationContextSnapshot?
 
+  @@index([userId, scheduledTaskId])
+  @@index([parentConversationId])
   @@map("conversations")
 }
 
@@ -88,6 +104,15 @@ model Message {
   content        String       @db.Text
   role           String
   modelId        String?
+  attachments    Json?
+  // Skills tagged on a user message: [{ id, name }]. References only, so
+  // later edits to a skill don't rewrite history.
+  skills         Json?
+  // Order within the conversation, 1-based. createdAt ties or lands out of
+  // order (rows are saved together), so history and forks order by this.
+  // Null only on rows saved before the column existed; see
+  // scripts/backfill-message-positions.mjs.
+  position       Int?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
   
@@ -95,5 +120,139 @@ model Message {
 
   @@index([modelId])
   @@index([conversationId, modelId])
+  @@unique([conversationId, position])
   @@map("messages")
+}
+
+/**
+ * The portable compaction state for one conversation. Message rows remain the
+ * source of truth and the UI transcript; this row only supplies the summary
+ * the model sees for everything up to `throughMessageId`.
+ */
+model ConversationContextSnapshot {
+  id                String   @id @default(uuid())
+  conversationId    String   @unique
+  summaryText       String   @db.Text
+  // Last message covered by the summary; a completed turn boundary.
+  throughMessageId  String
+  // Hash of the source messages, so a stale snapshot is detectable.
+  sourceHash        String
+  // Optimistic concurrency: bumped on every successful summary update.
+  version           Int      @default(1)
+  schemaVersion     Int      @default(1)
+  summaryModelId    String
+  inputTokensBefore Int
+  inputTokensAfter  Int
+  summaryTokens     Int
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@map("conversation_context_snapshots")
+}
+
+model Document {
+  id          String    @id @default(uuid())
+  userId      String
+  name        String
+  mimeType    String
+  size        Int
+  sha256      String
+  storageKey  String    @unique
+  favoritedAt DateTime?
+  lastUsedAt  DateTime?
+  createdAt   DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, sha256])
+  @@index([userId, lastUsedAt])
+  @@map("documents")
+}
+
+model Skill {
+  id           String   @id @default(uuid())
+  userId       String
+  // Kebab-case slug; what the user types after "/" in the composer.
+  name         String
+  description  String
+  // The SKILL.md body (without frontmatter).
+  instructions String   @db.Text
+  // created | generated (from a chat) | uploaded | catalog (added from Discover)
+  source       String   @default("created")
+  // Turned-off skills stay saved but are not offered in chat.
+  enabled      Boolean  @default(true)
+  categories   String[] @default([])
+  // Other text files in the skill: [{ path, content }].
+  files        Json?
+  // Frontmatter keys other than name and description, kept for export.
+  metadata     Json?
+  // Bumped on every content change.
+  version      Int      @default(1)
+  // Discover catalog entry this skill was added from.
+  catalogId    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@map("skills")
+}
+
+model ScheduledTask {
+  id            String    @id @default(uuid())
+  userId        String
+  name          String
+  // Sent as the user message on every run.
+  prompt        String    @db.Text
+  model         String
+  thinkingLevel String    @default("medium")
+  // manual | hourly | daily | weekdays | weekly
+  frequency     String
+  // "HH:MM" in `timezone`; hourly uses only the minutes.
+  time          String    @default("09:00")
+  // 0 (Sunday) - 6, for weekly.
+  weekday       Int       @default(1)
+  // IANA zone the times are in, from the user's browser.
+  timezone      String
+  // Paused tasks keep their settings but don't run on schedule.
+  enabled       Boolean   @default(true)
+  // Null for manual and paused tasks. The scheduler claims tasks by this.
+  nextRunAt     DateTime?
+  lastRunAt     DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  runs          ScheduledTaskRun[]
+  conversations Conversation[]
+
+  @@index([enabled, nextRunAt])
+  @@index([userId])
+  @@map("scheduled_tasks")
+}
+
+model ScheduledTaskRun {
+  id             String    @id @default(uuid())
+  taskId         String
+  // schedule | manual (Run now)
+  trigger        String
+  // running | succeeded | failed | skipped
+  status         String
+  // Why the run failed or was skipped.
+  error          String?
+  // The run's chat; null when the run was skipped before it started.
+  conversationId String?
+  // The scheduled time this run was for (null for Run now).
+  scheduledFor   DateTime?
+  startedAt      DateTime  @default(now())
+  finishedAt     DateTime?
+
+  task ScheduledTask @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([taskId, startedAt])
+  @@index([status, startedAt])
+  @@map("scheduled_task_runs")
 }

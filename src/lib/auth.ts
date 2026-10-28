@@ -1,10 +1,11 @@
 import NextAuth from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { prisma } from "./prisma";
+import { providerIdentityUpdate } from "./server/provider-profile";
 import Google from "next-auth/providers/google";
 import GitHub from "next-auth/providers/github";
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+export const { handlers, auth } = NextAuth({
   adapter: PrismaAdapter(prisma),
   providers: [
     Google({
@@ -27,6 +28,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
   callbacks: {
+    async signIn({ user, profile }) {
+      // Auth.js keeps the profile it saw when the account was created. Refresh
+      // the name and photo on every sign-in so a new Google/GitHub photo shows
+      // up without touching the database by hand.
+      if (!user.id) return true;
+      const update = providerIdentityUpdate(user, profile);
+      if (!update.name && !update.image) return true;
+
+      try {
+        await prisma.user.update({ where: { id: user.id }, data: update });
+      } catch (error) {
+        // A stale avatar is not worth failing the sign-in over.
+        console.error('[auth] Could not refresh the provider profile', error);
+      }
+      return true;
+    },
     async session({ session, user }) {
       if (session.user) {
         session.user.id = user.id;
@@ -39,6 +56,3 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   debug: process.env.NODE_ENV === "development",
 });
-
-// Export GET and POST handlers directly
-export const { GET, POST } = handlers;

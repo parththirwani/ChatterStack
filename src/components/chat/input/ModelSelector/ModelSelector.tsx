@@ -1,59 +1,31 @@
 "use client";
-import React, { useState } from 'react';
+import React, { memo } from 'react';
 import { ChevronDown } from 'lucide-react';
-import Image from 'next/image';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import { ModelDropdown } from './ModelDropDown';
+import { usePopover } from './usePopover';
 
-export const ModelSelector = () => {
-  const [isOpen, setIsOpen] = useState(false);
-  const { selectedModel, setSelectedModel, getModelInfo } = useModelSelection();
-  const currentModel = getModelInfo(selectedModel);
-  
+// Memoized: the composer re-renders on every keystroke.
+export const ModelSelector = memo(function ModelSelector() {
+  const { isOpen, placement, close, returnFocus, triggerProps, rootProps } = usePopover('input[type="search"]');
+  const { selectedModel, getModelInfo, councilMode } = useModelSelection();
+  const label = councilMode ? 'Members' : getModelInfo(selectedModel)?.name || 'Select model';
+
   return (
-    <div className="relative">
-      <button 
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-800/50 hover:bg-gray-800 border border-gray-700/50 transition-colors text-xs cursor-pointer"
+    <div {...rootProps} className="relative min-w-0">
+      <button
+        type="button"
+        {...triggerProps}
+        aria-label={councilMode ? 'Council settings' : `Model: ${label}`}
+        aria-haspopup="dialog"
+        aria-controls="chat-model-menu"
+        className="flex h-8 min-w-0 max-w-full items-center gap-1.5 rounded-lg px-2 text-[12.5px] text-[#cfcbc5] transition-colors hover:bg-white/[0.06] hover:text-white"
       >
-        {/* Model Icon */}
-        {currentModel && (
-          <div className="w-4 h-4 flex items-center justify-center">
-            <Image
-              src={currentModel.logo}
-              alt={currentModel.name}
-              width={14}
-              height={14}
-              className={currentModel.company === 'OpenAI' ? 'invert brightness-0' : ''}
-            />
-          </div>
-        )}
-        
-        {/* Model Name */}
-        <span className="text-gray-200 font-medium">
-          {currentModel?.name || 'Select Model'}
-        </span>
-        
-        {/* Chevron */}
-        <ChevronDown className={`w-3 h-3 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <span className="min-w-0 truncate font-medium">{label}</span>
+        <ChevronDown className={`h-3 w-3 shrink-0 text-[#aaa6a2] transition-transform ${isOpen ? 'rotate-180' : ''}`} aria-hidden="true" />
       </button>
-      
-      {isOpen && (
-        <>
-          {/* Backdrop to close dropdown */}
-          <div 
-            className="fixed inset-0 z-40" 
-            onClick={() => setIsOpen(false)}
-          />
-          <div className="relative z-50">
-            <ModelDropdown
-              selectedModel={selectedModel}
-              onSelect={setSelectedModel}
-              onClose={() => setIsOpen(false)}
-            />
-          </div>
-        </>
-      )}
+
+      {isOpen && <ModelDropdown placement={placement} onClose={close} onReturnFocus={returnFocus} />}
     </div>
   );
-};
+});

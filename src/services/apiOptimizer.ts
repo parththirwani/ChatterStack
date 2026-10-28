@@ -123,7 +123,7 @@ class ApiOptimizer {
         const response = await fetch(url, options);
         
         if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+          throw new HttpError(response.status, `HTTP ${response.status}: ${response.statusText}`);
         }
 
         const data = await response.json() as T;
@@ -166,18 +166,16 @@ class ApiOptimizer {
   }
 }
 
+/** A non-2xx response, so callers can tell "not found" from "failed". */
+export class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
 // Singleton instance
 export const apiOptimizer = new ApiOptimizer();
-
-/**
- * Optimized fetch wrapper
- */
-export async function optimizedFetch<T>(
-  url: string,
-  options?: RequestInit
-): Promise<T> {
-  return apiOptimizer.fetch<T>(url, options);
-}
 
 /**
  * Invalidate cache after mutations
@@ -189,9 +187,11 @@ export function invalidateCache(pattern?: string): void {
 /**
  * Helper to invalidate specific patterns
  */
+// Cache keys are `${method}:${url}:${body}`, so the trailing ':' keeps the
+// list pattern from also matching every `/api/conversations/<id>` entry.
 export const cacheInvalidators = {
-  conversations: () => invalidateCache('/conversations'),
-  conversation: (id: string) => invalidateCache(`/conversations/${id}`),
+  conversationList: () => invalidateCache('/api/conversations:'),
+  conversation: (id: string) => invalidateCache(`/api/conversations/${id}:`),
   auth: () => invalidateCache('/auth/session'),
   all: () => invalidateCache(),
 };

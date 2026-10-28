@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useRef } from 'react';
+import { useModalFocus } from '@/src/hooks/useModalFocus';
 
 interface DeleteConversationModalProps {
   isOpen: boolean;
@@ -17,55 +18,53 @@ const DeleteConversationModal: React.FC<DeleteConversationModalProps> = ({
   isDeleting = false,
   error = null,
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const cancelRef = useRef<HTMLButtonElement>(null);
+
+  useModalFocus(isOpen, onClose, dialogRef, cancelRef);
+
   if (!isOpen) return null;
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center"
+      className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
       onClick={onClose}
     >
       {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/65 backdrop-blur-[2px]" />
 
       {/* Modal */}
       <div
-        className="relative bg-[#201D26] rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="delete-modal-title"
+        className="relative mx-4 w-full max-w-[400px] rounded-2xl border border-white/[0.09] bg-[#202020] p-6 shadow-[0_24px_80px_rgba(0,0,0,0.55)]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-white">
-            Delete conversation
-          </h2>
-        </div>
+        <h2 id="delete-modal-title" className="mb-2 text-[17px] font-semibold tracking-[-0.01em] text-[#f3f1ee]">
+          Delete conversation
+        </h2>
 
-        {/* Content */}
-        <div className="mb-6">
-          <p className="text-gray-300 text-sm mb-2">
-            {`You're about to permanently delete "${conversationTitle}".`}
-          </p>
-          <p className="text-gray-400 text-xs">
-            This action cannot be undone. All messages in this conversation will
-            be permanently removed.
-          </p>
-        </div>
+        <p className="mb-1 text-[13px] leading-5 text-[#c4c0bb]">
+          {`You're about to permanently delete "${conversationTitle}".`}
+        </p>
+        <p className="text-[12px] leading-5 text-[#8f8b86]">
+          This action cannot be undone. All messages in this conversation will be permanently removed.
+        </p>
 
-        {/* Error message */}
         {error && (
-          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
-            <p className="text-red-400 text-sm">{error}</p>
+          <div className="mt-4 rounded-lg border border-red-500/20 bg-red-500/10 p-3">
+            <p className="text-[12.5px] text-red-400">{error}</p>
           </div>
         )}
 
-        {/* Actions */}
-        <div className="flex items-center justify-end gap-3">
+        <div className="mt-6 flex items-center justify-end gap-2.5">
           <button
+            ref={cancelRef}
             onClick={onClose}
             disabled={isDeleting}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-gray-300
-                       hover:bg-gray-700/50 transition-all duration-150
-                       cursor-pointer disabled:cursor-not-allowed
-                       disabled:opacity-50 active:scale-[0.98]"
+            className="rounded-xl px-3.5 py-2 text-[13px] font-medium text-[#c4c0bb] transition-colors hover:bg-white/[0.06] hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
@@ -73,19 +72,15 @@ const DeleteConversationModal: React.FC<DeleteConversationModalProps> = ({
           <button
             onClick={onConfirm}
             disabled={isDeleting}
-            className="px-4 py-2 rounded-lg text-sm font-medium
-                       bg-red-600 hover:bg-red-700 text-white
-                       transition-all duration-150 flex items-center gap-2
-                       cursor-pointer disabled:cursor-not-allowed
-                       disabled:opacity-50 active:scale-[0.98]"
+            className="flex items-center gap-2 rounded-xl bg-[#cf3a3f] px-3.5 py-2 text-[13px] font-medium text-white transition-colors hover:bg-[#d93b40] disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isDeleting ? (
               <>
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                Deleting...
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                Deleting…
               </>
             ) : (
-              'Delete conversation'
+              'Delete'
             )}
           </button>
         </div>

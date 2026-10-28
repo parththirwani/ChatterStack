@@ -1,5 +1,13 @@
 import { redisStore } from '@/src/lib/redis';
 import crypto from 'crypto';
+import { traceLlmCall, type LlmCallMetrics } from '@/src/lib/observability/trace-llm-call';
+
+/** Where this embedding call belongs, so it can be joined with a chat request. */
+export interface EmbeddingTrace {
+  traceId?: string;
+  userId?: string;
+  conversationId?: string;
+}
 
 const EMBEDDING_MODEL =
   process.env.OPENROUTER_EMBEDDING_MODEL || 'openai/text-embedding-3-small';
@@ -7,6 +15,11 @@ const CACHE_TTL = parseInt(
   process.env.OPENROUTER_EMBEDDING_CACHE_TTL || '86400',
   10
 );
+
+interface EmbeddingResponse {
+  data: Array<{ embedding: number[] }>;
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+}
 
 /**
  * Generate cache key for embedding
@@ -20,10 +33,36 @@ function generateCacheKey(text: string, model: string = EMBEDDING_MODEL): string
   return `embedding:${model}:${hash}`;
 }
 
+async function requestEmbedding(
+  input: string | string[],
+  metrics: LlmCallMetrics,
+  errorLabel: string
+): Promise<EmbeddingResponse> {
+  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: EMBEDDING_MODEL,
+      input,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`${errorLabel}: ${response.status}`);
+  }
+
+  const data = (await response.json()) as EmbeddingResponse;
+  metrics.usage(data.usage);
+  return data;
+}
+
 /**
  * Generate embedding for a single text
  */
-export async function generateEmbedding(text: string): Promise<number[]> {
+export async function generateEmbedding(text: string, trace?: EmbeddingTrace): Promise<number[]> {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY is not set');
   }
@@ -41,23 +80,20 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   }
 
   // Generate embedding
-  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+  const data = await traceLlmCall(
+    {
+      traceId: trace?.traceId ?? crypto.randomUUID(),
+      span: 'embedding',
       model: EMBEDDING_MODEL,
-      input: text,
-    }),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Embedding API error: ${response.status}`);
-  }
-
-  const data = await response.json();
+      userId: trace?.userId,
+      conversationId: trace?.conversationId,
+      messageCount: 1,
+      prompt: text,
+      operation: 'embeddings',
+      inRequest: Boolean(trace?.traceId),
+    },
+    (metrics) => requestEmbedding(text, metrics, 'Embedding API error')
+  );
   const embedding = data.data[0].embedding;
 
   // Cache the result
@@ -73,7 +109,7 @@ export async function generateEmbedding(text: string): Promise<number[]> {
 /**
  * Batch generate embeddings for multiple texts
  */
-export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
+export async function generateEmbeddings(texts: string[], trace?: EmbeddingTrace): Promise<number[][]> {
   if (!process.env.OPENROUTER_API_KEY) {
     throw new Error('OPENROUTER_API_KEY is not set');
   }
@@ -106,23 +142,20 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
   // Generate embeddings for uncached texts (batch)
   if (uncachedTexts.length > 0) {
-    const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
+    const data = await traceLlmCall(
+      {
+        traceId: trace?.traceId ?? crypto.randomUUID(),
+        span: 'embeddings',
         model: EMBEDDING_MODEL,
-        input: uncachedTexts,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(`Batch embedding API error: ${response.status}`);
-    }
-
-    const data = await response.json();
+        userId: trace?.userId,
+        conversationId: trace?.conversationId,
+        messageCount: uncachedTexts.length,
+        prompt: uncachedTexts.join('\n'),
+        operation: 'embeddings',
+        inRequest: Boolean(trace?.traceId),
+      },
+      (metrics) => requestEmbedding(uncachedTexts, metrics, 'Batch embedding API error')
+    );
 
     // Fill in embeddings and cache
     for (let i = 0; i < uncachedTexts.length; i++) {
@@ -146,16 +179,4 @@ export async function generateEmbeddings(texts: string[]): Promise<number[][]> {
 
   // Filter out undefined values and return properly typed array
   return embeddings.filter((e): e is number[] => e !== undefined);
-}
-
-/**
- * Clear embedding cache for a specific text
- */
-export async function clearEmbeddingCache(text: string): Promise<void> {
-  try {
-    const cacheKey = generateCacheKey(text);
-    await redisStore.deleteKey(cacheKey);
-  } catch (error) {
-    console.warn('Failed to clear embedding cache:', error);
-  }
 }

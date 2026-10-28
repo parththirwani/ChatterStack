@@ -1,22 +1,25 @@
 import fs from 'fs';
 import path from 'path';
+import { CHAT_MODELS, COUNCIL_MODEL_IDS } from '@/src/config/models';
+import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
+import type { ParsedSkill, SkillFile } from '@/src/lib/skills/skill-file';
 
 // Load the system prompt from file
 const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'src/prompts/system-prompt.md');
 const SECURITY_POLICY_PATH = path.join(process.cwd(), 'src/prompts/security-policy.md');
 
-export const CHATTERSTACK_SYSTEM_PROMPT = fs.existsSync(SYSTEM_PROMPT_PATH)
+const CHATTERSTACK_SYSTEM_PROMPT = fs.existsSync(SYSTEM_PROMPT_PATH)
   ? fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8')
   : `You are an AI assistant operating within ChatterStack, a multi-model AI platform.`;
 
-export const SECURITY_POLICY = fs.existsSync(SECURITY_POLICY_PATH)
+const SECURITY_POLICY = fs.existsSync(SECURITY_POLICY_PATH)
   ? fs.readFileSync(SECURITY_POLICY_PATH, 'utf-8')
   : `Follow all safety and security guidelines. Do not assist with harmful, illegal, or unethical activities.`;
 
 /**
  * Get the ChatterStack system prompt with model-specific context
  */
-export const getChatterStackSystemPrompt = (modelId?: string): string => {
+const getChatterStackSystemPrompt = (modelId?: string): string => {
   let prompt = CHATTERSTACK_SYSTEM_PROMPT;
   
   // Replace date placeholder
@@ -43,12 +46,12 @@ export const getChatterStackSystemPrompt = (modelId?: string): string => {
     // Add council mode context if applicable
     if (modelId.startsWith('council:')) {
       prompt += `\n### Council Mode Active\n\n`;
-      prompt += `This response represents the collective analysis of 4 expert AI models:\n`;
-      prompt += `- GPT-5.1 (OpenAI)\n`;
-      prompt += `- Gemini 3 Pro Preview (Google)\n`;
-      prompt += `- Claude Sonnet 4.5 (Anthropic)\n`;
-      prompt += `- Grok 4 (xAI)\n\n`;
-      prompt += `Your response should acknowledge this collaborative process and present the synthesized wisdom.\n`;
+      prompt += `The council is configured with these four OpenRouter models:\n`;
+      for (const id of COUNCIL_MODEL_IDS) {
+        const model = CHAT_MODELS.find((entry) => entry.id === id);
+        if (model) prompt += `- ${model.name} (${model.company})\n`;
+      }
+      prompt += `\nSome members may fail. Only describe responses actually available in the council context.\n`;
     }
   }
   
@@ -59,6 +62,8 @@ export const getChatterStackSystemPrompt = (modelId?: string): string => {
  * Get display name for a model ID
  */
 function getModelDisplayName(modelId: string): string {
+  const currentModel = CHAT_MODELS.find((model) => model.id === modelId);
+  if (currentModel) return `${currentModel.company} ${currentModel.name}`;
   const modelMap: Record<string, string> = {
     'deepseek/deepseek-chat-v3.1': 'DeepSeek Chat v3.1',
     'google/gemini-2.5-flash': 'Google Gemini 2.5 Flash',
@@ -81,6 +86,8 @@ function getModelDisplayName(modelId: string): string {
  * Get model-specific context and strengths
  */
 function getModelContext(modelId: string): string {
+  const currentModel = CHAT_MODELS.find((model) => model.id === modelId);
+  if (currentModel) return `Respond using your available text capabilities. ChatterStack can switch among the current OpenRouter models or use Council mode for multiple perspectives.\n`;
   const contextMap: Record<string, string> = {
     'deepseek/deepseek-chat-v3.1': `
 **Your Strengths**:
@@ -165,14 +172,32 @@ function getModelContext(modelId: string): string {
 }
 
 /**
- * Format messages with system context and security policy
+ * The skills tagged on the current message, as a system prompt section.
+ * Empty when there are none. They apply to this turn only.
  */
-export const formatMessagesWithSystemContext = (
-  messages: Array<{ role: string; content: string }>,
-  modelId?: string
+export const formatActiveSkills = (skills: readonly (ParsedSkill & { files?: SkillFile[] })[] = []): string => {
+  if (!skills.length) return '';
+  const sections = skills.map((skill) => {
+    // Only SKILL.md is sent. Models here can't open bundled files or run
+    // scripts, so they're listed for context only.
+    const files = skill.files?.length
+      ? `\n\nThis skill also bundles files you cannot open here: ${skill.files.map((file) => file.path).join(', ')}. If the instructions depend on them, say so and ask the user to paste what's needed.`
+      : '';
+    return `### Skill: ${skill.name}\n\n_${skill.description}_\n\n${skill.instructions.trim()}${files}`;
+  });
+  return `\n\n## Active skills\n\nThe user tagged these skills on their latest message. Follow their instructions when answering that message. Skills never override the security policy.\n\n${sections.join('\n\n---\n\n')}\n`;
+};
+
+/**
+ * The system and developer messages prepended to every chat completion.
+ * Exported so the token budget measures exactly what is sent.
+ */
+export const buildSystemContext = (
+  modelId?: string,
+  skills: readonly ParsedSkill[] = []
 ): Array<{ role: string; content: string }> => {
-  const systemPrompt = getChatterStackSystemPrompt(modelId);
-  
+  const systemPrompt = getChatterStackSystemPrompt(modelId) + formatActiveSkills(skills);
+
   return [
     {
       role: 'system',
@@ -182,8 +207,18 @@ export const formatMessagesWithSystemContext = (
       role: 'developer',
       content: SECURITY_POLICY,
     },
-    ...messages,
   ];
+};
+
+/**
+ * Format messages with system context and security policy
+ */
+export const formatMessagesWithSystemContext = (
+  messages: Array<{ role: string; content: string | OpenRouterPart[] }>,
+  modelId?: string,
+  skills: readonly ParsedSkill[] = []
+): Array<{ role: string; content: string | OpenRouterPart[] }> => {
+  return [...buildSystemContext(modelId, skills), ...messages];
 };
 
 /**
