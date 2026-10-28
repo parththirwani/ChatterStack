@@ -4,10 +4,8 @@ import { ArrowUp, Paperclip, Square } from 'lucide-react';
 import { ModelSelector } from './ModelSelector/ModelSelector';
 import { ThinkingSelector } from './ModelSelector/ThinkingSelector';
 import { CouncilToggle } from './CouncilToggle';
-import LLMTokenIndicator from '../../rate-limit/LLMTokenIndicator';
 import AttachmentTile from '@/src/components/chat/attachments/AttachmentTile';
 import DocumentPreview from '@/src/components/sidebar/resources/DocumentPreview';
-import { useModelSelection } from '@/src/context/ModelSelectionContext';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import { MIME_BY_EXTENSION, uploadDocument } from '@/src/lib/client/documents';
 import { useAppStore } from '@/src/store/rootStore';
@@ -66,7 +64,6 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   const cancelledUploads = useRef(new Set<string>());
   const uploading = pending.some((file) => file.status === 'uploading');
 
-  const { councilMode } = useModelSelection();
   const userId = useAppStore((state) => state.user?.id);
   const signedIn = !!userId && userId !== 'guest';
   const { skills: allSkills, loading: skillsLoading } = useSkills(signedIn ? userId : null);
@@ -375,7 +372,6 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
       </div>
       {fileError && <p role="alert" className="mt-2 px-2 text-xs text-red-300">{fileError}</p>}
       {preview && <DocumentPreview document={preview} localFile={filesByDocument.current.get(preview.id)} onClose={() => setPreview(null)} />}
-      <LLMTokenIndicator isCouncilMode={councilMode} className="mt-2" />
     </div>
   );
 };

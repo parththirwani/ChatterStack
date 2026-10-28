@@ -4,9 +4,9 @@
 // Reuses the Redis connection from src/lib/redis.ts: one fixed-window
 // counter per user and limit, bumped atomically with INCR + first-write
 // PEXPIRE inside a Lua script, so concurrent requests cannot both slip
-// past the cap. Same degradation policy as llmTokenRateLimit: production
-// fails closed with a 503 when Redis is unavailable; development/test fall
-// back to in-process counters with a console warning.
+// past the cap. Production fails closed with a 503 when Redis is
+// unavailable; development/test fall back to in-process counters with a
+// console warning.
 
 import { redisStore } from '@/src/lib/redis';
 

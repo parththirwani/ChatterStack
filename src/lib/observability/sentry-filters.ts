@@ -97,7 +97,7 @@ export function isExpectedError(error: unknown): boolean {
 
   if (name === 'AbortError' || name === 'APIUserAbortError' || name === 'TimeoutError') return true;
   if (/\bsignal aborted\b/i.test(message)) return true;
-  if (/Rate limit exceeded|daily (token|limit)|limit of \d+ council/i.test(message)) return true;
+  if (/Rate limit exceeded/i.test(message)) return true;
   if (/^Unauthorized$/i.test(message.trim())) return true;
 
   const status = candidate.status ?? candidate.statusCode ?? statusFromMessage(message);

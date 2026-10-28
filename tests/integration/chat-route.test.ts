@@ -1,7 +1,7 @@
 /**
  * Integration test for POST /api/chat: the real route, persistence, title
  * service, OpenRouter client and council service run together. Only the edges
- * (auth, Redis, RAG, rate limiting, Prisma and the network) are faked.
+ * (auth, Redis, RAG, Prisma and the network) are faked.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { NextRequest } from 'next/server';
@@ -91,16 +91,12 @@ const storage = { read: vi.fn(async (key: string) => key.endsWith('plan') ? Buff
 vi.mock('@/src/lib/server/document-storage', () => ({ documentStorage: storage }));
 const redis = { get: vi.fn<(id: string) => Promise<unknown[]>>(async () => []), set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}), delete: vi.fn(async () => {}) };
 vi.mock('@/src/lib/redis', () => ({ redisStore: redis }));
-const recordLLMTokens = vi.fn<(user: string, tokens: number, council: boolean) => Promise<void>>(async () => {});
 vi.mock('@/src/lib/api/chat/rag-integration', () => ({
   retrieveRAGContext: vi.fn(async () => ''),
   ingestConversationData: vi.fn(async () => {}),
 }));
-vi.mock('@/src/middleware/llmTokenRateLimit', () => ({
-  withLLMTokenLimit: vi.fn(async () => null),
-  recordLLMTokens: (user: string, tokens: number, council: boolean) => recordLLMTokens(user, tokens, council),
+vi.mock('@/src/lib/tokens', () => ({
   countTokens: (text: string) => text.length,
-  estimatePromptTokens: (text: string) => text.length,
 }));
 
 const { POST } = await import('@/src/app/api/chat/route');
@@ -137,7 +133,6 @@ beforeEach(() => {
   redis.get.mockReset().mockImplementation(async () => []);
   redis.set.mockReset().mockImplementation(async () => {});
   redis.delete.mockReset().mockImplementation(async () => {});
-  recordLLMTokens.mockClear();
   vi.spyOn(console, 'log').mockImplementation(() => {});
   vi.spyOn(console, 'error').mockImplementation(() => {});
   vi.spyOn(console, 'warn').mockImplementation(() => {});
@@ -372,7 +367,7 @@ describe('POST /api/chat, skills', () => {
 
   it('puts tagged skills in the system prompt, counts them, and saves the tags', async () => {
     addSkill();
-    await readEvents(await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, skills: [SKILL_ID] }));
+    const events = await readEvents(await post({ message: 'Explain TCP', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID, skills: [SKILL_ID] }));
 
     const [system, developer] = openRouterBodies()[0].messages;
     expect(system.role).toBe('system');
@@ -382,7 +377,7 @@ describe('POST /api/chat, skills', () => {
     // The security policy still comes after the skill text.
     expect(developer.role).toBe('developer');
     expect(db.message.createMany.mock.calls[0][0].data[0]).toMatchObject({ skills: [{ id: SKILL_ID, name: 'pirate-voice' }] });
-    const counted = recordLLMTokens.mock.calls[0][1];
+    const counted = (events.find((e) => e !== '[DONE]' && 'analytics' in e) as { analytics: { inputTokens: number; totalTokens: number } }).analytics.totalTokens;
     expect(counted).toBeGreaterThan('Explain TCP'.length + 'Slow start doubles cwnd.'.length + 'Answer in pirate speak.'.length);
   });
 
@@ -497,8 +492,6 @@ describe('POST /api/chat, when the answer fails', () => {
     expect(events.some((e) => e !== '[DONE]' && 'error' in e)).toBe(true);
     expect(log).toContain('db:messages:user=Explain TCP');
     expect(log.join()).not.toContain('Error generating response');
-    // The prompt was still sent, so it still counts toward the limit.
-    expect(recordLLMTokens).toHaveBeenCalledTimes(1);
   });
 
   it('a council where nobody answers is an error, not a saved answer', async () => {
@@ -522,7 +515,7 @@ describe('POST /api/chat, when the answer fails', () => {
 });
 
 describe('POST /api/chat, when the user stops', () => {
-  it('cancels the model call, then saves what was written and counts the tokens', async () => {
+  it('cancels the model call, then saves what was written', async () => {
     const stop = new AbortController();
     let upstreamSignal: AbortSignal | undefined;
     fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
@@ -543,8 +536,6 @@ describe('POST /api/chat, when the user stops', () => {
 
     expect(upstreamSignal?.aborted).toBe(true);
     expect(log).toContain('db:messages:user=Explain TCP|assistant=Slow start ');
-    expect(recordLLMTokens).toHaveBeenCalledTimes(1);
-    expect(recordLLMTokens.mock.calls[0][1]).toBeGreaterThan('Explain TCP'.length);
   });
 });
 
@@ -555,7 +546,11 @@ describe('POST /api/chat, when the user steers', () => {
     redis.set.mockImplementation(async (id: string, messages: unknown[]) => void cache.set(id, messages));
     try {
       // The interrupted turn is slow to save, as when Postgres is busy.
-      recordLLMTokens.mockImplementationOnce(() => new Promise((resolve) => setTimeout(resolve, 30)));
+      messageRows.createMany.mockImplementationOnce(async ({ data }) => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        log.push(`db:messages:${data.map((m) => `${m.role}=${m.content}`).join('|')}`);
+        return { count: data.length };
+      });
 
       const steer = new AbortController();
       fetchMock.mockImplementationOnce(async (_url: string, init: RequestInit) => {
@@ -577,7 +572,8 @@ describe('POST /api/chat, when the user steers', () => {
       await Promise.allSettled([firstEvents]);
       await readEvents(steered);
 
-      const steeredBody = openRouterBodies().at(-1);
+      // The last call to the chat model; the first chat's title call may land after it.
+      const steeredBody = openRouterBodies().filter((body) => body.model === 'openai/gpt-6.1-sol').at(-1);
       const sent = steeredBody.messages.map((m: { role: string; content: unknown }) =>
         `${m.role}=${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`);
       expect(sent).toEqual(expect.arrayContaining(['user=Write an essay', 'assistant=Long essay ']));
@@ -687,7 +683,7 @@ Port 3000.`;
     );
   });
 
-  it('counts a failed summarizer request even when the answer uses full history', async () => {
+  it('counts a failed summarizer request in the reply analytics even when the answer uses full history', async () => {
     redis.get.mockResolvedValue(history);
     fetchMock.mockImplementation(async (_url: string, init: RequestInit) => {
       const body = JSON.parse(init.body as string);
@@ -698,12 +694,11 @@ Port 3000.`;
       return sseResponse([delta({ content: 'Fresh answer.' }), '[DONE]']);
     });
 
-    await readEvents(await post({ message: 'And now?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
+    const events = await readEvents(await post({ message: 'And now?', selectedModel: 'openai/gpt-6.1-sol', conversationId: NEW_ID }));
 
     expect(log).toContain('openrouter:summary');
     expect(log).toContain('db:messages:user=And now?|assistant=Fresh answer.');
-    expect(recordLLMTokens).toHaveBeenCalledOnce();
-    const charged = recordLLMTokens.mock.calls[0][1];
+    const charged = (events.find((e) => e !== '[DONE]' && 'analytics' in e) as { analytics: { totalTokens: number } }).analytics.totalTokens;
     const mainPrompt = openRouterBodies().find((body) => body.model === 'openai/gpt-6.1-sol').messages
       .filter((message: { role: string }) => message.role === 'user' || message.role === 'assistant')
       .map((message: { content: string }) => message.content).join('\n');
@@ -739,8 +734,8 @@ Port 3000.`;
 
 describe('POST /api/chat, history cache', () => {
   it('refills an empty cache from the database in one write, and saves the turn in one more', async () => {
-    // A cache that actually caches, so the second history read (after the
-    // rate-limit reservation) hits it instead of the database again.
+    // A cache that actually caches, so a second history read hits it instead
+    // of the database again.
     const cache = new Map<string, unknown[]>();
     redis.get.mockImplementation(async (id: string) => cache.get(id) ?? []);
     redis.set.mockImplementation(async (id: string, messages: unknown[]) => void cache.set(id, [...messages]));

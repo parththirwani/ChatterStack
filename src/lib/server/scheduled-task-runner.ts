@@ -3,7 +3,6 @@ import type { ScheduledTask as TaskRow } from '@prisma/client';
 import { prisma } from '@/src/lib/prisma';
 import { createCompletion } from '@/src/lib/api/chat/openrouter';
 import { addMessagesToConversation } from '@/src/lib/api/chat/conversation-persistance';
-import { countTokens, recordLLMTokens, withLLMTokenLimit } from '@/src/middleware/llmTokenRateLimit';
 import { captureError } from '@/src/lib/observability/capture';
 import { recordRequestSpan } from '@/src/lib/observability/otlp-traces';
 import { formatRunTime } from '@/src/lib/scheduled-tasks/schedule';
@@ -51,14 +50,6 @@ async function executeRun(task: TaskRow, runId: string, trigger: 'schedule' | 'm
   const finishRun = (status: 'succeeded' | 'failed' | 'skipped', error?: string) =>
     prisma.scheduledTaskRun.update({ where: { id: runId }, data: { status, error: error ?? null, finishedAt: new Date() } });
 
-  // Same budget as chat: a run that doesn't fit is skipped, not queued.
-  const limited = await withLLMTokenLimit(task.userId, task.prompt, false);
-  if (limited) {
-    const body = await limited.json().catch(() => ({}));
-    await finishRun('skipped', body.message ?? 'Your daily usage limit was reached.');
-    return;
-  }
-
   let answer = '';
   let failure: unknown;
   let conversationId: string | undefined;
@@ -91,12 +82,6 @@ async function executeRun(task: TaskRow, runId: string, trigger: 'schedule' | 'm
     });
   } catch (error) {
     failure = error;
-  }
-
-  try {
-    await recordLLMTokens(task.userId, countTokens(task.prompt) + countTokens(answer), false);
-  } catch (error) {
-    captureError(error, { route: 'scheduled-task', stage: 'token-record', userId: task.userId });
   }
 
   try {
