@@ -1224,7 +1224,7 @@ export function effectiveThinkingLevel(id: string, preferred: ThinkingLevel): Th
 
 export const COUNCIL_DESCRIPTION = `Up to four models: ${COUNCIL_MODEL_IDS.map(
   (id) => CHAT_MODELS.find((model) => model.id === id)?.name
-).join(', ')}. Daily limit.`;
+).join(', ')}.`;
 
 // Small, fast model for naming chats. Verified on OpenRouter 2026-10-27.
 export const TITLE_MODEL = 'openai/gpt-5.6-luna' as const;

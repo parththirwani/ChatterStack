@@ -42,12 +42,8 @@ vi.mock('@/src/lib/api/chat/rag-integration', () => ({
   retrieveRAGContext: vi.fn(async () => ''),
   ingestConversationData: vi.fn(async () => {}),
 }));
-const withLLMTokenLimit = vi.fn<() => Promise<Response | null>>(async () => null);
-vi.mock('@/src/middleware/llmTokenRateLimit', () => ({
-  withLLMTokenLimit: () => withLLMTokenLimit(),
-  recordLLMTokens: vi.fn(async () => {}),
+vi.mock('@/src/lib/tokens', () => ({
   countTokens: (text: string) => text.length,
-  estimatePromptTokens: (text: string) => text.length,
 }));
 
 type RootSpan = { traceId: string; status: string; httpStatus?: number; error?: unknown; userId?: string; model?: string; answer?: string };
@@ -71,7 +67,6 @@ beforeEach(() => {
   vi.stubEnv('OPENROUTER_API_KEY', 'test-key');
   vi.stubGlobal('fetch', fetchMock);
   auth.mockResolvedValue({ user: { id: 'user-1' } });
-  withLLMTokenLimit.mockReset().mockResolvedValue(null);
   db.message.createMany.mockReset().mockImplementation(async ({ data }: { data: unknown[] }) => ({ count: data.length }));
   fetchMock.mockReset().mockImplementation(async (_url: string, init: RequestInit) => {
     const body = JSON.parse(init.body as string);
@@ -95,10 +90,6 @@ describe('POST /api/chat traces: requests refused before streaming', () => {
     ['signed out', async () => { auth.mockResolvedValue(null); return post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol' }); }, 401],
     ['invalid input', () => post({ message: 'hi', selectedModel: 'evil/model' }), 400],
     ["someone else's conversation", () => post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol', conversationId: OTHER_USERS_CHAT }), 404],
-    ['rate limited', async () => {
-      withLLMTokenLimit.mockResolvedValue(new Response('{}', { status: 429 }));
-      return post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol' });
-    }, 429],
   ])('%s: answers %i and records a rejected root span', async (_label, send, status) => {
     const response = await send();
     expect(response.status).toBe(status);
@@ -110,13 +101,6 @@ describe('POST /api/chat traces: requests refused before streaming', () => {
     const response = await post('{not json');
     expect(response.status).toBe(400);
     expect(rootSpans[0]).toMatchObject({ status: 'rejected', httpStatus: 400, userId: 'user-1' });
-  });
-
-  it('records a limiter outage (503) as an error', async () => {
-    withLLMTokenLimit.mockResolvedValue(new Response('{}', { status: 503 }));
-    const response = await post({ message: 'hi', selectedModel: 'openai/gpt-6.1-sol' });
-    expect(response.status).toBe(503);
-    expect(rootSpans[0]).toMatchObject({ status: 'error', httpStatus: 503 });
   });
 });
 

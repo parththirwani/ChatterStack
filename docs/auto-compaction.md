@@ -52,9 +52,8 @@ after the boundary do not affect it.
 - Empty, malformed, section-less, over-long or non-shrinking summaries are
   rejected. The route falls back to the pre-existing view when it fits.
 - A summarizer timeout or abort leaves the transcript and the previous snapshot
-  unchanged. An attempted summarizer request is included in token settlement.
-- A compaction call that already ran is settled against the daily token limit,
-  even when the turn fails before the provider call.
+  unchanged. An attempted summarizer request is included in the reply's token
+  analytics.
 - The soft trigger does not reject a turn: below the hard budget, the full
   history is still used if a summary is unavailable.
 - `off` bypasses snapshot use for new turns (kill switch) without deleting
@@ -72,9 +71,6 @@ after the boundary do not affect it.
 
 The summary output is capped at 1,600 tokens and the summarizer input is chunked
 to fit its own context window. Successive chunks roll into one summary.
-The default 4,000-token rolling daily limit cannot admit most compaction turns
-because their reservation includes the old history, summary output, and answer.
-Set `LLM_DAILY_TOKEN_LIMIT` high enough for those calls before enabling `on`.
 
 ## Observability
 
@@ -96,6 +92,5 @@ its tooltip; the note is live-session only.
   "refresh context" or retrieval-by-message-id control yet.
 - Image/PDF token estimates are conservative allowances, not provider-exact
   multimodal counts. The safety margin absorbs the common cases.
-- The summarizer is an extra paid call and is included in the rate-limit
-  reservation and reconciliation. The UI analytics for the reply include it in
-  the reported input/output totals.
+- The summarizer is an extra paid call. The UI analytics for the reply include
+  it in the reported input/output totals.

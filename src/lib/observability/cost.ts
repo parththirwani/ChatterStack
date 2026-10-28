@@ -1,4 +1,4 @@
-import { encode } from 'gpt-tokenizer';
+import { countTokens } from '@/src/lib/tokens';
 import { CHAT_MODELS } from '@/src/config/models';
 
 type ModelPricing = { prompt: number; completion: number };
@@ -7,14 +7,9 @@ const PRICING = new Map<string, ModelPricing>(
   CHAT_MODELS.map((model) => [model.id as string, model.pricing as ModelPricing])
 );
 
-/** Same tokenizer the rate limiter uses, with a cheap fallback for odd input. */
+/** Tokens in `text`, counted the same way as chat context budgets. */
 export function estimateTokens(text: string): number {
-  if (!text) return 0;
-  try {
-    return encode(text).length;
-  } catch {
-    return Math.ceil(text.length / 4);
-  }
+  return text ? countTokens(text) : 0;
 }
 
 export function pricingFor(model: string): { prompt: number; completion: number } | undefined {

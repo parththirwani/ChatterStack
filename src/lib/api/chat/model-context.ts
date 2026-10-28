@@ -3,7 +3,7 @@ import {
   COUNCIL_MODEL_IDS,
   type ThinkingLevel,
 } from '@/src/config/models';
-import { countTokens, withLLMTokenLimit } from '@/src/middleware/llmTokenRateLimit';
+import { countTokens } from '@/src/lib/tokens';
 import {
   buildSystemContext,
   formatActiveSkills,
@@ -31,7 +31,6 @@ import {
   contentTokens,
   inputBudgetFor,
   messagesTokens,
-  outputTokenCap,
 } from './prompt-budget';
 import { streamCompletion } from './openrouter';
 
@@ -76,11 +75,10 @@ export interface PrepareContextInput {
 }
 
 export type PrepareContextResult =
-  | { ok: false; status: number; error: string; usage: TokenUsage; reservedTokens?: number; response?: Response }
+  | { ok: false; status: number; error: string; usage: TokenUsage }
   | {
       ok: true;
       history: ContextMessage[];
-      estimateText: string;
       usage: TokenUsage;
       mode: CompactionMode;
       compaction?: CompactionInfo;
@@ -199,8 +197,7 @@ export type PlanRejection = { kind: 'reject'; error: string };
 
 /**
  * Pure planning step: decides whether the next request needs a snapshot and
- * which messages the summary would cover. The model call happens later, after
- * the token reservation.
+ * which messages the summary would cover. The model call happens later.
  */
 export function planContextView(params: {
   history: ContextMessage[];
@@ -413,19 +410,6 @@ function summaryChunks(messages: readonly ContextMessage[], model: string): stri
   return chunkTranscript(messages, chunkBudget);
 }
 
-function summaryTokenReserve(chunks: readonly string[], model: string, priorSummary = ''): number {
-  return chunks.reduce((total, chunk, index) => {
-    const baseInput = messagesTokens([
-      { role: 'system', content: SUMMARY_SYSTEM },
-      { role: 'user', content: buildSummaryPrompt('', chunk) },
-    ]);
-    const carriedSummary = index === 0
-      ? countTokens(priorSummary) + (priorSummary ? 32 : 0)
-      : COMPACTION_LIMITS.summaryMaxTokens + 32;
-    return total + baseInput + carriedSummary + outputTokenCap(model, 'off');
-  }, 0);
-}
-
 async function generateSummary(params: {
   priorSummary?: string;
   chunks: readonly string[];
@@ -476,16 +460,7 @@ async function generateSummary(params: {
   return summary;
 }
 
-/** Mirrors `estimatePromptTokens` for a projected input plus its likely answer. */
-export function estimateRequestTokens(inputTokens: number, isCouncil: boolean): number {
-  const multiplier = isCouncil ? 4 : 2.5;
-  return inputTokens + Math.ceil(inputTokens * multiplier);
-}
-
-/**
- * Plans and (when allowed) generates the model view, reserving the projected
- * answer plus the summarizer call before any paid call is made.
- */
+/** Plans and (when allowed) generates the model view. */
 export async function prepareModelContext(input: PrepareContextInput): Promise<PrepareContextResult> {
   const mode = compactionMode();
   const historyIds = input.history
@@ -530,44 +505,19 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
     return { ok: false, status: 413, error: plan.error, usage: { input: 0, output: 0 } };
   }
 
-  const estimateText = [
-    ...plan.fallbackHistory.map((message) => message.content),
-    input.message,
-    ...input.currentParts.filter((part) => part.type === 'text').map((part) => part.text),
-  ].join('\n');
-
   if (plan.kind === 'none') {
-    const estimated = estimateRequestTokens(plan.viewTokens, input.isCouncil);
-    const denied = await withLLMTokenLimit(input.userId, estimateText, input.isCouncil, estimated);
-    if (denied) return rateLimited(denied);
-
     return {
       ok: true,
       history: plan.history,
-      estimateText,
       usage: { input: 0, output: 0 },
       mode,
     };
   }
 
   if (plan.kind === 'existing' && plan.previous) {
-    const after =
-      plan.systemTokens +
-      summaryBlockTokens(plan.previous.summaryText) +
-      messagesTokens(plan.keep) +
-      plan.currentTokens;
-    const denied = await withLLMTokenLimit(
-      input.userId,
-      estimateText,
-      input.isCouncil,
-      estimateRequestTokens(after, input.isCouncil)
-    );
-    if (denied) return rateLimited(denied);
-
     return {
       ok: true,
       history: [summaryBlockMessage(plan.previous.summaryText), ...plan.keep],
-      estimateText,
       usage: { input: 0, output: 0 },
       mode,
       compaction: {
@@ -593,17 +543,9 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
   // Without stable message ids the boundary cannot be persisted safely.
   if (plan.summarize.some((message) => !message.id)) {
     if (plan.viewTokens <= budget) {
-      const denied = await withLLMTokenLimit(
-        input.userId,
-        estimateText,
-        input.isCouncil,
-        estimateRequestTokens(plan.viewTokens, input.isCouncil)
-      );
-      if (denied) return rateLimited(denied);
       return {
         ok: true,
         history: plan.fallbackHistory,
-        estimateText,
         usage: { input: 0, output: 0 },
         mode,
       };
@@ -616,34 +558,16 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
     };
   }
 
-  // Reserve the projected answer and the summarizer before paying for either.
   let chunks: string[];
-  let summarizerReserve: number;
   try {
     chunks = summaryChunks(plan.summarize, compactionModel());
-    summarizerReserve = summaryTokenReserve(chunks, compactionModel(), plan.previous?.summaryText);
   } catch (error) {
     captureError(error, { route: '/api/chat', stage: 'compaction-budget', userId: input.userId });
     if (plan.viewTokens > budget) {
       return { ok: false, status: 503, error: 'Could not prepare compaction for this conversation. Please retry.', usage: { input: 0, output: 0 } };
     }
-    const denied = await withLLMTokenLimit(
-      input.userId, estimateText, input.isCouncil,
-      estimateRequestTokens(plan.viewTokens, input.isCouncil)
-    );
-    if (denied) return rateLimited(denied);
-    return { ok: true, history: plan.fallbackHistory, estimateText, usage: { input: 0, output: 0 }, mode };
+    return { ok: true, history: plan.fallbackHistory, usage: { input: 0, output: 0 }, mode };
   }
-  const reservedTokens =
-    estimateRequestTokens(plan.projectedTokens, input.isCouncil) + summarizerReserve;
-  const denied = await withLLMTokenLimit(
-    input.userId,
-    estimateText,
-    input.isCouncil,
-    reservedTokens
-  );
-  if (denied) return rateLimited(denied);
-
   const summaryUsage: TokenUsage = { input: 0, output: 0 };
   let summary: string;
   try {
@@ -656,7 +580,7 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
     });
   } catch (error) {
     captureError(error, { route: '/api/chat', stage: 'compaction-summary', userId: input.userId });
-    return fallbackAfterFailedSummary(plan, estimateText, input, summaryUsage, reservedTokens);
+    return fallbackAfterFailedSummary(plan, summaryUsage);
   }
 
   const validation = validateSummary(summary, plan.sourceTokens);
@@ -666,7 +590,7 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
       stage: 'compaction-validation',
       userId: input.userId,
     });
-    return fallbackAfterFailedSummary(plan, estimateText, input, summaryUsage, reservedTokens);
+    return fallbackAfterFailedSummary(plan, summaryUsage);
   }
 
   const through = plan.summarize.at(-1);
@@ -681,7 +605,6 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
       status: 413,
       error: tooLargeMessage(afterTokens, budget),
       usage: summaryUsage,
-      reservedTokens,
     };
   }
 
@@ -717,7 +640,6 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
   return {
     ok: true,
     history: [summaryBlockMessage(summary), ...plan.keep],
-    estimateText,
     usage: summaryUsage,
     mode,
     compaction: {
@@ -732,10 +654,7 @@ export async function prepareModelContext(input: PrepareContextInput): Promise<P
 
 function fallbackAfterFailedSummary(
   plan: Extract<ContextPlan, { kind: 'compact' }>,
-  estimateText: string,
-  input: PrepareContextInput,
-  usage: TokenUsage,
-  reservedTokens: number
+  usage: TokenUsage
 ): PrepareContextResult {
   // The pre-compaction view is safe only when it fits the budget.
   if (plan.viewTokens > plan.budget) {
@@ -744,25 +663,13 @@ function fallbackAfterFailedSummary(
       status: 503,
       error: 'Could not compact this conversation before sending it. Please retry.',
       usage,
-      reservedTokens,
     };
   }
   return {
     ok: true,
     history: plan.fallbackHistory,
-    estimateText,
     usage,
     mode: 'on',
-  };
-}
-
-function rateLimited(response: Response): PrepareContextResult {
-  return {
-    ok: false,
-    status: response.status,
-    error: 'Rate limit exceeded',
-    usage: { input: 0, output: 0 },
-    response,
   };
 }
 

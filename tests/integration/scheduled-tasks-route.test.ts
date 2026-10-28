@@ -69,19 +69,12 @@ const db = {
 const auth = vi.fn();
 const createCompletion = vi.fn<(...args: unknown[]) => Promise<string>>(async () => 'Here is your brief.');
 const addMessages = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
-const limit = vi.fn<(...args: unknown[]) => Promise<Response | null>>(async () => null);
-const recordTokens = vi.fn<(...args: unknown[]) => Promise<void>>(async () => {});
 const afterCallbacks: Array<() => Promise<void>> = [];
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));
 vi.mock('@/src/lib/prisma', () => ({ prisma: db }));
 vi.mock('@/src/lib/api/chat/openrouter', () => ({ createCompletion: (...args: unknown[]) => createCompletion(...args) }));
 vi.mock('@/src/lib/api/chat/conversation-persistance', () => ({ addMessagesToConversation: (...args: unknown[]) => addMessages(...args) }));
-vi.mock('@/src/middleware/llmTokenRateLimit', () => ({
-  withLLMTokenLimit: (...args: unknown[]) => limit(...args),
-  recordLLMTokens: (...args: unknown[]) => recordTokens(...args),
-  countTokens: (text: string) => text.length,
-}));
 vi.mock('@/src/lib/observability/otlp-traces', () => ({ recordRequestSpan: () => {} }));
 vi.mock('@/src/lib/observability/capture', () => ({ captureError: () => {} }));
 vi.mock('next/server', () => ({ after: (fn: () => Promise<void>) => { afterCallbacks.push(fn); } }));
@@ -114,7 +107,6 @@ beforeEach(() => {
   afterCallbacks.length = 0;
   vi.clearAllMocks();
   createCompletion.mockResolvedValue('Here is your brief.');
-  limit.mockResolvedValue(null);
   signIn();
 });
 
@@ -195,7 +187,6 @@ describe('Run now', () => {
     const [messages, model] = createCompletion.mock.calls[0] as [Array<{ content: string }>, string];
     expect(model).toBe(input.model);
     expect(messages[0].content).toMatch(/^This is the scheduled task "Morning brief", started by hand with Run now at .+\(UTC\), outside its usual schedule\.\n\nSummarize AI news\.$/);
-    expect(recordTokens).toHaveBeenCalledWith('user-1', 'Summarize AI news.'.length + 'Here is your brief.'.length, false);
   });
 
   it('drops the link to a run chat the user deleted', async () => {
@@ -246,15 +237,6 @@ describe('scheduler', () => {
     expect(createCompletion).not.toHaveBeenCalled();
   });
 
-  it('skips a run over the usage limit, with the limit message', async () => {
-    limit.mockResolvedValue(Response.json({ message: 'Daily limit reached. Try again in 3 hours.' }, { status: 429 }));
-    const task = await createTask();
-    makeDue(task.id);
-    await runDueTasks();
-    expect(runs()[0]).toMatchObject({ status: 'skipped', error: 'Daily limit reached. Try again in 3 hours.', conversationId: null });
-    expect(createCompletion).not.toHaveBeenCalled();
-  });
-
   it('records a failed run and keeps the question in its chat', async () => {
     createCompletion.mockRejectedValue(new Error('OpenRouter API error: 502'));
     const task = await createTask();
@@ -262,8 +244,6 @@ describe('scheduler', () => {
     await runDueTasks();
     expect(runs()[0]).toMatchObject({ status: 'failed', error: 'OpenRouter API error: 502' });
     expect(addMessages).toHaveBeenCalledWith(runs()[0].conversationId, 'Summarize AI news.', '', input.model);
-    // Tokens are still counted for a failed call.
-    expect(recordTokens).toHaveBeenCalled();
   });
 
   it('fails runs left running by a crashed process', async () => {

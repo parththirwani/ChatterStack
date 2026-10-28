@@ -18,7 +18,6 @@ export const AnalyticsEvents = {
   DocumentFavorited: 'document_favorited',
   DocumentDeleted: 'document_deleted',
   ModelChanged: 'model_changed',
-  RateLimitHit: 'rate_limit_hit',
 } as const;
 
 export type AnalyticsEventName = (typeof AnalyticsEvents)[keyof typeof AnalyticsEvents];
@@ -79,11 +78,6 @@ export interface ModelChangedProps {
   model_id: string;
 }
 
-export interface RateLimitHitProps {
-  council: boolean;
-  limit: 'tokens' | 'council';
-}
-
 /** Every event name mapped to the exact properties it may carry. */
 export interface AnalyticsEventProps {
   sign_in_started: SignInStartedProps;
@@ -98,7 +92,6 @@ export interface AnalyticsEventProps {
   document_favorited: DocumentFavoritedProps;
   document_deleted: Record<string, never>;
   model_changed: ModelChangedProps;
-  rate_limit_hit: RateLimitHitProps;
 }
 
 export function messageLengthBucket(length: number): MessageLengthBucket {

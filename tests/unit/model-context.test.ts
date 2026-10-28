@@ -8,7 +8,7 @@ import {
   type ContextMessage,
 } from '@/src/lib/api/chat/model-context';
 import { hashContextSource, type ContextSnapshot } from '@/src/lib/api/chat/context-snapshot';
-import { countTokens } from '@/src/middleware/llmTokenRateLimit';
+import { countTokens } from '@/src/lib/tokens';
 
 const snapshot = (overrides: Partial<ContextSnapshot> = {}): ContextSnapshot => ({
   id: 'snap-1',

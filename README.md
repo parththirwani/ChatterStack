@@ -1,6 +1,6 @@
 # ChatterStack
 
-ChatterStack is a Next.js chat app with single-model conversations and a four-model AI Council. Chats use OpenRouter, with PostgreSQL for history, Redis for rate limits, and Qdrant for optional retrieval.
+ChatterStack is a Next.js chat app with single-model conversations and a four-model AI Council. Chats use OpenRouter, with PostgreSQL for history, Redis for the chat history cache and request rate limits, and Qdrant for optional retrieval.
 
 ## Models
 
@@ -38,16 +38,10 @@ npm run dev
 
 ## Rate limiting
 
-Free-tier usage is capped per user over a rolling 24-hour window: 4,000 LLM
-tokens and 2 AI Council messages. The counters live in Redis (one sorted set
-per user), so the caps hold across serverless instances and survive cold
-starts. A request atomically reserves an estimate of its full prompt with a
-Lua script and the actual usage is reconciled afterwards, so concurrent
-requests can't both spend the same budget. If Redis is unavailable the
-limiter fails closed with a 503 in production; in development and tests it
-falls back to in-process counters with a console warning. The limiter's
-integration-style tests run automatically when `REDIS_URL` (or
-`REDIS_TEST_URL`) points at a reachable server, and skip otherwise.
+There are no per-user token or AI Council quotas: chats, retries, compaction
+and scheduled runs are not capped by usage. Each request is still bounded by
+the selected model's context window, and the RAG and profile API routes keep
+their per-minute request limits.
 
 ## Resources and document storage
 
@@ -101,7 +95,7 @@ Claude accepts. The UI follows claude.ai's Customize → Skills.
   your turned-on skills. The skill stays in the message as a highlighted
   `/name` token; up to three apply per message. Their instructions are added
   to the system prompt for that message only (in single-model and Council
-  chats) and count toward the daily token limit.
+  chats).
 - **Skill page:** Overview and Contents (rendered SKILL.md and files), and
   Try in chat, Edit with AI, Edit, Replace, Duplicate, Download (`.zip`) and
   Remove.
@@ -125,8 +119,7 @@ news brief every weekday at 9:00. The UI follows Claude's scheduled tasks.
   new chat titled with the task name; click a run to open it and carry on.
   Run chats stay out of Recents. Deleting a task keeps them as ordinary chats.
 - **Runs:** each run sends the saved prompt, with the run's local date and
-  time, to the chosen model. Runs count toward the daily token limit; a run
-  that doesn't fit is skipped and History says why. Missed runs catch up
+  time, to the chosen model. Missed runs catch up
   once, and a run is skipped while the previous one is still going.
 
 Something has to wake the scheduler every minute:
@@ -187,9 +180,6 @@ not a system instruction, and the full transcript remains visible and saved.
 - `COMPACTION_MODEL` defaults to `openai/gpt-4o-mini`. Summaries are capped at
   1,600 tokens and validated; an empty, malformed or inflated summary leaves
   the previous context untouched.
-- The 4,000-token daily limit is below the reservation needed for a typical
-  compaction turn. Set `LLM_DAILY_TOKEN_LIMIT` to a value that covers the
-  expected full prompt, summary calls, and answer before enabling `on`.
 - Snapshots live in `conversation_context_snapshots`, keyed by conversation and
   the last summarized message. Switching models cannot reuse a snapshot that
   no longer fits: the budget is rebuilt for the new model before the call.
@@ -197,7 +187,6 @@ not a system instruction, and the full transcript remains visible and saved.
 - `off` is the kill switch: new turns ignore snapshots, but the transcript and
   stored snapshots are not deleted.
 
-Compaction calls are reserved against the daily token limit before they run.
 See [docs/auto-compaction.md](docs/auto-compaction.md) for the design,
 defaults and known limits.
 
@@ -330,7 +319,7 @@ dropped and counted instead of blocking later traces). The root span
 `council-chair`, `title-generation`), `db.persist`, `rag.ingest` (with its
 embeddings) and `profile.update`. Model spans carry `gen_ai.*` attributes for
 model, tokens and finish reason, plus cost and time to first token. Requests
-refused before streaming (sign-in, validation, ownership, rate limit) are a
+refused before streaming (sign-in, validation, ownership) are a
 root span alone with status `rejected` and `http.response.status_code`.
 
 With `OPENOBSERVE_TRACE_CONTENT=true`, model and root spans also carry the

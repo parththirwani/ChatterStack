@@ -57,7 +57,6 @@ describe('isExpectedError', () => {
   });
 
   it('drops rate-limit rejections and plain unauthorized responses', () => {
-    expect(isExpectedError(new Error("You've used your daily token limit. Try again in 3 hours."))).toBe(true);
     expect(isExpectedError(new Error('Rate limit exceeded'))).toBe(true);
     expect(isExpectedError(new Error('Unauthorized'))).toBe(true);
   });

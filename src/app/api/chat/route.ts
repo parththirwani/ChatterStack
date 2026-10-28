@@ -16,7 +16,7 @@ import { truncateToTokenBudget } from '@/src/lib/api/chat/prompt-budget';
 import { prisma } from '@/src/lib/prisma';
 import { MESSAGE_ORDER } from '@/src/lib/server/message-order';
 
-import { recordLLMTokens, countTokens, estimatePromptTokens } from '@/src/middleware/llmTokenRateLimit';
+import { countTokens } from '@/src/lib/tokens';
 import { captureError } from '@/src/lib/observability/capture';
 import { recordRequestSpan, traceStep } from '@/src/lib/observability/otlp-traces';
 import { AnalyticsEvents, chatMessageRetriedProps, chatMessageSentProps, chatResponseCompletedProps, councilRunCompletedProps, type ChatResponseOutcome } from '@/src/lib/analytics/events';
@@ -121,13 +121,14 @@ export async function POST(request: NextRequest) {
   const traced: { userId?: string; model?: string; council?: boolean; conversationId?: string } = {};
   // A request answered without streaming (rejected, or failed before the stream)
   // still gets a root-only trace, so throttled and refused requests are visible.
-  const finish = (response: Response, error?: unknown) => {
+  const finish = (response: Response, error?: unknown, attributes?: Parameters<typeof recordRequestSpan>[0]['attributes']) => {
     recordRequestSpan({
       traceId,
       startedAt: requestStartedAt,
       status: response.status >= 500 ? 'error' : 'rejected',
       httpStatus: response.status,
       error,
+      attributes,
       ...traced,
     });
     return response;
@@ -188,12 +189,12 @@ export async function POST(request: NextRequest) {
       if (error instanceof SkillError) return finish(jsonError(error.message, error.status));
       throw error;
     }
-    // Sent in the system prompt, so it counts toward the limit like the message.
+    // Sent in the system prompt, so it counts toward the prompt like the message.
     const skillText = formatActiveSkills(skills);
 
     // Check (or claim) the conversation before streaming anything: the id
     // comes from the client, so it must belong to this user. Ownership is
-    // verified before any history is read or budget is reserved.
+    // verified before any history is read.
     if (!isNewConversation) {
       const owned = await prisma.conversation.findFirst({
         where: { id: conversationId, userId },
@@ -202,7 +203,7 @@ export async function POST(request: NextRequest) {
       if (!owned) return finish(jsonError('Conversation not found', 404));
     }
 
-    // Planning, compaction and the token reservation all need the latest
+    // Planning and compaction both need the latest
     // history, so they run under the conversation turn lock before streaming.
     // A refusal still gets a normal HTTP status instead of an SSE error.
     const turn = beginConversationTurn(conversationId);
@@ -211,7 +212,6 @@ export async function POST(request: NextRequest) {
       rawHistory: RedisMessage[];
       messageWithRag: string;
       ragUsed: boolean;
-      estimateText: string;
       usage: { input: number; output: number };
       compaction?: CompactionInfo;
     };
@@ -252,26 +252,12 @@ export async function POST(request: NextRequest) {
       });
 
       if (!context.ok) {
-        if (context.response) {
-          if (context.response.status === 429) {
-            captureServerEvent(userId, AnalyticsEvents.RateLimitHit, {
-              council: isCouncilMode,
-              limit: context.response.headers.get('X-RateLimit-Limit-Type') === 'council' ? 'council' : 'tokens',
-            });
-          }
-          turn.end();
-          return finish(context.response); // 429/503 with the detailed token info
-        }
-
-        // A summarizer call may already have been made; settle what it used.
-        const settled = context.usage.input + context.usage.output || context.reservedTokens || 0;
-        if (settled > 0) {
-          await recordLLMTokens(userId, settled, isCouncilMode).catch((error) =>
-            captureError(error, { route: '/api/chat', stage: 'token-settle', userId })
-          );
-        }
         turn.end();
-        return finish(jsonError(context.error, context.status));
+        // A summarizer call may already have run before the turn was refused.
+        return finish(jsonError(context.error, context.status), undefined, context.usage.input + context.usage.output > 0 ? {
+          'chatterstack.compaction_input_tokens': context.usage.input,
+          'chatterstack.compaction_output_tokens': context.usage.output,
+        } : undefined);
       }
 
       prepared = {
@@ -279,7 +265,6 @@ export async function POST(request: NextRequest) {
         rawHistory,
         messageWithRag,
         ragUsed: Boolean(ragContext),
-        estimateText: context.estimateText,
         usage: context.usage,
         compaction: context.compaction,
       };
@@ -299,14 +284,12 @@ export async function POST(request: NextRequest) {
         }));
       }
 
-      // Claim a new chat only once the budget is reserved; a rejected claim
-      // releases the reservation again (0 tokens) so it is not wasted.
+      // Claim a new chat only once the context is ready.
       if (isNewConversation) {
         try {
           await createEmptyConversation(conversationId, userId);
           captureServerEvent(userId, AnalyticsEvents.ConversationCreated, { council: isCouncilMode });
         } catch (error) {
-          await recordLLMTokens(userId, 0, isCouncilMode).catch(() => {});
           turn.end();
           if (isUniqueViolation(error)) return finish(jsonError('Conversation already exists', 409));
           throw error;
@@ -318,9 +301,6 @@ export async function POST(request: NextRequest) {
     }
 
     const respond = async ({ send, signal }: SSEStream) => {
-      // The reservation from prepareModelContext must never be left dangling:
-      // whichever path `respond` exits through, usage is recorded.
-      let usageRecorded = false;
       // The request's root span in OpenObserve traces: question, answer, outcome.
       let requestAnswer = '';
       let requestStatus: 'ok' | 'error' | 'aborted' = 'error';
@@ -363,7 +343,7 @@ export async function POST(request: NextRequest) {
       })));
 
       // On Stop/disconnect the model call is cancelled and resolves with the
-      // text written so far, which is still saved and counted below.
+      // text written so far, which is still saved below.
       let fullContent = '';
       const modelStartedAt = Date.now();
       // Council mode measures every member call, so the total can be broken
@@ -372,13 +352,6 @@ export async function POST(request: NextRequest) {
       const promptText = messagesForAI
         .map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n'))
         .join('\n');
-      let measured: { input: number; output: number } | undefined;
-      // Counted once and shared by the analytics event and the rate-limit record.
-      const measureTokens = () =>
-        measured ??= {
-          input: countTokens(skillText) + countTokens(promptText) + prepared.usage.input,
-          output: countTokens(fullContent) + prepared.usage.output,
-        };
       let outcome: ChatResponseOutcome = 'success';
       try {
         fullContent = isCouncilMode
@@ -426,7 +399,8 @@ export async function POST(request: NextRequest) {
         // Tokens and timing of the reply that just finished, for the client to
         // show under it. A counting failure must never lose the answer.
         try {
-          const { input, output } = measureTokens();
+          const input = countTokens(skillText) + countTokens(promptText) + prepared.usage.input;
+          const output = countTokens(fullContent) + prepared.usage.output;
           const analytics: CompletionAnalytics = {
             durationMs: Date.now() - modelStartedAt,
             inputTokens: input,
@@ -462,16 +436,6 @@ export async function POST(request: NextRequest) {
           startedAt: modelStartedAt,
           outcome,
         }));
-      }
-
-      // Count every call, including stopped and failed ones: the prompt was
-      // still sent, and skipping this would let Stop bypass the rate limit.
-      try {
-        usageRecorded = true;
-        const { input, output } = measureTokens();
-        await recordLLMTokens(userId, input + output, isCouncilMode);
-      } catch (error) {
-        captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-record', userId });
       }
 
       let exchange: RedisMessage[] = [
@@ -571,17 +535,6 @@ export async function POST(request: NextRequest) {
             'chatterstack.context_tokens_after': prepared.compaction?.inputTokensAfter,
           },
         });
-        if (!usageRecorded) {
-          // Failed before the model call (e.g. attachment rendering):
-          // settle the reservation so it is not stuck against the window.
-          await recordLLMTokens(
-            userId,
-            estimatePromptTokens(prepared.estimateText, isCouncilMode) + prepared.usage.input + prepared.usage.output,
-            isCouncilMode
-          ).catch((error) =>
-            captureError(error, { route: '/api/chat', model: selectedModel, council: isCouncilMode, stage: 'token-release', userId })
-          );
-        }
       }
     };
 

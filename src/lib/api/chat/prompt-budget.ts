@@ -1,5 +1,5 @@
 import { effectiveThinkingLevel, getModel, type ThinkingLevel } from '@/src/config/models';
-import { countTokens } from '@/src/middleware/llmTokenRateLimit';
+import { countTokens } from '@/src/lib/tokens';
 import type { OpenRouterPart } from './attachments';
 
 type PromptMessage = { role: string; content: string | OpenRouterPart[] };

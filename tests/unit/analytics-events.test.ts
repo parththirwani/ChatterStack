@@ -24,7 +24,6 @@ describe('event names', () => {
       'document_favorited',
       'document_deleted',
       'model_changed',
-      'rate_limit_hit',
     ]);
     for (const name of Object.values(AnalyticsEvents)) {
       expect(name).toMatch(/^[a-z0-9_]+$/);

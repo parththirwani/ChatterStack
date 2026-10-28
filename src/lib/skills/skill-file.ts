@@ -9,8 +9,7 @@ import { z } from 'zod';
 export const MAX_SKILL_NAME = 64;
 export const MAX_SKILL_DESCRIPTION = 1024;
 // Large enough for real Agent Skills. Skill text is sent with every message
-// it's tagged on and counts toward the daily token limit; the editor shows
-// the cost per use.
+// it's tagged on, so it adds to each prompt; the editor shows the cost per use.
 export const MAX_SKILL_INSTRUCTIONS = 60000;
 export const MAX_SKILLS_PER_USER = 50;
 export const MAX_SKILLS_PER_MESSAGE = 3;

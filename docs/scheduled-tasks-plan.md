@@ -20,7 +20,7 @@ The feature follows Claude's scheduled tasks (Cowork, and Claude Code's cloud an
 | A run that starts while the previous one is still going is skipped (Desktop) | Same |
 | **Create with Claude** (describe it in a chat) | Not yet: needs tool calling in the chat route |
 | Approval mode, folder, repositories, connectors, API and GitHub triggers, one-off runs | Not applicable or not yet |
-| Runs count against usage limits | Runs count against the same daily token budget as chats. A run over the budget is skipped with the limit message. |
+| Runs count against usage limits | No usage limits for now; runs are not capped. |
 
 ## 2. Data model
 
