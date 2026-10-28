@@ -276,6 +276,8 @@ async function sendToConversation(
             ),
           });
         },
+        onContextCompacted: (info) =>
+          patchStreamingMessage(() => ({ contextCompacted: info })),
       },
       abortController.signal
     );

@@ -4,7 +4,7 @@ import { Role } from '@/src/types/chat.types';
 import type { DocumentAttachment } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
 import type { Prisma } from '@prisma/client';
-import { randomUUID } from 'crypto';
+import crypto from 'crypto';
 
 
 /**
@@ -27,10 +27,23 @@ async function firstFreePosition(tx: Prisma.TransactionClient, conversationId: s
   return nextPosition(highest._max.position, rows);
 }
 
+export interface SavedMessage {
+  id: string;
+  role: Role;
+  content: string;
+  modelId?: string | null;
+  attachments?: unknown;
+  createdAt: Date;
+  position?: number;
+}
+
 /**
  * Save one exchange. `aiResponse` is empty when the model failed or the user
  * stopped it before any text arrived: then only the question is kept, which
  * matches what the client shows (the question and an error, no answer).
+ *
+ * The rows keep their generated ids in the returned value, so the route can
+ * cache the same ids that the compaction boundary later refers to.
  */
 export async function addMessagesToConversation(
   conversationId: string,
@@ -39,15 +52,29 @@ export async function addMessagesToConversation(
   selectedModel: string,
   attachments: DocumentAttachment[] = [],
   skills: SkillTag[] = []
-) {
+): Promise<SavedMessage[]> {
   const userMessageTime = new Date();
   const aiMessageTime = new Date(userMessageTime.getTime() + 1);
-  const userMessageId = randomUUID();
-  const assistantMessageId = aiResponse ? randomUUID() : undefined;
-  const messages = [
-    { id: userMessageId, conversationId, content: userMessage, role: Role.User, attachments: attachments as unknown as Prisma.InputJsonValue, ...(skills.length ? { skills: skills as unknown as Prisma.InputJsonValue } : {}), createdAt: userMessageTime },
+  type MessageInput = SavedMessage & { conversationId: string; skills?: Prisma.InputJsonValue };
+  const messages: MessageInput[] = [
+    {
+      id: crypto.randomUUID(),
+      conversationId,
+      content: userMessage,
+      role: Role.User,
+      attachments: attachments as unknown as Prisma.InputJsonValue,
+      ...(skills.length ? { skills: skills as unknown as Prisma.InputJsonValue } : {}),
+      createdAt: userMessageTime,
+    },
     ...(aiResponse
-      ? [{ id: assistantMessageId!, conversationId, content: aiResponse, role: Role.Assistant, modelId: selectedModel, createdAt: aiMessageTime }]
+      ? [{
+          id: crypto.randomUUID(),
+          conversationId,
+          content: aiResponse,
+          role: Role.Assistant,
+          modelId: selectedModel,
+          createdAt: aiMessageTime,
+        }]
       : []),
   ];
 
@@ -58,11 +85,13 @@ export async function addMessagesToConversation(
     // a transaction alone still lets two writers choose the same position.
     await tx.$queryRaw`SELECT id FROM conversations WHERE id = ${conversationId} FOR UPDATE`;
     const position = await firstFreePosition(tx, conversationId);
-    await tx.message.createMany({ data: messages.map((message, index) => ({ ...message, position: position + index })) });
+    messages.forEach((message, index) => { message.position = position + index; });
+    await tx.message.createMany({ data: messages as unknown as Prisma.MessageCreateManyInput[] });
     // Bump activity so the chat sorts by its latest message.
     await tx.conversation.update({ where: { id: conversationId }, data: { updatedAt: messages[messages.length - 1].createdAt } });
   });
-  return { userMessageId, assistantMessageId };
+
+  return messages;
 }
 
 /**

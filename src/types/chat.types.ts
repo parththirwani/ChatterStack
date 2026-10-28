@@ -22,6 +22,8 @@ export interface Message {
   analytics?: CompletionAnalytics;
   council?: CouncilDetails;
   attachments?: AttachmentMeta[];
+  /** Live-session only: older turns were summarized before this reply. */
+  contextCompacted?: ContextCompactionInfo;
   /** Skills tagged on a user message. */
   skills?: SkillTag[];
   /** Row order within the saved chat; absent on unsent or legacy messages. */
@@ -87,6 +89,14 @@ export interface CompletionAnalytics {
   totalTokens: number;
   /** Council mode: per-model timings behind `durationMs`. */
   timings?: ModelTiming[];
+}
+
+/** The model view for this turn used a summary of older turns. */
+export interface ContextCompactionInfo {
+  throughMessageId: string;
+  inputTokensBefore: number;
+  inputTokensAfter: number;
+  summaryTokens: number;
 }
 
 export interface ChatSettings {
@@ -207,4 +217,6 @@ export interface SSEData {
   analytics?: CompletionAnalytics;
   /** Database ids for the exchange just saved. */
   savedMessages?: { userMessageId: string; assistantMessageId?: string };
+  /** Older turns were summarized for this request. */
+  contextCompacted?: ContextCompactionInfo;
 }

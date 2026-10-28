@@ -4,7 +4,7 @@ import MarkdownContent from './MarkdownContent';
 import { PendingIndicator, ThinkingBlock } from './ThinkingBlock';
 import CouncilProgressIndicator from '@/src/components/council/progress/ProgressIndicator';
 import { CouncilSummary } from '@/src/components/council/summary/CouncilSummary';
-import type { CompletionAnalytics, CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
+import type { CompletionAnalytics, ContextCompactionInfo, CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
 
 import Image from 'next/image';
 import MessageActions from '../../actions/MessageActions';
@@ -24,6 +24,8 @@ interface AIMessageProps {
   reasoningDurationMs?: number;
   /** Tokens and timing of this answer, once the server has reported them. */
   analytics?: CompletionAnalytics;
+  /** Set when older turns were summarized for this reply. */
+  contextCompacted?: ContextCompactionInfo;
   /** Set on the reply that can be regenerated (the last one). */
   onRetry?: () => void;
   /** Saved reply: its id goes into the More actions menu. */
@@ -46,6 +48,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
   reasoningStartedAt,
   reasoningDurationMs,
   analytics,
+  contextCompacted,
   onRetry,
   messageId,
   onFork,
@@ -107,6 +110,14 @@ const AIMessage: React.FC<AIMessageProps> = ({
                   forking={forking}
                 />
                 {analytics && <MessageAnalytics analytics={analytics} />}
+                {contextCompacted && (
+                  <span
+                    className="text-[12px] text-[#8f8b86]"
+                    title={`Older turns were summarized for this reply (${contextCompacted.inputTokensBefore.toLocaleString()} → ${contextCompacted.inputTokensAfter.toLocaleString()} input tokens). The full transcript is still above.`}
+                  >
+                    Older turns summarized
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -126,6 +137,7 @@ export default memo(AIMessage, (prev, next) => {
     prev.reasoning === next.reasoning &&
     prev.reasoningDurationMs === next.reasoningDurationMs &&
     prev.analytics === next.analytics &&
+    prev.contextCompacted === next.contextCompacted &&
     prev.onRetry === next.onRetry &&
     prev.messageId === next.messageId &&
     prev.onFork === next.onFork &&
