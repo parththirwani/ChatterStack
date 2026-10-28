@@ -10,11 +10,21 @@ export interface CatalogSkill {
   description: string;
   categories: string[];
   instructions: string;
+  /** Discover stack and original project, when this entry is adapted from one. */
+  stack?: 'Coding' | 'UI' | 'Writing';
+  sourceName?: string;
+  sourceUrl?: string;
   /** Shown in the large card at the top of Discover. */
   featured?: boolean;
 }
 
 export const SKILL_CREATOR_ID = 'skill-creator';
+
+export const SKILL_STACKS = [
+  { name: 'Coding', description: 'Plan, build, review and simplify code.' },
+  { name: 'UI', description: 'Shape interfaces and explain ideas visually.' },
+  { name: 'Writing', description: 'Write technical articles for developers.' },
+] as const;
 
 export const SKILL_CATALOG: CatalogSkill[] = [
   {
@@ -158,6 +168,78 @@ Ask for the job description and the user's résumé or background if they're mis
 3. Write the query with clear aliases and one comment per non-obvious step.
 4. Explain how it works in a short list, and note edge cases: NULLs, duplicates, time zones, empty results.
 5. Suggest an index if the query would scan a large table.`,
+  },
+  {
+    id: 'matt-pocock-engineering',
+    name: 'matt-pocock-engineering',
+    description: 'Work through an engineering problem with a small plan, explicit tradeoffs and a focused review.',
+    categories: ['Coding'], stack: 'Coding', sourceName: 'mattpocock/skills', sourceUrl: 'https://github.com/mattpocock/skills',
+    instructions: `# Engineering workflow
+
+Clarify the goal and constraints from the material in this chat. Break the work into small, verifiable steps. State assumptions when context is missing. For code, prefer a small interface with clear responsibilities. Review the result for correctness, edge cases and maintainability. Do not claim to have edited files or run tests unless the chat has evidence of it.`,
+  },
+  {
+    id: 'theo-pr-workflow',
+    name: 'theo-pr-workflow',
+    description: 'Prepare a code change for review with a clear scope, test plan and handoff notes.',
+    categories: ['Coding'], stack: 'Coding', sourceName: 't3dotgg/tstack', sourceUrl: 'https://github.com/t3dotgg/tstack',
+    instructions: `# Review-ready change
+
+For a proposed code change, identify the smallest useful scope. Explain the implementation, tests that should run, and remaining risks. If a diff is supplied, review it before calling it ready. Do not say that a branch, pull request or merge exists unless the user supplies evidence. Leave the merge decision to the user.`,
+  },
+  {
+    id: 'poteto-code-review',
+    name: 'poteto-code-review',
+    description: 'Challenge code and plans for hidden assumptions, failure cases and unnecessary complexity.',
+    categories: ['Coding'], stack: 'Coding', sourceName: 'pstack by poteto', sourceUrl: 'https://github.com/cursor/plugins/tree/main/pstack',
+    instructions: `# Rigorous code review
+
+Read the code or plan the user provides. Explain what it is meant to do, then check the boundaries, error paths, data flow and tests. Separate confirmed defects from questions. Give the smallest correction for each confirmed defect. Cut vague praise and invented findings.`,
+  },
+  {
+    id: 'ponytail',
+    name: 'ponytail',
+    description: 'Find the simplest safe implementation and remove work the request does not need.',
+    categories: ['Coding'], stack: 'Coding', sourceName: 'DietrichGebert/ponytail', sourceUrl: 'https://github.com/DietrichGebert/ponytail',
+    instructions: `# Ponytail
+
+Solve the stated problem with the smallest clear change. Reuse existing code and standard tools when they fit. Avoid speculative abstractions and dependencies. Keep validation, error handling and security checks that the task needs. Explain any simplification in concrete terms.`,
+  },
+  {
+    id: 'design-taste',
+    name: 'design-taste',
+    description: 'Choose a deliberate visual direction for a new interface before drafting its layout.',
+    categories: ['UI'], stack: 'UI', sourceName: 'Leonxlnx/taste-skill', sourceUrl: 'https://github.com/Leonxlnx/taste-skill',
+    instructions: `# Design taste
+
+Read the product, audience and content in the brief. Choose a specific visual direction and explain why it fits. Define type, color, spacing, imagery and interaction choices. Draft a layout that reflects the actual content. If the user shares a screenshot or design, critique concrete details and suggest precise edits.`,
+  },
+  {
+    id: 'hairline',
+    name: 'hairline',
+    description: 'Plan a restrained interactive line illustration with a clear object and pointer behavior.',
+    categories: ['UI'], stack: 'UI', sourceName: 'lucasmarkes/hairline', sourceUrl: 'https://github.com/lucasmarkes/hairline',
+    instructions: `# Hairline concept
+
+Turn the user's idea into an isometric line figure. Name the real object, what each visible part represents, what pointer movement changes and what the readout says. Keep the resting view legible. If code is requested, provide a self-contained HTML or SVG sketch and state what would need the original Hairline engine.`,
+  },
+  {
+    id: 'anatomy',
+    name: 'anatomy',
+    description: 'Explain a mechanism as a detailed isometric figure with meaningful moving parts.',
+    categories: ['UI'], stack: 'UI', sourceName: 'wheresryan22/anatomy', sourceUrl: 'https://github.com/wheresryan22/anatomy',
+    instructions: `# Anatomy concept
+
+Map the idea to a physical object whose parts correspond to the real mechanism. Describe the parts, their relationships and one interaction that reveals cause and effect. Keep labels and numbers tied to the same model as the motion. For a code request, produce an SVG or HTML prototype from the information in chat and identify what needs visual verification.`,
+  },
+  {
+    id: 'technical-blog-writing',
+    name: 'technical-blog-writing',
+    description: 'Draft a developer article with a concrete claim, reproducible examples and honest limits.',
+    categories: ['Writing'], stack: 'Writing', sourceName: 'samber/cc-skills', sourceUrl: 'https://github.com/samber/cc-skills/tree/main/skills/technical-article-writer',
+    instructions: `# Technical blog writing
+
+Ask for the topic, audience and source material if they are missing. Lead with the problem and the result the reader will learn. Build the explanation in a logical order using small code examples that run as written or clearly mark omitted setup. Explain why each choice was made. Support non-obvious claims with sources the user provides. End with real limits and next steps. Remove filler and generic conclusions.`,
   },
 ];
 
