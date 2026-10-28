@@ -7,6 +7,7 @@ import { UserMenu } from '@/src/components/arc/user-menu/user-menu';
 import { useShallow } from 'zustand/react/shallow';
 import { overridesFor, useProfileStore } from '@/src/store/profileStore';
 import { useChatActivity } from '@/src/hooks/useChatActivity';
+import { avatarImageSource } from '@/src/lib/client/avatar';
 import ProfileModal, { ACTIVITY_WINDOW_DAYS } from '@/src/components/sidebar/user/ProfileModal';
 
 interface UserSectionProps {
@@ -67,6 +68,8 @@ const UserSection: React.FC<UserSectionProps> = ({
   const name = (mounted && storedName) || user?.name || 'User';
   // storedAvatar: null = never edited (use the provider's photo), '' = removed here.
   const avatarSrc = mounted && storedAvatar !== null ? storedAvatar || undefined : user?.avatarUrl || undefined;
+  // Provider photos go through the image optimizer; picked photos are data: URLs.
+  const avatarImage = avatarImageSource(avatarSrc);
   const bio = mounted ? storedBio : '';
 
   const handleSaveProfile = ({ name: nextName, bio: nextBio, avatarUrl }: { name: string; bio: string; avatarUrl: string | null }) => {
@@ -81,7 +84,7 @@ const UserSection: React.FC<UserSectionProps> = ({
           align={collapsed ? 'center' : 'start'}
           showName={!collapsed}
           showTheme={false}
-          user={{ name, email, avatarSrc }}
+          user={{ name, email, avatarSrc: avatarImage?.src, avatarSrcSet: avatarImage?.srcSet }}
           items={[
             {
               label: 'View profile',
