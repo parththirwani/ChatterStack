@@ -26,7 +26,7 @@ export const SKILL_CREATOR_ID = 'skill-creator';
 export const SKILL_STACKS = [
   { name: 'Coding', description: 'Plan, build, review and simplify code.' },
   { name: 'UI', description: 'Shape interfaces and explain ideas visually.' },
-  { name: 'Writing', description: 'Write technical articles for developers.' },
+  { name: 'Writing', description: 'Draft articles, documentation and clear explanations.' },
 ] as const;
 
 export const SKILL_CATALOG: CatalogSkill[] = [

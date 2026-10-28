@@ -31,13 +31,13 @@ function useCatalogActions(skills: Skill[]) {
     if (skill) await trySkillInChat(skill);
   };
 
-  const addStack = async (entries: CatalogSkill[]) => {
+  const addStack = async (stackName: string, entries: CatalogSkill[]) => {
     const newSkills = entries.filter((entry) => !added.has(entry.id));
     if (skills.length + newSkills.length > MAX_SKILLS_PER_USER) {
       setError(`This stack needs ${newSkills.length} free skill slots. You can keep up to ${MAX_SKILLS_PER_USER} skills.`);
       return;
     }
-    setBusy(`stack:${entries[0]?.stack}`);
+    setBusy(`stack:${stackName}`);
     setError('');
     const pending = entries.filter((entry) => !added.get(entry.id)?.enabled);
     setProgress({ completed: 0, total: pending.length });
@@ -176,7 +176,7 @@ export default function SkillsDiscover({ skills, query }: { skills: Skill[]; que
                 <h3 className="text-base font-medium text-white">{stack.name}</h3>
                 <p className="text-xs text-[#aaa6a2]">{stack.description}</p>
               </div>
-              <button type="button" onClick={() => void actions.addStack(allEntries)} disabled={!remaining || !!actions.busy} className="rounded-lg border border-white/[0.14] px-3 py-1.5 text-xs text-[#e5e2de] hover:bg-white/[0.06] disabled:opacity-50">
+              <button type="button" onClick={() => void actions.addStack(stack.name, allEntries)} disabled={!remaining || !!actions.busy} className="rounded-lg border border-white/[0.14] px-3 py-1.5 text-xs text-[#e5e2de] hover:bg-white/[0.06] disabled:opacity-50">
                 {actions.busy === `stack:${stack.name}` && actions.progress
                   ? `Adding ${actions.progress.completed}/${actions.progress.total}`
                   : remaining ? `Add ${stack.name} stack` : 'Added'}
