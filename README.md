@@ -36,6 +36,14 @@ npm run dev
 
 `npm run build` checks the production build and prepares its standalone assets; `npm run start` serves that build. The app uses NextAuth with Google and GitHub sign-in. The optional retrieval flow is controlled by `RAG_ENABLED`.
 
+## CI and production deploys
+
+Pull requests into `dev` or `main` run the CI preflight: install from `package-lock.json`, typecheck, lint, Vitest, and the same `next build` command configured for Vercel. The `main` push runs those checks again, then builds with Vercel's production environment and deploys that build. Vercel's Git auto-deployments are disabled in `vercel.json`, so branch pushes do not start preview deployments before CI finishes.
+
+The production job needs the repository secret `VERCEL_TOKEN`, scoped to the `chatter-stack-7lvm` project, and repository variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`. The Vercel token is used only by the production job. Require the `Preflight` status on `dev` and `main` branch protection before merging. The build command does not run `prisma db push`; apply reviewed schema migrations separately before deploying code that needs them.
+
+CI catches code and build failures before deployment. A Vercel outage or deployment quota can still stop the production job. In that case the previous production deployment stays live and the GitHub Actions job reports the failure.
+
 ## Rate limiting
 
 There are no per-user token or AI Council quotas: chats, retries, compaction

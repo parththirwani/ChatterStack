@@ -197,6 +197,9 @@ describe('forkConversation', () => {
   const source = conv('source', '2026-10-20T09:00:00Z', null, 'Caching plan');
   const fork = (): Conversation => ({
     ...conv('fork', '2026-10-26T09:00:00Z', null, 'Fork of Caching plan'),
+    parentConversationId: 'source',
+    forkedFromMessageId: 'm3',
+    forkSource: { id: 'source', title: 'Caching plan' },
     // Deliberately out of order: the store has to read it the way the server does.
     messages: [
       { id: 'f2', role: 'assistant', content: 'It defers writes.', position: 2, createdAt: '2026-10-20T09:00:01Z' },
@@ -227,12 +230,16 @@ describe('forkConversation', () => {
     const state = useAppStore.getState();
     expect(state.conversations.map((item) => item.id)).toEqual(['fork', 'source']);
     expect(state.currentConversationId).toBe('fork');
+    expect(state.conversations[0].forkSource).toEqual({ id: 'source', title: 'Caching plan' });
     expect(state.chatState.fork.messages.map((message) => message.content)).toEqual([
       'How does caching work?',
       'It defers writes.',
     ]);
     expect(state.chatState.source).toMatchObject({ loading: true, messages: [{ id: 'live' }] });
     expect(state.drafts.source).toBe('half-typed question');
+
+    useAppStore.getState().removeConversation('source');
+    expect(useAppStore.getState().conversations[0].forkSource).toBeNull();
   });
 
   it('creates nothing locally when the server refuses', async () => {

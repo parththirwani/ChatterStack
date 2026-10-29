@@ -44,6 +44,10 @@ test('forks at an answer, opens the copy, and leaves the source whole', async ({
 
   // The copy opens as its own chat: everything through the chosen answer, in order.
   await expect(page).toHaveURL(new RegExp(`/${forkId}$`));
+  const origin = page.getByLabel('Continued from Caching plan');
+  await expect(origin).toBeVisible();
+  await expect(page.getByLabel('Forked chat')).toBeVisible();
+  await expect(origin.getByRole('button', { name: 'Caching plan' })).toBeVisible();
   await expect(page.getByText('It defers writes to memory first.')).toBeVisible();
   await expect.poll(() => savedMessages(forkId).map((row) => row.content)).toEqual(CHAT.map((row) => row.content));
   await expect.poll(() => savedMessages(forkId).map((row) => row.position)).toEqual([1, 2, 3, 4]);
@@ -54,7 +58,14 @@ test('forks at an answer, opens the copy, and leaves the source whole', async ({
 
   // It survives a reload with the same prefix.
   await page.reload();
+  await expect(page.getByLabel('Continued from Caching plan')).toBeVisible();
   await expect(page.getByText('A crash before the write is lost.')).toBeVisible();
+
+  await page.getByLabel('Continued from Caching plan').getByRole('button', { name: 'Caching plan' }).click();
+  await expect(page).toHaveURL(new RegExp(`/${SOURCE}$`));
+  await expect(page.getByLabel('Continued from Caching plan')).toHaveCount(0);
+  await sidebar.titles(page, 'Recents').first().click();
+  await expect(page).toHaveURL(new RegExp(`/${forkId}$`));
 
   // And it takes a new prompt, saving it into the copy only.
   mockChat.next(async (stream) => {
@@ -131,7 +142,7 @@ test('deleting the source leaves its fork usable', async ({ page }) => {
   const rows = savedMessages(SOURCE);
   const forkId = await forkAt(page, rows[1].id);
 
-  const row = page.getByRole('button', { name: 'Caching plan', exact: true }).locator('..');
+  const row = page.getByRole('region', { name: 'Recents' }).getByRole('button', { name: 'Caching plan', exact: true }).locator('..');
   await row.hover();
   await row.getByRole('button', { name: 'Actions for Caching plan' }).click();
   await page.getByRole('menuitem', { name: 'Delete' }).click();
@@ -141,6 +152,8 @@ test('deleting the source leaves its fork usable', async ({ page }) => {
   await page.reload();
   await page.goto(`/${forkId}`);
   await expect(page.getByText('It defers writes to memory first.')).toBeVisible();
+  await expect(page.getByLabel('Continued from Caching plan')).toBeVisible();
+  await expect(page.getByLabel('Continued from Caching plan').getByRole('button')).toHaveCount(0);
   expect(messageCount(forkId)).toBe(2);
 });
 
