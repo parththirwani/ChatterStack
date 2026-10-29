@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --turbopack && node scripts/prepare-standalone.mjs",
+    "build:vercel": "next build",
     "start": "node .next/standalone/server.js",
     "lint": "eslint",
     "postinstall": "prisma generate",
