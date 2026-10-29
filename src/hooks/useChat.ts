@@ -15,6 +15,7 @@ const EMPTY_QUEUE: QueuedMessage[] = [];
 const EMPTY_CHAT_STATE: ChatState = {
   messages: [],
   loading: false,
+  replyComplete: false,
   councilProgress: [],
 };
 
@@ -117,6 +118,7 @@ async function sendToConversation(
   store.setChatState(key, {
     messages: [...previousMessages, userMessage, aiMessage],
     loading: true,
+    replyComplete: false,
     error: undefined,
     councilProgress: isCouncilMode ? [] : (store.chatState[key] ?? EMPTY_CHAT_STATE).councilProgress,
   });
@@ -246,7 +248,12 @@ async function sendToConversation(
           dirty = true;
           scheduleFlush();
         },
-        onDone: flushNow,
+        onDone: () => {
+          flushNow();
+          // The answer is visible before persistence and ingestion finish.
+          // Keep loading true so another turn still waits for the server.
+          useAppStore.getState().setChatState(key, { replyComplete: true });
+        },
         onConversationCreated: handleConversationCreated,
         onTitle: (title) => useAppStore.getState().updateConversation(key, { title }),
         onProgress: isCouncilMode ? handleProgress : undefined,
@@ -325,7 +332,7 @@ async function sendToConversation(
 
     const fresh = useAppStore.getState();
     if (fresh.chatState[key]) {
-      fresh.setChatState(key, { loading: false, councilProgress: [] });
+      fresh.setChatState(key, { loading: false, replyComplete: false, councilProgress: [] });
     }
     if (created) {
       fresh.updateConversation(key, { updatedAt: new Date().toISOString() });
@@ -539,6 +546,7 @@ export const useChat = (conversationKey: string) => {
   return {
     messages: chatState.messages,
     loading: chatState.loading,
+    replyComplete: Boolean(chatState.replyComplete),
     error: chatState.error,
     councilProgress: chatState.councilProgress ?? [],
     queue,

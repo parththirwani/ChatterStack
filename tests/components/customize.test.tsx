@@ -96,12 +96,14 @@ describe('Customize → Skills → Yours', () => {
   it('turns a skill off and removes one after confirming', async () => {
     const user = userEvent.setup();
     render(<SkillsPage view={{ kind: 'skills', tab: 'yours' }} />);
-    await user.click(await screen.findByRole('button', { name: 'Turn off unslop' }));
+    const toggle = await screen.findByRole('switch', { name: 'Enable unslop' });
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+    await user.click(toggle);
     expect(bodyOf(calls('PATCH', `/api/skills/${base.id}`)[0])).toEqual({ enabled: false });
-    expect(await screen.findByRole('button', { name: 'Turn on unslop' })).toBeInTheDocument();
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'false'));
 
-    await user.click(screen.getByRole('button', { name: 'More actions for code-review' }));
-    await user.click(screen.getByRole('menuitem', { name: 'Remove' }));
+    expect(screen.queryByRole('button', { name: 'More actions for code-review' })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Remove code-review' }));
     const confirm = screen.getByRole('alertdialog', { name: 'Remove code-review?' });
     await user.click(within(confirm).getByRole('button', { name: 'Remove' }));
     await waitFor(() => expect(screen.queryByRole('region', { name: 'From ChatterStack' })).toBeNull());

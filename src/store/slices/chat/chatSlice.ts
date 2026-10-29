@@ -7,6 +7,7 @@ export type { CouncilProgress };
 export interface ChatState {
   messages: Message[];
   loading: boolean;
+  replyComplete?: boolean;
   error?: string;
   councilProgress: CouncilProgress[];
 }
@@ -25,6 +26,7 @@ export interface QueuedMessage {
 const initialChatState: ChatState = {
   messages: [],
   loading: false,
+  replyComplete: false,
   error: undefined,
   councilProgress: [],
 };
