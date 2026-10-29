@@ -256,6 +256,14 @@ a,
   animation: fork-origin-line-enter 420ms ease-out both;
 }
 
+.model-handoff {
+  animation: fork-origin-enter 320ms ease-out both;
+}
+
+.model-handoff-line {
+  animation: fork-origin-line-enter 420ms ease-out both;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .fork-origin, .fork-origin-line { animation: none; }
+  .fork-origin, .fork-origin-line, .model-handoff, .model-handoff-line { animation: none; }
 }

@@ -9,6 +9,8 @@ import { useComposerDraft } from '@/src/hooks/useComposerDraft';
 import type { DocumentAttachment, ChatInterfaceProps, CouncilProgress, Message } from '@/src/types/chat.types';
 import AIMessage from '../messages/AIMessage/AIMessage';
 import TurnNavigator from '../navigation/TurnNavigator';
+import ModelHandoffDivider from './ModelHandoffDivider';
+import { modelHandoffs } from './model-handoffs';
 import { buildTurns } from '../navigation/turns';
 import type { Turn } from '../navigation/turns';
 import { useModelSelection } from '@/src/context/ModelSelectionContext';
@@ -190,6 +192,7 @@ const MessageList = memo(function MessageList({
   onFork,
   forkingMessageId,
 }: MessageListProps) {
+  const handoffs = useMemo(() => modelHandoffs(messages), [messages]);
   return (
     <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
       {forkOrigin && (
@@ -215,44 +218,50 @@ const MessageList = memo(function MessageList({
       {messages.map((msg, index) => {
         const isLastMessage = index === messages.length - 1;
         const key = msg.clientKey ?? msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
+        const handoff = handoffs.get(index);
         // The menu itself stays hidden unless the row is one the database saved.
         const forking = !!msg.id && msg.id === forkingMessageId;
 
         if (msg.role === 'user') {
           // Each question is an anchor the left rail jumps between.
           return (
-            <div key={key} data-turn-anchor={index} data-message-id={msg.id}>
-              <UserMessage
-                content={msg.content}
-                attachments={msg.attachments}
-                skills={msg.skills}
-                messageId={msg.id}
-                onFork={onFork}
-                forking={forking}
-              />
-            </div>
+            <React.Fragment key={key}>
+              {handoff && <ModelHandoffDivider {...handoff} />}
+              <div data-turn-anchor={index} data-message-id={msg.id}>
+                <UserMessage
+                  content={msg.content}
+                  attachments={msg.attachments}
+                  skills={msg.skills}
+                  messageId={msg.id}
+                  onFork={onFork}
+                  forking={forking}
+                />
+              </div>
+            </React.Fragment>
           );
         }
 
         return (
-          <AIMessage
-            key={key}
-            content={msg.content}
-            modelId={msg.modelId}
-            loading={loading && isLastMessage}
-            isLastMessage={isLastMessage}
-            reasoning={msg.reasoning}
-            reasoningStartedAt={msg.reasoningStartedAt}
-            reasoningDurationMs={msg.reasoningDurationMs}
-            analytics={msg.analytics}
-            contextCompacted={msg.contextCompacted}
-            onRetry={isLastMessage && !loading ? onRetry : undefined}
-            messageId={msg.id}
-            onFork={onFork}
-            forking={forking}
-            council={msg.council}
-            councilProgress={isLastMessage ? councilProgress : undefined}
-          />
+          <React.Fragment key={key}>
+            {handoff && <ModelHandoffDivider {...handoff} />}
+            <AIMessage
+              content={msg.content}
+              modelId={msg.modelId}
+              loading={loading && isLastMessage}
+              isLastMessage={isLastMessage}
+              reasoning={msg.reasoning}
+              reasoningStartedAt={msg.reasoningStartedAt}
+              reasoningDurationMs={msg.reasoningDurationMs}
+              analytics={msg.analytics}
+              contextCompacted={msg.contextCompacted}
+              onRetry={isLastMessage && !loading ? onRetry : undefined}
+              messageId={msg.id}
+              onFork={onFork}
+              forking={forking}
+              council={msg.council}
+              councilProgress={isLastMessage ? councilProgress : undefined}
+            />
+          </React.Fragment>
         );
       })}
     </div>
