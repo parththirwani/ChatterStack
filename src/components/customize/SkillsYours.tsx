@@ -1,11 +1,11 @@
 'use client';
 import React from 'react';
-import { MoreHorizontal, Sparkles, Upload } from 'lucide-react';
+import { Sparkles, Trash2, Upload } from 'lucide-react';
+import { Switch } from '@/src/components/arc/switch/switch';
 import { navigateTo, skillsPath } from '@/src/lib/navigation';
 import { openSkillEditor } from '@/src/lib/client/skills';
 import type { Skill } from '@/src/types/skill.types';
 import { findCatalogEntry } from '@/src/config/skill-catalog';
-import Menu from './Menu';
 import { shortDate } from './format';
 import { sourceLabel } from './SkillsPage';
 import { useSkillActions } from './useSkillActions';
@@ -27,10 +27,10 @@ function SkillRow({ skill, actions }: { skill: Skill; actions: ReturnType<typeof
       </div>
       <span className="pointer-events-none hidden shrink-0 text-xs text-[#8f8b86] sm:block">{shortDate(skill.updatedAt)}</span>
       <div className="relative z-10 flex shrink-0 items-center gap-1">
-        <button type="button" onClick={() => actions.toggle(skill)} aria-label={`${skill.enabled ? 'Turn off' : 'Turn on'} ${skill.name}`} className="rounded-md border border-white/[0.1] px-2.5 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07]">
-          {skill.enabled ? 'Turn off' : 'Turn on'}
+        <Switch checked={skill.enabled} onCheckedChange={() => actions.toggle(skill)} aria-label={`Enable ${skill.name}`} />
+        <button type="button" onClick={() => actions.remove(skill)} aria-label={`Remove ${skill.name}`} className="flex h-8 w-8 items-center justify-center rounded-md text-[#aaa6a2] hover:bg-white/[0.08] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-white/40">
+          <Trash2 className="h-4 w-4" />
         </button>
-        <Menu label={`More actions for ${skill.name}`} trigger={<MoreHorizontal className="h-4 w-4" />} items={actions.items(skill, { full: false })} triggerClassName="flex h-7 w-7 items-center justify-center rounded-md text-[#aaa6a2] hover:bg-white/[0.08] hover:text-white" />
       </div>
     </li>
   );

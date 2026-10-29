@@ -25,6 +25,7 @@
     "@prisma/adapter-pg": "^7.4.0",
     "@prisma/client": "^7.4.0",
     "@qdrant/js-client-rest": "^1.16.2",
+    "@radix-ui/react-switch": "^1.4.1",
     "@sentry/nextjs": "^11.9.0",
     "@vercel/blob": "^2.8.2",
     "dotenv": "^17.3.1",
