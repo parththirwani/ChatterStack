@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useEffect, useRef, useState } from "react";
+import React, { forwardRef, useEffect, useRef, useState } from "react";
 import type { ComponentPropsWithoutRef, ElementRef } from "react";
 import * as SwitchPrimitive from "@radix-ui/react-switch";
 import { animate, motion, useMotionValue, useReducedMotion } from "motion/react";
