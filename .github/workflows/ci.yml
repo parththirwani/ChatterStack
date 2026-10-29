@@ -37,6 +37,9 @@ jobs:
       VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
       VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
       VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # Vercel's local build must include linting and typecheck tooling from
+      # devDependencies, just like the preflight build.
+      NPM_CONFIG_PRODUCTION: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
