@@ -7,6 +7,27 @@ import { deferred, expect, MODELS, openApp, sendMessage, test } from './support/
 const composing = 'canvas[aria-label="Composing…"]';
 const searching = 'canvas[aria-label="Searching…"]';
 
+test('shows the send arrow as soon as the answer ends, while saving continues', async ({ page, mockChat }) => {
+  const finishSaving = deferred();
+  mockChat.next(async (stream) => {
+    stream.createConversation();
+    stream.send({ chunk: 'Finished answer.' });
+    stream.send({ done: true });
+    await finishSaving.promise;
+    stream.saveMessages('Finished answer.');
+    stream.end();
+  });
+
+  await openApp(page);
+  await sendMessage(page, 'Explain this');
+  await expect(page.getByText('Finished answer.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Stop generating' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Queue message' })).toBeDisabled();
+
+  finishSaving.resolve();
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeVisible();
+});
+
 test('sends the chosen model and thinking level, and shows the model thinking', async ({ page, mockChat }) => {
   const answerGate = deferred();
   const finishGate = deferred();
