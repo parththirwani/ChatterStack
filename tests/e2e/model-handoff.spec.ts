@@ -15,7 +15,7 @@ test.beforeEach(() => {
   });
 });
 
-test('shows the handoff when a new model answers and keeps it after reload', async ({ page, mockChat }) => {
+test('shows the model change on selection and keeps the handoff after the answer', async ({ page, mockChat }) => {
   await openApp(page, { selectedModel: MODELS.gpt }, `/${CHAT_ID}`);
   await expect(page.getByLabel(/Model changed from/)).toHaveCount(0);
 
@@ -23,7 +23,7 @@ test('shows the handoff when a new model answers and keeps it after reload', asy
   const picker = page.getByRole('dialog', { name: 'Model settings' });
   await picker.getByRole('button', { name: /^Anthropic,/ }).click();
   await picker.getByRole('option', { name: /Claude Sonnet 5.5/ }).click();
-  await expect(page.getByLabel(/Model changed from/)).toHaveCount(0);
+  await expect(page.getByLabel('Model changed from GPT-6.1 Sol to Claude Sonnet 5.5')).toBeVisible();
 
   mockChat.next((stream) => {
     stream.send({ chunk: 'Use a short TTL.' });
