@@ -20,6 +20,7 @@ interface MessageInputProps {
   onAttachmentsChange: React.Dispatch<React.SetStateAction<DocumentAttachment[]>>;
   onSendMessage: () => void;
   loading: boolean;
+  replyComplete?: boolean;
   onStopGenerating?: () => void;
   placeholder?: string;
   /** Rendered just above the input box, tucked behind its top edge. */
@@ -46,7 +47,7 @@ const FILES_OPTION: SlashOption = { kind: 'files', key: 'files', label: 'Add fil
 // behind it lines up character for character.
 const TEXT_BOX = 'px-5 pt-4 pb-2 text-[15px] leading-6 whitespace-pre-wrap break-words';
 
-const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, attachments, onAttachmentsChange, onSendMessage, loading, onStopGenerating, placeholder = 'Ask anything', queue }) => {
+const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, attachments, onAttachmentsChange, onSendMessage, loading, replyComplete = false, onStopGenerating, placeholder = 'Ask anything', queue }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const mirrorRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -263,7 +264,7 @@ const MessageInput: React.FC<MessageInputProps> = ({ message, onMessageChange, a
   const hasContent = Boolean(message.trim()) || attachments.length > 0;
   // Streaming with something typed: the button queues it. Streaming with an
   // empty box: the button stops the reply.
-  const showStop = loading && !hasContent;
+  const showStop = loading && !replyComplete && !hasContent;
 
   return (
     <div className="w-full">

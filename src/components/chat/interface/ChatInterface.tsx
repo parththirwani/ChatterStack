@@ -263,6 +263,7 @@ const ConversationSkeleton = memo(function ConversationSkeleton() {
 interface ChatComposerProps {
   conversationKey: string;
   loading: boolean;
+  replyComplete: boolean;
   isCouncilMode: boolean;
   isFirstMessage: boolean;
   sendMessage: (message: string, onConversationCreated?: (id: string) => void, attachments?: DocumentAttachment[]) => Promise<void>;
@@ -279,6 +280,7 @@ interface ChatComposerProps {
 const ChatComposer = memo(function ChatComposer({
   conversationKey,
   loading,
+  replyComplete,
   isCouncilMode,
   isFirstMessage,
   sendMessage,
@@ -510,6 +512,7 @@ const ChatComposer = memo(function ChatComposer({
             onSendMessage={handleSendMessage}
             onStopGenerating={stopGenerating}
             loading={loading}
+            replyComplete={replyComplete}
             placeholder={isCouncilMode ? 'Ask the council anything' : 'Ask anything'}
             queue={
               <QueuedMessages
@@ -569,6 +572,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const {
     messages,
     loading,
+    replyComplete,
     error,
     councilProgress,
     queue,
@@ -778,6 +782,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
             <ChatComposer
               conversationKey={conversationKey}
               loading={loading}
+              replyComplete={replyComplete}
               isCouncilMode={isCouncilMode}
               isFirstMessage={isFirstMessage}
               sendMessage={sendMessage}

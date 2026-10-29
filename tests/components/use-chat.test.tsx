@@ -416,6 +416,33 @@ describe('queue review fixes', () => {
 });
 
 describe('finishing a completion', () => {
+  it('marks the reply complete before the server finishes saving it', async () => {
+    const { call, id, pending } = await startNewChat();
+    act(() => call.handlers.onConversationCreated?.(id));
+    const view = renderHook(() => useChat(id), { wrapper });
+
+    act(() => {
+      call.handlers.onChunk?.('The answer.');
+      call.handlers.onDone?.();
+    });
+
+    expect(view.result.current.replyComplete).toBe(true);
+    expect(view.result.current.loading).toBe(true);
+    expect(state().chatState[id].messages.at(-1)?.content).toBe('The answer.');
+
+    await act(async () => {
+      await view.result.current.sendMessage('Follow up');
+    });
+    expect(calls).toHaveLength(1);
+
+    await act(async () => {
+      call.finish();
+      await pending;
+    });
+    expect(view.result.current.replyComplete).toBe(false);
+    expect(view.result.current.loading).toBe(false);
+  });
+
   it('attaches the token and time report to the answer it belongs to', async () => {
     const { call, id, pending } = await startNewChat();
     act(() => call.handlers.onConversationCreated?.(id));
