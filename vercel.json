@@ -1,4 +1,10 @@
 {
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "installCommand": "npm ci",
+  "buildCommand": "npm run build:vercel",
+  "git": {
+    "deploymentEnabled": false
+  },
   "crons": [
     { "path": "/api/cron/cleanup-documents", "schedule": "0 3 * * *" }
   ]
