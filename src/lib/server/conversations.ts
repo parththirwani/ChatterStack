@@ -131,5 +131,5 @@ export async function getConversation(
   return { ...serializeConversation(conversation, {
     documents: new Set(documents.map((document) => document.id)),
     skills: new Set(skills.map((skill) => skill.id)),
-  }), forkSource: source ? { id: source.id, title: source.title ?? undefined } : null };
+  }), ...(source ? { forkSource: { id: source.id, title: source.title ?? undefined } } : {}) };
 }
