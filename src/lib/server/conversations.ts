@@ -29,6 +29,8 @@ interface ConversationRow {
   title: string | null;
   pinnedAt: Date | null;
   scheduledTaskId?: string | null;
+  parentConversationId?: string | null;
+  forkedFromMessageId?: string | null;
   userId: string;
   createdAt: Date;
   updatedAt: Date;
@@ -68,6 +70,8 @@ function serializeConversation(conversation: ConversationRow, present?: Present)
     title: conversation.title ?? undefined,
     pinnedAt: conversation.pinnedAt?.toISOString() ?? null,
     scheduledTaskId: conversation.scheduledTaskId ?? null,
+    parentConversationId: conversation.parentConversationId ?? null,
+    forkedFromMessageId: conversation.forkedFromMessageId ?? null,
     userId: conversation.userId,
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
