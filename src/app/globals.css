@@ -238,3 +238,24 @@ a,
     display: none;
   }
 }
+@keyframes fork-origin-enter {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fork-origin-line-enter {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
+}
+
+.fork-origin {
+  animation: fork-origin-enter 320ms ease-out both;
+}
+
+.fork-origin-line {
+  animation: fork-origin-line-enter 420ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fork-origin, .fork-origin-line { animation: none; }
+}

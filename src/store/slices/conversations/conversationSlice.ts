@@ -106,7 +106,14 @@ export const createConversationsSlice: StateCreator<
     const hasConversation = state.conversations.some((item) => item.id === conversation.id);
     set({
       conversations: hasConversation
-        ? state.conversations
+        ? state.conversations.map((item) => item.id === conversation.id
+          ? {
+              ...item,
+              parentConversationId: conversation.parentConversationId,
+              forkedFromMessageId: conversation.forkedFromMessageId,
+              forkSource: conversation.forkSource,
+            }
+          : item)
         : [conversation, ...state.conversations],
     });
   },
@@ -125,7 +132,9 @@ export const createConversationsSlice: StateCreator<
 
   removeConversation: (id) =>
     set((state) => ({
-      conversations: state.conversations.filter((conv) => conv.id !== id),
+      conversations: state.conversations
+        .filter((conv) => conv.id !== id)
+        .map((conv) => conv.forkSource?.id === id ? { ...conv, forkSource: null } : conv),
       currentConversationId:
         state.currentConversationId === id ? undefined : state.currentConversationId,
     })),

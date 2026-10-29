@@ -121,12 +121,15 @@ export async function getConversation(
   const skillIds = conversation.messages.flatMap((message) =>
     Array.isArray(message.skills) ? (message.skills as unknown as SkillTag[]).map((skill) => skill.id) : []
   );
-  const [documents, skills] = await Promise.all([
+  const [documents, skills, source] = await Promise.all([
     ids.length ? db.document.findMany({ where: { userId, id: { in: ids } }, select: { id: true } }) : [],
     skillIds.length ? db.skill.findMany({ where: { userId, id: { in: skillIds } }, select: { id: true } }) : [],
+    conversation.parentConversationId
+      ? db.conversation.findFirst({ where: { id: conversation.parentConversationId, userId }, select: { id: true, title: true } })
+      : null,
   ]);
-  return serializeConversation(conversation, {
+  return { ...serializeConversation(conversation, {
     documents: new Set(documents.map((document) => document.id)),
     skills: new Set(skills.map((skill) => skill.id)),
-  });
+  }), forkSource: source ? { id: source.id, title: source.title ?? undefined } : null };
 }

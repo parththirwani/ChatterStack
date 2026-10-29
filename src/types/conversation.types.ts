@@ -21,6 +21,8 @@ export interface Conversation {
   /** Source chat and cut point for a fork. The source may later be deleted. */
   parentConversationId?: string | null;
   forkedFromMessageId?: string | null;
+  /** Present on a full chat read when its source still exists. */
+  forkSource?: { id: string; title?: string } | null;
   userId: string;
   createdAt: string;
   updatedAt: string;
