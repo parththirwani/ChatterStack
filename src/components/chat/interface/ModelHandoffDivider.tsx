@@ -12,11 +12,11 @@ export default function ModelHandoffDivider({ from, to }: ModelHandoff) {
   return (
     <div
       className="model-handoff flex min-w-0 items-center gap-2 py-2 text-[11px] text-[#8f8b86]"
-      aria-label={`Context handoff from ${previousName} to ${nextName}`}
+      aria-label={`Model changed from ${previousName} to ${nextName}`}
     >
       <span className="model-handoff-line h-px min-w-3 flex-1 bg-white/[0.08]" aria-hidden="true" />
       <ArrowRightLeft className="h-3 w-3 shrink-0" strokeWidth={1.6} aria-hidden="true" />
-      <span className="shrink-0">Context handoff</span>
+      <span className="shrink-0">Model changed</span>
       {previous && <Image src={previous.logo} alt="" width={13} height={13} className={`${previous.invert ? 'invert brightness-0' : ''} h-3.5 w-3.5 shrink-0 opacity-70`} />}
       <span className="min-w-0 max-w-[27vw] truncate" title={previousName}>{previousName}</span>
       <ArrowRight className="h-3 w-3 shrink-0" strokeWidth={1.6} aria-hidden="true" />
