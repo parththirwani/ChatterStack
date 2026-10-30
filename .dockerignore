@@ -1,10 +1,13 @@
 .git
 .next
+**/.next
 node_modules
 .env
 .env.*
+**/.env.*
 !.env.example
 *.log
 coverage
 tsconfig.tsbuildinfo
+**/tsconfig.tsbuildinfo
 .cora-cli

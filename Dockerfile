@@ -1,8 +1,12 @@
 FROM node:24-bookworm-slim AS deps
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
-COPY package.json package-lock.json prisma.config.ts ./
-COPY prisma ./prisma
+COPY package.json package-lock.json ./
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/auth/package.json ./apps/auth/package.json
+COPY apps/chat/package.json ./apps/chat/package.json
+COPY apps/web/prisma.config.ts ./apps/web/prisma.config.ts
+COPY apps/web/prisma ./apps/web/prisma
 RUN npm ci --fetch-retries=5 --fetch-retry-mintimeout=10000
 
 FROM deps AS build
@@ -16,14 +20,14 @@ ENV SENTRY_RELEASE=${SENTRY_RELEASE}
 RUN npm run build
 
 FROM deps AS schema
-CMD ["npx", "prisma", "db", "push"]
+CMD ["npm", "exec", "--workspace", "@chatterstack/web", "--", "prisma", "db", "push"]
 
 FROM node:24-bookworm-slim AS app
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0
-COPY --from=build --chown=node:node /app/.next/standalone ./
-COPY --from=build --chown=node:node /app/src/prompts ./src/prompts
+COPY --from=build --chown=node:node /app/apps/web/.next/standalone ./
+COPY --from=build --chown=node:node /app/apps/web/src/prompts ./apps/web/src/prompts
 USER node
 EXPOSE 3000
-CMD ["node", "server.js"]
+CMD ["node", "apps/web/server.js"]

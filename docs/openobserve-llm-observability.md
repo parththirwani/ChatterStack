@@ -2,10 +2,10 @@
 
 Every model call in ChatterStack can be recorded to an OpenObserve stream so
 latency, token use, cost and failures can be analysed without reading
-application logs. The client is `src/lib/observability/openobserve.ts`; the
-wrapper that produces a record per call is `src/lib/observability/trace-llm-call.ts`.
+application logs. The client is `apps/web/src/lib/observability/openobserve.ts`; the
+wrapper that produces a record per call is `apps/web/src/lib/observability/trace-llm-call.ts`.
 
-Configuration lives in `.env.example` (`OPENOBSERVE_URL`, `OPENOBSERVE_ORG`,
+Configuration lives in `apps/web/.env.example` (`OPENOBSERVE_URL`, `OPENOBSERVE_ORG`,
 `OPENOBSERVE_USER` / `OPENOBSERVE_PASSWORD`, or `OPENOBSERVE_AUTH`,
 `OPENOBSERVE_STREAM`, `OPENOBSERVE_LOG_CONTENT`). With no URL or no credentials
 the client does nothing at all.
@@ -50,7 +50,7 @@ on); `timestamp` is a readable ISO copy. Spans written today: `completion`,
 `embedding`, `embeddings`.
 
 Optional: add `"pricing"` fields per model yourself, or extend
-`src/config/models.ts` - the title model (`openai/gpt-5.6-luna`) and the
+`apps/web/src/config/models.ts` - the title model (`openai/gpt-5.6-luna`) and the
 embedding model are not priced there, so their records carry no `cost_usd`.
 
 ## Queries

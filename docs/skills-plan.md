@@ -22,7 +22,7 @@ New Prisma model `Skill`, owned by a user:
 
 Limits: 50 skills per user and 3 skills per message.
 
-## 2. Skill file format (`src/lib/skills/skill-file.ts`)
+## 2. Skill file format (`apps/web/src/lib/skills/skill-file.ts`)
 
 This module has no dependencies, so the client and the server both use it.
 

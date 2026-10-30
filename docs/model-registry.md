@@ -1,6 +1,6 @@
 # Model registry
 
-[`src/config/models.ts`](../src/config/models.ts) is the single source of truth
+[`apps/web/src/config/models.ts`](../apps/web/src/config/models.ts) is the single source of truth
 for the models ChatterStack offers. The composer, `GET /api/models`, cost
 calculation and council pickers all read from it.
 
@@ -45,7 +45,7 @@ Rules used to build the list:
 1. Fetch the live OpenRouter catalog and compare it with t3.chat's model
    picker. Model IDs, context length, maximum output, pricing and
    `reasoning.supported_efforts` all come from OpenRouter.
-2. Add, remove or edit entries in `src/config/models.ts`. Keep the default
+2. Add, remove or edit entries in `apps/web/src/config/models.ts`. Keep the default
    model first; the rest are grouped by `company` in the composer.
 3. Run `npm run test:unit` for the offline registry checks (unique ids, full
    metadata, existing logo files, valid reasoning levels).
@@ -59,4 +59,4 @@ Rules used to build the list:
 
 Pricing is informational and may change upstream. Unknown or retired models
 that still appear in old conversations are rendered from the fallback metadata
-in [`src/lib/models.ts`](../src/lib/models.ts).
+in [`apps/web/src/lib/models.ts`](../apps/web/src/lib/models.ts).

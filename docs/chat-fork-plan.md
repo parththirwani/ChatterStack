@@ -19,14 +19,14 @@ This follows ChatGPT's documented web interaction: hover a message, open More ac
 
 | Area | Current behavior | Change needed |
 | --- | --- | --- |
-| `prisma/schema.prisma` | `Conversation` has many `Message` rows; `Message` stores content, role, model ID, attachments, and skills. | Add nullable origin fields and a migration. Copy message rows into a new conversation. |
-| `src/lib/server/conversations.ts` | `getConversation` serializes the full message history; list queries include only the first message. | Return origin fields if exposed to the client. Use the existing serializer for the fork response. |
-| `src/app/api/conversations/[id]/route.ts` | Authenticated read, rename, pin, and delete operations check ownership. | Add a dedicated `POST /api/conversations/[id]/fork` route with the same ownership rule. |
-| `src/components/chat/interface/ChatInterface.tsx` | `MessageList` renders user and assistant messages; saved rows have `msg.id`. | Pass the selected ID and a fork callback to the action UI. |
-| `src/components/chat/messages/*` and `src/components/chat/actions/MessageActions.tsx` | Assistant replies have copy, download, and retry actions; user bubbles have no action row. | Add an accessible More actions menu for both roles, containing Fork in new chat. Keep existing actions. |
-| `src/components/pages/ChatPage.tsx`, `src/lib/navigation.ts` | `showConversation` updates the URL and the page loads chat data into Zustand. | After fork succeeds, hydrate the returned conversation, set its ID, and call `showConversation(newId)`. |
-| `src/store/slices/conversations/conversationSlice.ts`, `src/services/api.ts` | The store caches conversations and messages; the API service caches reads. | Add `forkConversation`, invalidate the list cache, and insert the returned fork into the store without clobbering active streams. |
-| `src/app/api/chat/route.ts`, `src/lib/redis.ts` | The next model request reads history from Redis or Postgres. | Do not reuse the parent's Redis key. Let the fork's first send load its copied history from Postgres. |
+| `apps/web/prisma/schema.prisma` | `Conversation` has many `Message` rows; `Message` stores content, role, model ID, attachments, and skills. | Add nullable origin fields and a migration. Copy message rows into a new conversation. |
+| `apps/web/src/lib/server/conversations.ts` | `getConversation` serializes the full message history; list queries include only the first message. | Return origin fields if exposed to the client. Use the existing serializer for the fork response. |
+| `apps/web/src/app/api/conversations/[id]/route.ts` | Authenticated read, rename, pin, and delete operations check ownership. | Add a dedicated `POST /api/conversations/[id]/fork` route with the same ownership rule. |
+| `apps/web/src/components/chat/interface/ChatInterface.tsx` | `MessageList` renders user and assistant messages; saved rows have `msg.id`. | Pass the selected ID and a fork callback to the action UI. |
+| `apps/web/src/components/chat/messages/*` and `apps/web/src/components/chat/actions/MessageActions.tsx` | Assistant replies have copy, download, and retry actions; user bubbles have no action row. | Add an accessible More actions menu for both roles, containing Fork in new chat. Keep existing actions. |
+| `apps/web/src/components/pages/ChatPage.tsx`, `apps/web/src/lib/navigation.ts` | `showConversation` updates the URL and the page loads chat data into Zustand. | After fork succeeds, hydrate the returned conversation, set its ID, and call `showConversation(newId)`. |
+| `apps/web/src/store/slices/conversations/conversationSlice.ts`, `apps/web/src/services/api.ts` | The store caches conversations and messages; the API service caches reads. | Add `forkConversation`, invalidate the list cache, and insert the returned fork into the store without clobbering active streams. |
+| `apps/web/src/app/api/chat/route.ts`, `apps/web/src/lib/redis.ts` | The next model request reads history from Redis or Postgres. | Do not reuse the parent's Redis key. Let the fork's first send load its copied history from Postgres. |
 
 ## Implementation steps
 
@@ -56,7 +56,7 @@ This follows ChatGPT's documented web interaction: hover a message, open More ac
 ## Limits to check before shipping
 
 - A fork of a long conversation duplicates its saved message rows and may exceed the model's token limit on the next prompt. The existing chat request limit should still report this cleanly; fork creation itself should not call a model.
-- The current per-conversation turn queue in `src/lib/api/chat/conversation-turns.ts` is in-process. The fork route must take a committed snapshot of the selected prefix; do not read optimistic client messages or assume an in-flight turn has already saved.
+- The current per-conversation turn queue in `apps/web/src/lib/api/chat/conversation-turns.ts` is in-process. The fork route must take a committed snapshot of the selected prefix; do not read optimistic client messages or assume an in-flight turn has already saved.
 - RAG retrieval excludes the current conversation ID. A fork gets a new ID, so its source conversation may appear in user-level retrieval results. Verify that this does not insert duplicate short-term context into the next answer; adjust retrieval if it does.
 
 ## As built
@@ -64,13 +64,13 @@ This follows ChatGPT's documented web interaction: hover a message, open More ac
 Notes on where the implementation differs from the steps above, and why.
 
 - **Step 1, migrations.** The repository commits no Prisma migrations
-  (`prisma/migrations/*` is gitignored; `npx prisma db push` is what both the
+  (`apps/web/prisma/migrations/*` is gitignored; `npx prisma db push` is what both the
   README and the Compose `schema` job use). So `Message.position` is nullable
   rather than backfilled-then-required, with `@@unique([conversationId, position])`
   (Postgres treats nulls as distinct, so the existing rows still load). Legacy rows
   sort ahead of numbered ones, and every writer numbers its own rows, so both the
   numbered and the partly numbered database read correctly.
-  `scripts/backfill-message-positions.mjs` numbers the old rows; the README says
+  `apps/web/scripts/backfill-message-positions.mjs` numbers the old rows; the README says
   when to run it.
 - **Steps 4 and 5, navigation.** `showConversation(newId)` is called by
   `ChatInterface`, which owns the message action and its in-flight state, instead of

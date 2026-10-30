@@ -20,10 +20,10 @@ These are public interfaces and code, not claims about the labs' private ChatGPT
 
 ## Current code and constraints
 
-- `src/app/api/chat/route.ts` loads every prior message from Redis or Postgres, resolves historical attachments, adds the new turn and optional RAG context, then calls `createCompletion`. It has no model-context budget or compaction step.
-- `src/lib/api/chat/openrouter.ts` sends OpenAI-style chat completions to OpenRouter. `src/config/models.ts` records each model's `contextLength` and `maxOutputTokens`, while `maxTokensFor` in the OpenRouter adapter decides the actual requested output cap. The prompt formatter also inserts system and skill instructions.
+- `apps/web/src/app/api/chat/route.ts` loads every prior message from Redis or Postgres, resolves historical attachments, adds the new turn and optional RAG context, then calls `createCompletion`. It has no model-context budget or compaction step.
+- `apps/web/src/lib/api/chat/openrouter.ts` sends OpenAI-style chat completions to OpenRouter. `apps/web/src/config/models.ts` records each model's `contextLength` and `maxOutputTokens`, while `maxTokensFor` in the OpenRouter adapter decides the actual requested output cap. The prompt formatter also inserts system and skill instructions.
 - The route reserves daily tokens from an estimate of *full* history before the turn lock is ready. It later records an estimate of the model call. A new compaction call must be included in both the reservation and reconciliation. Reserving against the old full history after compaction would reject turns that should fit.
-- `prisma/schema.prisma` has `Conversation` and `Message`, but no context snapshot. `src/lib/api/chat/conversation-turns.ts` orders saves only within one server process, with a 30 second wait limit. Multiple instances can race.
+- `apps/web/prisma/schema.prisma` has `Conversation` and `Message`, but no context snapshot. `apps/web/src/lib/api/chat/conversation-turns.ts` orders saves only within one server process, with a 30 second wait limit. Multiple instances can race.
 - Retry removes the last stored exchange only if a replacement answer exists. RAG reads raw conversation history. Council stage 1 sends history to each member; stage 3 also inserts history into the chair prompt. Both need budgeting. Attachments may contain large inline payloads or document references; a text-only estimate does not account for image or PDF tokens.
 
 ## Proposed design

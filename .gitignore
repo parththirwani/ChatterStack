@@ -31,8 +31,8 @@ tsconfig.tsbuildinfo
 # ==============================
 # Prisma
 # ==============================
-prisma/migrations/*
-!prisma/migrations/.gitkeep
+**/prisma/migrations/*
+!**/prisma/migrations/.gitkeep
 prisma/dev.db
 prisma/dev.db-journal
 
@@ -93,4 +93,6 @@ docker-compose.override.yml
 # ==============================
 /test-results/
 /playwright-report/
-tests/e2e/.auth/
+**/test-results/
+**/playwright-report/
+**/tests/e2e/.auth/

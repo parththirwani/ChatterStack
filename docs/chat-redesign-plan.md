@@ -1,6 +1,6 @@
 # Chat page redesign plan
 
-Scope: the chat page only. That covers `ChatPage.tsx`, `ChatInterface.tsx`, the message input and model selector, user and AI messages, message actions, the council progress card, and the token indicator. The sidebar, auth modals and backend are out of scope. This plan comes from reading the code in `src/components/chat/**`, `src/components/pages/ChatPage.tsx`, `src/components/council/progress`, `src/components/rate-limit`, `src/app/globals.css`, `tailwind.config.js` and `src/hooks/useChat*.ts`. I did not run the app, so anything marked verify should be checked in the browser first.
+Scope: the chat page only. That covers `ChatPage.tsx`, `ChatInterface.tsx`, the message input and model selector, user and AI messages, message actions, the council progress card, and the token indicator. The sidebar, auth modals and backend are out of scope. This plan comes from reading the code in `apps/web/src/components/chat/**`, `apps/web/src/components/pages/ChatPage.tsx`, `apps/web/src/components/council/progress`, `apps/web/src/components/rate-limit`, `apps/web/src/app/globals.css`, `tailwind.config.js` and `apps/web/src/hooks/useChat*.ts`. I did not run the app, so anything marked verify should be checked in the browser first.
 
 ## 1. What is wrong today
 
@@ -238,18 +238,18 @@ Edit-and-resend for user messages is the one item that needs backend work (trunc
 
 | File | Change |
 | --- | --- |
-| `src/app/globals.css` | Add tokens, remove indigo and unused utilities, fix focus ring |
+| `apps/web/src/app/globals.css` | Add tokens, remove indigo and unused utilities, fix focus ring |
 | `tailwind.config.js` | Delete |
-| `src/components/pages/ChatPage.tsx` | CSS-driven mobile layout, `h-dvh`, remove hamburger |
-| `src/components/chat/interface/ChatInterface.tsx` | Split into header, conversation view, empty state; simplify scroll |
-| `src/components/chat/interface/ChatHeader.tsx` | New |
-| `src/components/chat/input/MessageInput.tsx` | Rebuild; stop button; remove model selector and token stack |
-| `src/components/chat/input/ModelSelector/*` | Move to header; listbox semantics |
-| `src/components/chat/messages/AIMessage/AIMessage.tsx` | New layout, code header, actions |
-| `src/components/chat/messages/UserMessage/UserMessage.tsx` | New bubble color and shape |
-| `src/components/chat/actions/*` | Add regenerate; `.md` download; aria labels |
-| `src/components/council/progress/ProgressIndicator.tsx` | Stepper, collapse, shared model map |
-| `src/components/rate-limit/LLMTokenIndicator.tsx` | One-line status, less polling |
-| `src/hooks/useChat.ts` | Abort controller, retry |
-| `src/lib/models.ts` | New `getModelMeta` helper |
+| `apps/web/src/components/pages/ChatPage.tsx` | CSS-driven mobile layout, `h-dvh`, remove hamburger |
+| `apps/web/src/components/chat/interface/ChatInterface.tsx` | Split into header, conversation view, empty state; simplify scroll |
+| `apps/web/src/components/chat/interface/ChatHeader.tsx` | New |
+| `apps/web/src/components/chat/input/MessageInput.tsx` | Rebuild; stop button; remove model selector and token stack |
+| `apps/web/src/components/chat/input/ModelSelector/*` | Move to header; listbox semantics |
+| `apps/web/src/components/chat/messages/AIMessage/AIMessage.tsx` | New layout, code header, actions |
+| `apps/web/src/components/chat/messages/UserMessage/UserMessage.tsx` | New bubble color and shape |
+| `apps/web/src/components/chat/actions/*` | Add regenerate; `.md` download; aria labels |
+| `apps/web/src/components/council/progress/ProgressIndicator.tsx` | Stepper, collapse, shared model map |
+| `apps/web/src/components/rate-limit/LLMTokenIndicator.tsx` | One-line status, less polling |
+| `apps/web/src/hooks/useChat.ts` | Abort controller, retry |
+| `apps/web/src/lib/models.ts` | New `getModelMeta` helper |
 | Unused files listed in section 1 | Delete |

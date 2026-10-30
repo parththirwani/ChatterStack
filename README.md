@@ -1,10 +1,21 @@
 # ChatterStack
 
+## Repository layout
+
+The repository uses npm workspaces. `apps/web` contains the running Next.js
+frontend and backend. `apps/auth` and `apps/chat` are reserved service packages
+for the staged migration; they do not handle traffic yet. Root npm scripts
+forward to `apps/web`. For Vercel, set the project's Root Directory to
+`apps/web` so it reads that app's Next.js and `vercel.json` configuration.
+
+See [the service migration plan](docs/service-migration.md) for the ownership
+boundaries and extraction order.
+
 ChatterStack is a Next.js chat app with single-model conversations and a four-model AI Council. Chats use OpenRouter, with PostgreSQL for history, Redis for the chat history cache and request rate limits, and Qdrant for optional retrieval.
 
 ## Models
 
-ChatterStack mirrors the models offered by [t3.chat](https://t3.chat) that are also available on OpenRouter. The registry in [`src/config/models.ts`](src/config/models.ts) lists every OpenRouter chat model t3.chat offers, with display name, company, logo, context limit, maximum output, pricing, image support and reasoning levels. The composer, `/api/models`, cost estimates and council pickers all read from that one list. See [`docs/model-registry.md`](docs/model-registry.md) for the inclusion rules and update process.
+ChatterStack mirrors the models offered by [t3.chat](https://t3.chat) that are also available on OpenRouter. The registry in [`apps/web/src/config/models.ts`](apps/web/src/config/models.ts) lists every OpenRouter chat model t3.chat offers, with display name, company, logo, context limit, maximum output, pricing, image support and reasoning levels. The composer, `/api/models`, cost estimates and council pickers all read from that one list. See [`docs/model-registry.md`](docs/model-registry.md) for the inclusion rules and update process.
 
 The four original defaults (DeepSeek V4.1 Flash, Gemini 4 Argon, GPT-6.1 Sol, and Claude Sonnet 5.5) still participate in AI Council. To verify that a registered model actually routes on OpenRouter, run the opt-in smoke test; it sends one short prompt to every model:
 
@@ -18,7 +29,7 @@ OpenRouter availability and pricing can change; check [its model catalog](https:
 
 Requires Docker Engine and Docker Compose.
 
-1. Copy `.env.example` to `.env.local` and fill in `OPENROUTER_API_KEY`, `NEXTAUTH_SECRET`, and the Google or GitHub OAuth credentials you intend to use. Set the OAuth callback URL at the provider to `http://localhost:3000/api/auth/callback/google` or `/github`.
+1. Copy `apps/web/.env.example` to `.env.local` and fill in `OPENROUTER_API_KEY`, `NEXTAUTH_SECRET`, and the Google or GitHub OAuth credentials you intend to use. Set the OAuth callback URL at the provider to `http://localhost:3000/api/auth/callback/google` or `/github`.
 2. Run `docker compose up --build -d`.
 3. Open http://localhost:3000.
 
@@ -26,11 +37,11 @@ Compose starts PostgreSQL, Redis, Qdrant, a one-shot Prisma schema setup job, an
 
 ## Run locally
 
-Use Node.js 24 and running PostgreSQL, Redis, and Qdrant services. Copy `.env.example` to `.env.local`, set the service URLs and credentials, then run:
+Use Node.js 24 and running PostgreSQL, Redis, and Qdrant services. Copy `apps/web/.env.example` to `apps/web/.env.local`, set the service URLs and credentials, then run:
 
 ```bash
 npm ci
-npx prisma db push
+npm run db:push
 npm run dev
 ```
 
@@ -38,7 +49,7 @@ npm run dev
 
 ## CI and production deploys
 
-Pull requests into `dev` or `main` run the CI preflight: install from `package-lock.json`, typecheck, lint, Vitest, and the same `next build` command configured for Vercel. The `main` push runs those checks again, then builds with Vercel's production environment and deploys that build. Vercel's Git auto-deployments are disabled in `vercel.json`, so branch pushes do not start preview deployments before CI finishes.
+Pull requests into `dev` or `main` run the CI preflight: install from `package-lock.json`, typecheck, lint, Vitest, and the same `next build` command configured for Vercel. The `main` push runs those checks again, then builds with Vercel's production environment and deploys that build. Vercel's Git auto-deployments are disabled in `apps/web/vercel.json`, so branch pushes do not start preview deployments before CI finishes.
 
 The production job needs the repository secret `VERCEL_TOKEN`, scoped to the `chatter-stack-7lvm` project, and repository variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`. The Vercel token is used only by the production job. Require the `Preflight` status on `dev` and `main` branch protection before merging. The build command does not run `prisma db push`; apply reviewed schema migrations separately before deploying code that needs them.
 
@@ -65,9 +76,9 @@ function request body limit.
 2. Set a random `CRON_SECRET` (at least 16 characters) in Vercel. The daily
    cron in `vercel.json` removes unfavourited files unused for 30 days and
    unfinished uploads after 24 hours.
-3. Apply the Prisma schema with `npx prisma db push` before deploying this
+3. Apply the Prisma schema with `npm exec --workspace @chatterstack/web -- prisma db push` before deploying this
    version. The Docker `schema` service runs that command automatically.
-4. Run `node scripts/migrate-attachments.mjs` once against the database used
+4. Run `node apps/web/scripts/migrate-attachments.mjs` once against the database used
    by the old version, with `DATABASE_URL` and Blob credentials in the
    environment. It is resumable: it skips messages already converted to
    document references. Keep a database backup until the migration finishes.
@@ -117,7 +128,7 @@ bundled files or run scripts, and skills run only when tagged (Claude can also
 pick skills automatically). Some catalog skills require tools or supporting
 files from their source repository; Discover marks those entries. Each user
 can keep 200 skills. Apply the Prisma
-schema (`npx prisma db push`) before deploying this version.
+schema (`npm exec --workspace @chatterstack/web -- prisma db push`) before deploying this version.
 
 ## Scheduled tasks
 
@@ -147,7 +158,7 @@ Something has to wake the scheduler every minute:
   "schedule": "* * * * *" }` to `vercel.json`.
 
 Several schedulers or instances can call it at once: each due task is claimed
-by exactly one of them. Apply the Prisma schema (`npx prisma db push`) before
+by exactly one of them. Apply the Prisma schema (`npm exec --workspace @chatterstack/web -- prisma db push`) before
 deploying this version. See [docs/scheduled-tasks-plan.md](docs/scheduled-tasks-plan.md)
 for the design.
 
@@ -176,8 +187,8 @@ through that message, message included, and leaves the source as it was.
   copies the prefix in one transaction (a failure leaves no empty chat behind) and
   returns the new conversation.
 
-Apply the Prisma schema (`npx prisma db push`) before deploying this version, then
-run `node scripts/backfill-message-positions.mjs` once against that database to
+Apply the Prisma schema (`npm exec --workspace @chatterstack/web -- prisma db push`) before deploying this version, then
+run `node apps/web/scripts/backfill-message-positions.mjs` once against that database to
 number messages saved before the column existed. See
 [docs/chat-fork-plan.md](docs/chat-fork-plan.md) for the design.
 
@@ -197,7 +208,7 @@ not a system instruction, and the full transcript remains visible and saved.
 - Snapshots live in `conversation_context_snapshots`, keyed by conversation and
   the last summarized message. Switching models cannot reuse a snapshot that
   no longer fits: the budget is rebuilt for the new model before the call.
-- Apply the Prisma schema (`npx prisma db push`) before enabling it.
+- Apply the Prisma schema (`npm exec --workspace @chatterstack/web -- prisma db push`) before enabling it.
 - `off` is the kill switch: new turns ignore snapshots, but the transcript and
   stored snapshots are not deleted.
 
@@ -208,7 +219,7 @@ defaults and known limits.
 
 All three tag what they send with the same value, so local testing never mixes
 with real traffic: `development` (local `next dev`), `preview` (Vercel preview
-deploys) or `production`. It comes from `src/lib/observability/environment.ts`:
+deploys) or `production`. It comes from `apps/web/src/lib/observability/environment.ts`:
 `APP_ENV` if set, else Vercel's `VERCEL_ENV`, else `NODE_ENV` (the browser uses
 `NEXT_PUBLIC_APP_ENV` / `NEXT_PUBLIC_VERCEL_ENV`). Filter with:
 
@@ -235,10 +246,10 @@ need no Sentry configuration.
 | `SENTRY_AUTH_TOKEN` | No | Only for uploading source maps at build time. |
 | `SENTRY_ORG`, `SENTRY_PROJECT` | No | Only with the auth token: where to upload. |
 
-Files: `src/instrumentation.ts` (server register + `onRequestError`),
-`src/instrumentation-client.ts` (browser), `src/sentry.server.config.ts`,
-`src/app/global-error.tsx`, `src/app/error.tsx`, and the shared scrubber plus
-`captureError()` in `src/lib/observability/`. Existing `console.error` calls in
+Files: `apps/web/src/instrumentation.ts` (server register + `onRequestError`),
+`apps/web/src/instrumentation-client.ts` (browser), `apps/web/src/sentry.server.config.ts`,
+`apps/web/src/app/global-error.tsx`, `apps/web/src/app/error.tsx`, and the shared scrubber plus
+`captureError()` in `apps/web/src/lib/observability/`. Existing `console.error` calls in
 request paths were replaced with `captureError()` — they were stripped from
 production builds by `compiler.removeConsole`, which is why these failures were
 previously invisible.
@@ -264,14 +275,14 @@ development, tests and Docker need no configuration.
 | `POSTHOG_HOST` | No | Ingestion host, defaults to `https://us.i.posthog.com`. |
 | `POSTHOG_SESSION_REPLAY` | No | `true` turns on session recording. Off by default. |
 
-The key and host are read on the server in `src/app/layout.tsx` and passed to
+The key and host are read on the server in `apps/web/src/app/layout.tsx` and passed to
 the client provider as props, so a Docker image works without build-time args
 and the values can be changed by restarting the container. A browser that sends
 Do Not Track or Global Privacy Control loads nothing.
 
-Event names and their property types live in `src/lib/analytics/events.ts`.
+Event names and their property types live in `apps/web/src/lib/analytics/events.ts`.
 Server events go through `captureServerEvent()` in
-`src/lib/analytics/posthog-server.ts`, which flushes with `after()` once the
+`apps/web/src/lib/analytics/posthog-server.ts`, which flushes with `after()` once the
 response — including the chat SSE stream — has finished.
 
 Nothing about the conversation itself is sent: no message text, chat titles,
@@ -302,7 +313,7 @@ token, cost and failure analysis. Nothing is sent unless both
 | `OPENOBSERVE_TRACE_STREAM` | No | Traces stream, defaults to `default`. |
 | `OPENOBSERVE_TRACE_CONTENT` | No | `true` attaches the user's message and the answer to trace spans. Separate from `OPENOBSERVE_LOG_CONTENT`. |
 
-The client (`src/lib/observability/openobserve.ts`) is deliberately
+The client (`apps/web/src/lib/observability/openobserve.ts`) is deliberately
 dependency-free: it POSTs batches of JSON records to
 `/api/{org}/{stream}/_json`. No OpenTelemetry provider is registered here -
 Sentry's SDK owns the process-wide OTel setup, and registering a second one
@@ -317,13 +328,13 @@ council run (member answers, peer rankings, chair synthesis) and the embeddings
 it triggered can be read back as one story. Fields: model, provider, thinking
 level, status (`ok` / `error` / `aborted`), duration, time to first token, input
 and output tokens (`estimated: true` when OpenRouter sent no usage), `cost_usd`
-from the pricing in `src/config/models.ts`, finish reason, message count,
+from the pricing in `apps/web/src/config/models.ts`, finish reason, message count,
 attachment count, whether retrieved context was used, and whether the user
 pressed Stop. Query set and field notes:
 [`docs/openobserve-llm-observability.md`](docs/openobserve-llm-observability.md).
 
 **Traces.** With `OPENOBSERVE_TRACES=true`, each chat request also becomes one
-trace in OpenObserve → Traces (`src/lib/observability/otlp-traces.ts`, OTLP/HTTP
+trace in OpenObserve → Traces (`apps/web/src/lib/observability/otlp-traces.ts`, OTLP/HTTP
 JSON to `/api/{org}/v1/traces`, same auth, timeouts and never-throw rules as
 above; at most 100 spans per POST, and a payload OpenObserve refuses outright is
 dropped and counted instead of blocking later traces). The root span
