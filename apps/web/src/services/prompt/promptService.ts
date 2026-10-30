@@ -5,8 +5,9 @@ import type { OpenRouterPart } from '@/src/lib/api/chat/attachments';
 import type { ParsedSkill, SkillFile } from '@/src/lib/skills/skill-file';
 
 // Load the system prompt from file
-const SYSTEM_PROMPT_PATH = path.join(process.cwd(), 'src/prompts/system-prompt.md');
-const SECURITY_POLICY_PATH = path.join(process.cwd(), 'src/prompts/security-policy.md');
+const PROMPT_DIR = process.env.CHAT_PROMPTS_DIR ?? path.join(process.cwd(), 'src/prompts');
+const SYSTEM_PROMPT_PATH = path.join(PROMPT_DIR, 'system-prompt.md');
+const SECURITY_POLICY_PATH = path.join(PROMPT_DIR, 'security-policy.md');
 
 const CHATTERSTACK_SYSTEM_PROMPT = fs.existsSync(SYSTEM_PROMPT_PATH)
   ? fs.readFileSync(SYSTEM_PROMPT_PATH, 'utf-8')

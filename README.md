@@ -2,10 +2,10 @@
 
 ## Repository layout
 
-The repository uses npm workspaces. `apps/web` contains the running Next.js
-frontend and backend. `apps/auth` and `apps/chat` are reserved service packages
-for the staged migration; they do not handle traffic yet. Root npm scripts
-forward to `apps/web`. For Vercel, set the project's Root Directory to
+The repository uses npm workspaces. `apps/web` contains the Next.js frontend
+and main backend. Docker Compose also runs `apps/auth` and `apps/chat` as
+separate servers. Web forwards auth and chat API requests to them. Without
+their service URLs, web uses local handlers. For Vercel, set the project's Root Directory to
 `apps/web` so it reads that app's Next.js and `vercel.json` configuration.
 
 See [the service migration plan](docs/service-migration.md) for the ownership
@@ -33,7 +33,12 @@ Requires Docker Engine and Docker Compose.
 2. Run `docker compose up --build -d`.
 3. Open http://localhost:3000.
 
-Compose starts PostgreSQL, Redis, Qdrant, a one-shot Prisma schema setup job, and the app. It overrides the database, Redis, and Qdrant URLs from `.env.local` with internal container addresses. The `POSTGRES_PASSWORD` variable in your shell or a Compose `.env` file overrides the local development default. To stop the stack, run `docker compose down`; add `-v` only if you want to delete stored chats and service data.
+To check the running services, run `npm run test:services`. Add `-- --live`
+to send one short OpenRouter prompt through Chat and verify that the streamed
+answer is saved by the backend. The test creates a temporary user and removes
+it afterward.
+
+Compose starts PostgreSQL, Redis, Qdrant, a one-shot Prisma schema setup job, and the web, auth, and chat apps. It overrides the database, Redis, and Qdrant URLs from `.env.local` with internal container addresses. The `POSTGRES_PASSWORD` variable in your shell or a Compose `.env` file overrides the local development default. To stop the stack, run `docker compose down`; add `-v` only if you want to delete stored chats and service data.
 
 ## Run locally
 

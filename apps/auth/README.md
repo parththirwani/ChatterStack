@@ -1,10 +1,9 @@
 # Auth service
 
-This directory is reserved for the identity service. During the first layout
-checkpoint, OAuth callbacks and database sessions still run in `apps/web`.
-The next migration step will move sign-in and session validation here behind a
-stable identity API. No auth traffic should be routed to this package yet.
+This Next.js server handles `/api/auth/*` in Docker Compose. The web app
+forwards browser requests through its same-origin route. `/api/health` checks
+database readiness. Run it locally with `npm run dev --workspace @chatterstack/auth`.
 
-Auth will own users, OAuth accounts, sessions, and verification tokens. Other
-services will receive a user ID through a validated identity token and will
-not query auth tables directly.
+It currently shares the web package's Auth.js configuration and database.
+Moving auth table ownership and replacing direct session reads in web and
+chat are later migration steps.

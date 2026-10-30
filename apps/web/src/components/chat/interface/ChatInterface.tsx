@@ -203,7 +203,12 @@ const MessageList = memo(function MessageList({
           {forkOrigin.id ? (
             <button
               type="button"
-              onClick={() => showConversation(forkOrigin.id!)}
+              onClick={() => {
+                const id = forkOrigin.id!;
+                useAppStore.getState().setCurrentConversationId(id);
+                void useAppStore.getState().fetchConversation(id);
+                showConversation(id);
+              }}
               className="min-w-0 max-w-[min(44vw,340px)] truncate text-left text-[#a6bbfa] underline-offset-4 transition-colors hover:text-[#c4d1ff] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a6bbfa]"
               title={forkOrigin.title}
             >
@@ -624,9 +629,11 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const listedConversation = useAppStore(
     (state) => state.conversations.find((conversation) => conversation.id === conversationKey)
   );
+  const activeConversation = listedConversation ??
+    (initialConversation?.id === conversationKey ? initialConversation : undefined);
   const conversationTitle = listedConversation?.title;
   const parentConversation = useAppStore((state) =>
-    state.conversations.find((conversation) => conversation.id === (listedConversation?.parentConversationId ?? initialConversation?.parentConversationId))
+    state.conversations.find((conversation) => conversation.id === activeConversation?.parentConversationId)
   );
   const conversationListed = useAppStore((state) =>
     state.conversations.some((conversation) => conversation.id === conversationKey)
@@ -671,10 +678,8 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   const initialTitle =
     initialConversation?.id === conversationKey ? initialConversation.title : undefined;
   const displayTitle = conversationTitle || initialTitle || firstUserContent || 'Conversation';
-  const parentId = listedConversation?.parentConversationId ?? initialConversation?.parentConversationId;
-  const sourceDetails = listedConversation?.forkSource === null
-    ? null
-    : listedConversation?.forkSource ?? initialConversation?.forkSource;
+  const parentId = activeConversation?.parentConversationId;
+  const sourceDetails = activeConversation?.forkSource;
   const forkOrigin = parentId ? {
     title: parentConversation?.title || sourceDetails?.title || (displayTitle.startsWith('Fork of ') ? displayTitle.slice(8) : 'Original chat'),
     id: parentConversation?.id ?? sourceDetails?.id ?? null,

@@ -2,5 +2,17 @@
   "name": "@chatterstack/auth",
   "private": true,
   "version": "0.1.0",
-  "description": "Future identity service boundary"
+  "description": "Identity service",
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "next build",
+    "start": "node .next/standalone/apps/auth/server.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@chatterstack/web": "*",
+    "next": "15.5.28",
+    "react": "19.1.0",
+    "react-dom": "19.1.0"
+  }
 }

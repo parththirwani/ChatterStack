@@ -39,6 +39,60 @@ services:
         condition: service_healthy
     restart: "no"
 
+  auth:
+    build:
+      context: .
+      target: auth
+    env_file:
+      - path: .env.local
+        required: true
+    environment:
+      DATABASE_URL: postgresql://chatterstack:${POSTGRES_PASSWORD:-chatterstack_dev}@postgres:5432/chatterstack
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
+    depends_on:
+      schema:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  chat:
+    build:
+      context: .
+      target: chat
+    env_file:
+      - path: .env.local
+        required: true
+    environment:
+      DATABASE_URL: postgresql://chatterstack:${POSTGRES_PASSWORD:-chatterstack_dev}@postgres:5432/chatterstack
+      REDIS_URL: redis://redis:6379
+      UPSTASH_REDIS_REST_URL: ""
+      UPSTASH_REDIS_REST_TOKEN: ""
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: ${NEXTAUTH_SECRET:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+    depends_on:
+      schema:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   app:
     build:
       context: .
@@ -54,9 +108,14 @@ services:
     environment:
       DATABASE_URL: postgresql://chatterstack:${POSTGRES_PASSWORD:-chatterstack_dev}@postgres:5432/chatterstack
       REDIS_URL: redis://redis:6379
+      UPSTASH_REDIS_REST_URL: ""
+      UPSTASH_REDIS_REST_TOKEN: ""
       QDRANT_URL: http://qdrant:6333
+      QDRANT_API_KEY: ""
       NEXTAUTH_URL: http://localhost:3000
       NEXT_PUBLIC_APP_URL: http://localhost:3000
+      AUTH_SERVICE_URL: http://auth:3001
+      CHAT_SERVICE_URL: http://chat:3002
       # Run scheduled tasks inside the app; no external cron needed.
       SCHEDULED_TASKS_TICKER: "true"
       # Secrets are read from .env (Compose interpolation). The rest of .env is
@@ -70,6 +129,11 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     depends_on:
       schema:
         condition: service_completed_successfully
@@ -77,6 +141,10 @@ services:
         condition: service_healthy
       qdrant:
         condition: service_started
+      auth:
+        condition: service_healthy
+      chat:
+        condition: service_healthy
 
 volumes:
   postgres_data:

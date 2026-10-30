@@ -2,11 +2,11 @@
 
 ## Current checkpoint
 
-The npm workspace has three application directories. `apps/web` is the
-existing, working Next.js frontend and backend. `apps/auth` and `apps/chat`
-contain package boundaries and ownership notes, but no production handlers.
-All HTTP traffic still goes to `apps/web`. Do not deploy the other packages as
-services until their contracts and integration tests exist.
+The npm workspace has three application directories. Docker Compose runs all
+three as separate servers. The web app forwards `/api/auth/*` to Auth and
+`/api/chat` to Chat. Without service URLs, web retains local handlers for its
+current single-app deployment. Auth and Chat still import web package code
+and share its database, so data ownership has not moved yet.
 
 The existing Vercel project must use `apps/web` as its Root Directory before
 this layout is released. The moved `vercel.json` applies from that directory.
@@ -15,12 +15,12 @@ this layout is released. The moved `vercel.json` applies from that directory.
 
 | Application | Owns | Data access |
 | --- | --- | --- |
-| Auth | OAuth, sessions, identity | Auth tables only |
-| Chat | Prompt assembly, OpenRouter, AI Council, streaming | Backend APIs only |
+| Auth | OAuth, sessions, identity | Shared PostgreSQL for now; auth tables later |
+| Chat | Prompt assembly, OpenRouter, AI Council, streaming | Shared PostgreSQL, Redis, Qdrant for now; backend APIs later |
 | Web and backend | UI, conversations, messages, documents, skills, profile, scheduling, retrieval | Application tables, Blob, Redis, Qdrant |
 
 The browser keeps the current same-origin API routes. The web app proxies chat
-streams and auth callbacks once those services are ready. The backend checks
+streams and auth callbacks in Compose. The backend checks
 the user ID on every conversation, document, and skill request; a valid
 identity token alone does not authorize access to a resource.
 
@@ -34,10 +34,9 @@ identity token alone does not authorize access to a resource.
    retrieval behind backend interfaces. Move the per-conversation turn claim
    from process memory to a distributed mechanism before running more than
    one chat instance.
-3. Extract chat execution behind an internal streaming endpoint. The web
-   route authenticates the browser request and forwards the stream. Chat
-   execution uses the backend interfaces and has no direct Prisma access.
-   Run the old and new handlers behind a routing switch during cutover.
+3. Replace direct Prisma, Redis, and Qdrant access in Chat with backend APIs.
+   The web route already forwards the request and stream in Compose. Keep the
+   local handler until the separate service is deployed in every environment.
 4. Run scheduled tasks in a backend worker. It claims runs and calls chat
    execution; it records results through the backend conversation path.
    Queue indexing after message commits with saved message IDs as idempotency

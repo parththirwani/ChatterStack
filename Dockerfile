@@ -22,6 +22,10 @@ RUN npm run build
 FROM deps AS schema
 CMD ["npm", "exec", "--workspace", "@chatterstack/web", "--", "prisma", "db", "push"]
 
+FROM deps AS service-build
+COPY . .
+RUN npm run build:auth && npm run build:chat
+
 FROM node:24-bookworm-slim AS app
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -31,3 +35,22 @@ COPY --from=build --chown=node:node /app/apps/web/src/prompts ./apps/web/src/pro
 USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
+
+FROM node:24-bookworm-slim AS auth
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production PORT=3001 HOSTNAME=0.0.0.0
+COPY --from=service-build --chown=node:node /app/apps/auth/.next/standalone ./
+USER node
+EXPOSE 3001
+CMD ["node", "apps/auth/server.js"]
+
+FROM node:24-bookworm-slim AS chat
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+ENV NODE_ENV=production PORT=3002 HOSTNAME=0.0.0.0 CHAT_PROMPTS_DIR=/app/apps/web/src/prompts
+COPY --from=service-build --chown=node:node /app/apps/chat/.next/standalone ./
+COPY --from=service-build --chown=node:node /app/apps/web/src/prompts ./apps/web/src/prompts
+USER node
+EXPOSE 3002
+CMD ["node", "apps/chat/server.js"]

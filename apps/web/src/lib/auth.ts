@@ -45,10 +45,17 @@ export const { handlers, auth } = NextAuth({
       return true;
     },
     async session({ session, user }) {
-      if (session.user) {
-        session.user.id = user.id;
-      }
-      return session;
+      // Auth.js can pass adapter fields through `session`. Return an explicit
+      // browser shape so the database session token never reaches the client.
+      return {
+        expires: session.expires,
+        user: {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        },
+      };
     },
   },
   // CRITICAL: These settings fix the Configuration error

@@ -24,6 +24,8 @@ jobs:
       - run: npm run test:static
       - run: npm run test:vitest
       - run: npm run build:vercel
+      - run: npm run build:auth
+      - run: npm run build:chat
 
   deploy:
     name: Deploy production
