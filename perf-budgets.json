@@ -1,0 +1,45 @@
+{
+  "$comment": "Regression budgets checked in CI. API and page numbers are p95/worst-of-3 against a production build on a GitHub runner with a seeded user (60 chats, one 200-message chat); local baselines are about 10x lower. Bundle numbers are gzipped First Load JS from `next build`. Raise a budget only when the growth is intended, in the same PR.",
+  "samples": 30,
+  "warmup": 5,
+  "api": {
+    "conversations": {
+      "p95Ms": 150
+    },
+    "conversation": {
+      "p95Ms": 200
+    },
+    "models": {
+      "p95Ms": 100
+    },
+    "skills": {
+      "p95Ms": 150
+    },
+    "documents": {
+      "p95Ms": 150
+    },
+    "scheduled-tasks": {
+      "p95Ms": 150
+    },
+    "activity": {
+      "p95Ms": 150
+    }
+  },
+  "pages": {
+    "home": {
+      "ttfbMs": 600,
+      "readyMs": 3000
+    },
+    "long-chat": {
+      "ttfbMs": 2500,
+      "readyMs": 6000
+    }
+  },
+  "bundle": {
+    "totalKb": 800,
+    "pages": {
+      "/[[...slug]]/page": 800,
+      "/_not-found/page": 315
+    }
+  }
+}

@@ -58,6 +58,11 @@ export const test = base.extend<{ mockChat: MockChat; cleanDatabase: void }>({
     const requests: ChatBody[] = [];
 
     const server = http.createServer(async (req, res) => {
+      // Only the rerouted chat request is ours; local port probes get a 404.
+      if (req.method !== 'POST' || req.url !== '/api/chat') {
+        res.writeHead(404).end();
+        return;
+      }
       let raw = '';
       for await (const chunk of req) raw += chunk;
       const body = JSON.parse(raw) as ChatBody;

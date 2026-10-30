@@ -10,12 +10,14 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
+    "check:bundle": "node scripts/check-bundle-size.mjs",
     "test:static": "tsc --noEmit && eslint",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration --project components",
     "test:models": "OPENROUTER_LIVE_MODEL_CHECK=1 vitest run --project integration tests/integration/model-routing.live.test.ts",
     "test:vitest": "vitest run",
     "test:e2e": "playwright test",
+    "test:perf": "E2E_PERF=1 playwright test tests/e2e/perf.spec.ts",
     "test": "npm run test:static && vitest run && playwright test"
   },
   "engines": {
