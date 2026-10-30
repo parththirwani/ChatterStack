@@ -109,7 +109,9 @@ jobs:
         run: npx playwright test
         env:
           E2E_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # Reported even when an e2e test fails, so one failure does not hide a slowdown.
       - name: Response-time budgets
+        if: ${{ !cancelled() }}
         run: npm run test:perf
         env:
           E2E_PG_CONTAINER: ${{ job.services.postgres.id }}
