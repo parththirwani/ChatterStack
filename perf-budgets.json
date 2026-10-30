@@ -1,5 +1,5 @@
 {
-  "$comment": "Regression budgets checked in CI. API and page numbers are p95/worst-of-3 against a production build on a GitHub runner with a seeded user (60 chats, one 200-message chat); local baselines are about 10x lower. Bundle numbers are gzipped First Load JS from `next build`. Raise a budget only when the growth is intended, in the same PR.",
+  "$comment": "Regression budgets checked in CI. API and page numbers are p95/worst-of-3 against a production build on a GitHub runner with a seeded user (60 chats, one 200-message chat); local baselines are about 10x lower. Bundle numbers are gzipped First Load JS per build target. Raise a budget only when the growth is intended, in the same PR.",
   "samples": 30,
   "warmup": 5,
   "api": {
@@ -36,10 +36,20 @@
     }
   },
   "bundle": {
-    "totalKb": 800,
-    "pages": {
-      "/[[...slug]]/page": 800,
-      "/_not-found/page": 315
+    "$comment": "Gzipped First Load JS per page, page plus its layouts. vercel = `npm run build:vercel` (webpack), docker = `npm run build` (Turbopack).",
+    "vercel": {
+      "totalKb": 715,
+      "pages": {
+        "/[[...slug]]/page": 715,
+        "/_not-found/page": 300
+      }
+    },
+    "docker": {
+      "totalKb": 800,
+      "pages": {
+        "/[[...slug]]/page": 800,
+        "/_not-found/page": 315
+      }
     }
   }
 }
