@@ -1,38 +1,38 @@
 {
-  "$comment": "Regression budgets checked in CI. API and page numbers are p95/worst-of-3 against a production build on a GitHub runner with a seeded user (60 chats, one 200-message chat); local baselines are about 10x lower. Bundle numbers are gzipped First Load JS per build target. Raise a budget only when the growth is intended, in the same PR.",
+  "$comment": "Regression budgets checked in CI. API and page numbers are p95/worst-of-3 against a production build on a GitHub runner with a seeded user (60 chats, one 200-message chat), set at about 3-5x the measured runner baseline to absorb noise. Bundle numbers are gzipped First Load JS per build target. Raise a budget only when the growth is intended, in the same PR.",
   "samples": 30,
   "warmup": 5,
   "api": {
     "conversations": {
-      "p95Ms": 150
-    },
-    "conversation": {
-      "p95Ms": 200
-    },
-    "models": {
       "p95Ms": 100
     },
+    "conversation": {
+      "p95Ms": 80
+    },
+    "models": {
+      "p95Ms": 60
+    },
     "skills": {
-      "p95Ms": 150
+      "p95Ms": 60
     },
     "documents": {
-      "p95Ms": 150
+      "p95Ms": 60
     },
     "scheduled-tasks": {
-      "p95Ms": 150
+      "p95Ms": 60
     },
     "activity": {
-      "p95Ms": 150
+      "p95Ms": 80
     }
   },
   "pages": {
     "home": {
-      "ttfbMs": 600,
-      "readyMs": 3000
+      "ttfbMs": 200,
+      "readyMs": 1500
     },
     "long-chat": {
-      "ttfbMs": 2500,
-      "readyMs": 6000
+      "ttfbMs": 2000,
+      "readyMs": 5000
     }
   },
   "bundle": {
