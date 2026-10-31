@@ -250,16 +250,44 @@ describe('council mode', () => {
     expect(JSON.parse(localStorage.getItem('councilSettings')!).members).toEqual([GPT, GEMINI]);
   });
 
-  it('lists providers first, naming the members each one has', async () => {
+  it('shows selected models and chair above the provider list', async () => {
     const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE], chair: GEMINI }) });
     await user.click(screen.getByRole('button', { name: 'Council settings' }));
     const dialog = screen.getByRole('dialog', { name: 'Council settings' });
 
+    const selected = within(dialog).getByRole('list', { name: 'Selected models' });
+    expect(within(selected).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'GPT-6.1 Sol', 'Gemini 4 Argon', 'Claude Sonnet 5.5',
+    ]);
+    const chair = within(dialog).getByRole('button', { name: /Chair/ });
     const providers = within(dialog).getByRole('list', { name: 'Providers' });
+    expect(selected.compareDocumentPosition(chair) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(chair.compareDocumentPosition(providers) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(providers).getByRole('button', { name: 'OpenAI, members GPT-6.1 Sol' })).toBeInTheDocument();
     expect(within(providers).getByRole('button', { name: 'Anthropic, members Claude Sonnet 5.5' })).toBeInTheDocument();
     expect(within(providers).getByRole('button', { name: /^DeepSeek, \d+ models$/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole('checkbox')).toBeNull();
+
+    await user.click(within(selected).getByRole('button', { name: 'Deselect Claude Sonnet 5.5' }));
+    expect(within(selected).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      'GPT-6.1 Sol', 'Gemini 4 Argon',
+    ]);
+    expect(within(selected).getByRole('button', { name: 'Deselect Gemini 4 Argon' })).toHaveFocus();
+    expect(within(selected).getByRole('button', { name: 'Deselect GPT-6.1 Sol' })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(within(selected).getByRole('button', { name: 'Deselect GPT-6.1 Sol' }));
+    expect(within(selected).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('updates the chair when deselecting it from the selected list', async () => {
+    const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE], chair: GEMINI }) });
+    await user.click(screen.getByRole('button', { name: 'Council settings' }));
+    const dialog = screen.getByRole('dialog', { name: 'Council settings' });
+    const selected = within(dialog).getByRole('list', { name: 'Selected models' });
+
+    await user.click(within(selected).getByRole('button', { name: 'Deselect Gemini 4 Argon' }));
+    expect(within(dialog).getByRole('button', { name: /Chair/ })).toHaveTextContent('GPT-6.1 Sol');
+    expect(JSON.parse(localStorage.getItem('councilSettings')!).members).toEqual([GPT, CLAUDE]);
+    expect(JSON.parse(localStorage.getItem('councilSettings')!).chair).toBe(GPT);
   });
 
   it('shows a provider’s models newest first, and Escape steps back before closing', async () => {
