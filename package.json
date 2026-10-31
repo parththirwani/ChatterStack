@@ -39,7 +39,7 @@
     "gpt-tokenizer": "^3.4.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.22",
-    "lucide-react": "^0.564.0",
+    "lucide-react": "^1.63.0",
     "mammoth": "^1.13.0",
     "motion": "^14.7.1",
     "next": "15.5.28",
