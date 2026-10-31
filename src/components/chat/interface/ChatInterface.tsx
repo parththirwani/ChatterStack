@@ -172,7 +172,7 @@ const ChatHeader = memo(function ChatHeader({
 
 interface MessageListProps {
   messages: Message[];
-  forkOrigin?: { title: string; id: string | null };
+  pendingHandoff?: { from: string; to: string };
   loading: boolean;
   councilProgress: CouncilProgress[];
   /** Regenerates the last answer; not offered while one is still streaming. */
@@ -185,7 +185,7 @@ interface MessageListProps {
 
 const MessageList = memo(function MessageList({
   messages,
-  forkOrigin,
+  pendingHandoff,
   loading,
   councilProgress,
   onRetry,
@@ -195,26 +195,6 @@ const MessageList = memo(function MessageList({
   const handoffs = useMemo(() => modelHandoffs(messages), [messages]);
   return (
     <div className="mx-auto w-full max-w-[768px] space-y-5 px-4 pb-8 pt-5 sm:px-6">
-      {forkOrigin && (
-        <div className="fork-origin flex min-w-0 items-center gap-3 py-2 text-[13px] text-[#aaa7a3]" aria-label={`Continued from ${forkOrigin.title}`}>
-          <span className="fork-origin-line h-px min-w-4 flex-1 bg-white/[0.13]" aria-hidden="true" />
-          <GitFork className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} aria-hidden="true" />
-          <span className="shrink-0">Continued from</span>
-          {forkOrigin.id ? (
-            <button
-              type="button"
-              onClick={() => showConversation(forkOrigin.id!)}
-              className="min-w-0 max-w-[min(44vw,340px)] truncate text-left text-[#a6bbfa] underline-offset-4 transition-colors hover:text-[#c4d1ff] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a6bbfa]"
-              title={forkOrigin.title}
-            >
-              {forkOrigin.title}
-            </button>
-          ) : (
-            <span className="min-w-0 max-w-[min(44vw,340px)] truncate" title={forkOrigin.title}>{forkOrigin.title}</span>
-          )}
-          <span className="fork-origin-line h-px min-w-4 flex-1 bg-white/[0.13]" aria-hidden="true" />
-        </div>
-      )}
       {messages.map((msg, index) => {
         const isLastMessage = index === messages.length - 1;
         const key = msg.clientKey ?? msg.id ?? `${msg.role}-${index}-${msg.createdAt ?? ''}`;
@@ -264,6 +244,7 @@ const MessageList = memo(function MessageList({
           </React.Fragment>
         );
       })}
+      {pendingHandoff && <ModelHandoffDivider {...pendingHandoff} />}
     </div>
   );
 });
@@ -620,13 +601,17 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     stopGenerating,
   } = useChat(conversationKey);
 
-  const { councilMode: isCouncilMode } = useModelSelection();
+  const { councilMode: isCouncilMode, activeModelId } = useModelSelection();
   const listedConversation = useAppStore(
     (state) => state.conversations.find((conversation) => conversation.id === conversationKey)
   );
+  const initialForCurrent = initialConversation?.id === conversationKey ? initialConversation : undefined;
+  // A listed root chat has an explicit null parent. Do not fall back to the
+  // previous route's initial fork when navigating between conversations.
+  const parentId = listedConversation ? listedConversation.parentConversationId : initialForCurrent?.parentConversationId;
   const conversationTitle = listedConversation?.title;
   const parentConversation = useAppStore((state) =>
-    state.conversations.find((conversation) => conversation.id === (listedConversation?.parentConversationId ?? initialConversation?.parentConversationId))
+    state.conversations.find((conversation) => conversation.id === parentId)
   );
   const conversationListed = useAppStore((state) =>
     state.conversations.some((conversation) => conversation.id === conversationKey)
@@ -664,21 +649,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
   );
 
   const initialMessages =
-    initialConversation?.id === conversationKey ? initialConversation.messages : undefined;
+    initialForCurrent?.messages;
   const activeMessages = messages.length > 0 ? messages : initialMessages ?? EMPTY_MESSAGES;
 
   const firstUserContent = activeMessages.find((item) => item.role === 'user')?.content;
   const initialTitle =
-    initialConversation?.id === conversationKey ? initialConversation.title : undefined;
+    initialForCurrent?.title;
   const displayTitle = conversationTitle || initialTitle || firstUserContent || 'Conversation';
-  const parentId = listedConversation?.parentConversationId ?? initialConversation?.parentConversationId;
   const sourceDetails = listedConversation?.forkSource === null
     ? null
-    : listedConversation?.forkSource ?? initialConversation?.forkSource;
+    : listedConversation?.forkSource ?? initialForCurrent?.forkSource;
   const forkOrigin = parentId ? {
     title: parentConversation?.title || sourceDetails?.title || (displayTitle.startsWith('Fork of ') ? displayTitle.slice(8) : 'Original chat'),
     id: parentConversation?.id ?? sourceDetails?.id ?? null,
   } : undefined;
+  const lastAnsweredModel = [...activeMessages].reverse().find((message) => message.role === 'assistant')?.modelId;
+  const normalizedLastModel = lastAnsweredModel?.startsWith('council:') ? 'council' : lastAnsweredModel;
+  const pendingHandoff = normalizedLastModel && normalizedLastModel !== activeModelId && !loading
+    ? { from: normalizedLastModel, to: activeModelId }
+    : undefined;
   // Only the draft chat is "empty". A conversation that has an id but no
   // messages yet is still loading (or missing), so it gets a skeleton instead
   // of the hero empty state.
@@ -770,6 +759,27 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
         onRename={!isFirstMessage && conversationListed ? handleRename : undefined}
       />
 
+      {forkOrigin && !conversationMissing && (
+        <div className="fork-origin mx-auto flex w-full max-w-[768px] min-w-0 shrink-0 items-center gap-3 px-4 py-2 text-[13px] text-[#aaa7a3] sm:px-6" aria-label={`Continued from ${forkOrigin.title}`}>
+          <span className="fork-origin-line h-px min-w-4 flex-1 bg-white/[0.13]" aria-hidden="true" />
+          <GitFork className="h-3.5 w-3.5 shrink-0" strokeWidth={1.7} aria-hidden="true" />
+          <span className="shrink-0">Continued from</span>
+          {forkOrigin.id ? (
+            <button
+              type="button"
+              onClick={() => showConversation(forkOrigin.id!)}
+              className="min-w-0 max-w-[min(44vw,340px)] truncate text-left text-[#a6bbfa] underline-offset-4 transition-colors hover:text-[#c4d1ff] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a6bbfa]"
+              title={forkOrigin.title}
+            >
+              {forkOrigin.title}
+            </button>
+          ) : (
+            <span className="min-w-0 max-w-[min(44vw,340px)] truncate" title={forkOrigin.title}>{forkOrigin.title}</span>
+          )}
+          <span className="fork-origin-line h-px min-w-4 flex-1 bg-white/[0.13]" aria-hidden="true" />
+        </div>
+      )}
+
       {error && (
         <div role="alert" className="mx-4 mt-2 flex w-auto items-start gap-2.5 rounded-xl border border-red-500/20 bg-red-500/[0.07] px-3.5 py-2.5 text-[13px] text-red-200 sm:mx-auto sm:w-full sm:max-w-[720px]">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-300" />
@@ -805,7 +815,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
               ) : (
                 <MessageList
                   messages={activeMessages}
-                  forkOrigin={forkOrigin}
+                  pendingHandoff={pendingHandoff}
                   loading={loading}
                   councilProgress={councilProgress}
                   onRetry={handleRetry}
