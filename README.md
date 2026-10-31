@@ -227,6 +227,13 @@ connections UI that builds on this.
 
 ### Connecting MCP servers
 
+Manage them under **Customize → Connections** (`/customize/connections`): the
+verified catalog, a custom HTTPS server form, token entry, a **Test** button that
+stores the discovered tool list, an enable switch, per-tool switches, and a
+review step that blocks enabling until a changed tool list has been looked over.
+Tokens are typed into a dialog, sent once over the session and stored encrypted;
+the page only ever learns that a token exists.
+
 `MCP_CREDENTIAL_KEY` is required before any user token can be stored. It
 encrypts bearer tokens at rest with AES-256-GCM and is deliberately separate from
 `AUTH_SECRET`, so rotating session secrets never invalidates stored tokens.

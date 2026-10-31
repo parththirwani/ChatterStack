@@ -28,6 +28,10 @@ export interface Message {
   skills?: SkillTag[];
   /** MCP tool calls made during this assistant turn, in model order. */
   toolCalls?: MessageToolCallView[];
+  /** Live-session only: the call being approved or run right now. */
+  toolCall?: LiveToolCallView;
+  /** Live-session only: tool discovery or loop-limit notes for this turn. */
+  toolNotices?: string[];
   /** Row order within the saved chat; absent on unsent or legacy messages. */
   position?: number;
 }
@@ -61,6 +65,30 @@ export interface MessageToolCallView {
   /** The bounded text handed back to the model. */
   result: string;
   truncated: boolean;
+  error?: string;
+}
+
+/** The approval request behind a pending call; the id spends itself once. */
+export interface ToolApprovalRequestView {
+  approvalId: string;
+  callId: string;
+  name: string;
+  toolId: string;
+  connectionId: string;
+  arguments: Record<string, unknown>;
+  round: number;
+  expiresAt: number;
+}
+
+/** Live-session only: a call the user has to decide, or one still running. */
+export interface LiveToolCallView {
+  callId: string;
+  name: string;
+  state: 'pending' | 'deciding' | 'running' | 'lost';
+  approvalId?: string;
+  arguments?: Record<string, unknown>;
+  expiresAt?: number;
+  /** Why the decision never landed, for `lost`. */
   error?: string;
 }
 
@@ -256,16 +284,7 @@ export interface SSEData {
   /** A connection's tool list could not be fetched; its tools were skipped. */
   toolDiscoveryFailed?: { connectionId: string; error: string };
   /** The model asked for this call; the user's decision spends the approval id. */
-  toolApprovalRequest?: {
-    approvalId: string;
-    callId: string;
-    name: string;
-    toolId: string;
-    connectionId: string;
-    arguments: Record<string, unknown>;
-    round: number;
-    expiresAt: number;
-  };
+  toolApprovalRequest?: ToolApprovalRequestView;
   /** An approved call started executing. */
   toolCallStarted?: { callId: string; name: string };
   /** A call finished successfully; the model already saw the result. */

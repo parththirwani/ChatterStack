@@ -15,12 +15,13 @@ describe('appPageFromSegments', () => {
     expect(parse('/customize/skills/new/upload')).toEqual({ kind: 'skills', tab: 'upload' });
     expect(parse(`/customize/skills/${ID}`)).toEqual({ kind: 'skills', tab: 'skill', skillId: ID, section: 'overview' });
     expect(parse(`/customize/skills/${ID}/contents`)).toMatchObject({ skillId: ID, section: 'contents' });
+    expect(parse('/customize/connections')).toEqual({ kind: 'connections' });
   });
 
   it.each([
     '/resources/x', '/resources/a/b/c', '/customize/foo', '/customize/skills/yours/x', '/customize/skills/new',
     '/customize/skills/not-an-id', `/customize/skills/${ID}/other`, `/customize/skills/${ID}/contents/x`,
-    '/scheduled/not-an-id', `/scheduled/${ID}/x`,
+    '/customize/connections/x', '/scheduled/not-an-id', `/scheduled/${ID}/x`,
   ])('has no page for %s (a 404)', (path) => {
     expect(parse(path)).toBeNull();
   });

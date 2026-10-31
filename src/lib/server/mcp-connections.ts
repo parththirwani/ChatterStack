@@ -43,37 +43,10 @@ export interface McpConnectionRow {
   updatedAt: Date;
 }
 
-export interface McpToolView {
-  /** The server's own tool name; also the enablement map key. */
-  id: string;
-  name: string;
-  description: string;
-  readOnly: boolean;
-  schemaBytes: number;
-  enabled: boolean;
-}
-
-/** What any GET or mutation may return. Never contains a credential. */
-export interface McpConnectionView {
-  id: string;
-  name: string;
-  url: string;
-  host: string;
-  catalogId: string | null;
-  transport: string;
-  authMode: 'none' | 'bearer';
-  hasCredential: boolean;
-  enabled: boolean;
-  status: 'untested' | 'connected' | 'error';
-  lastError: string | null;
-  lastCheckedAt: string | null;
-  tools: McpToolView[];
-  toolCount: number;
-  /** A new tool list must be reviewed before the connection can run tools. */
-  needsReview: boolean;
-  createdAt: string;
-  updatedAt: string;
-}
+// The browser-safe views live with the other shared shapes, so the connections
+// UI and this service can never drift apart.
+export type { McpConnectionStatus, McpConnectionsResponse, McpToolView } from '@/src/types/mcp.types';
+import type { McpConnectionView } from '@/src/types/mcp.types';
 
 export interface CreateConnectionInput {
   name: string;
