@@ -225,6 +225,51 @@ looks exactly like it did before.
 See [docs/mcp-support-plan.md](docs/mcp-support-plan.md) for the design and the
 connections UI that builds on this.
 
+### Connecting MCP servers
+
+`MCP_CREDENTIAL_KEY` is required before any user token can be stored. It
+encrypts bearer tokens at rest with AES-256-GCM and is deliberately separate from
+`AUTH_SECRET`, so rotating session secrets never invalidates stored tokens.
+Generate one with `openssl rand -hex 32`. Without it, connections can still be
+created and tested anonymously, but saving a token returns a clear 503.
+
+```bash
+MCP_TOOLS=on
+MCP_CREDENTIAL_KEY=<64 hex characters>
+# Optional. Trusted origins for a self-hosted LAN server, e.g. http://mcp.lan:8080
+# Empty in a hosted deployment, where HTTPS plus a public address is required.
+MCP_ALLOWED_ORIGINS=
+```
+
+Everything else about a connection is user scoped and untrusted by default:
+
+- Connections, tokens, discovered tools and approvals belong to one user. Every
+  query is filtered by the session user id, and a deleted user's rows cascade
+  away. `GET` responses never contain a token, only whether one is stored.
+- Servers must be HTTPS on the default port, with no credentials in the URL.
+  Loopback, link-local, private and other reserved addresses are refused, the
+  host is re-resolved and re-checked on every connection and every redirect hop,
+  and cross-origin redirects are blocked. Responses are byte capped. Known
+  limitation: the address is checked before the request is issued, so a DNS answer
+  that changes between that check and the connection is only caught by the
+  per-hop recheck.
+- Tool names, descriptions and schemas from a server are sanitized, capped
+  (32 tools, 8 KB per schema) and renamed into unique OpenRouter-safe function
+  names, with a reverse map for execution. An oversized or unsupported schema
+  becomes a visible connection error and nothing is enabled.
+- Errors and traces are redacted: the stored token never appears in a message,
+  and known secret shapes are stripped before anything is saved or logged.
+
+### Verified catalog
+
+Catalog entries are prefilled URLs, never prefilled credentials.
+
+| Entry | URL | Auth | Verified from this deployment |
+| --- | --- | --- | --- |
+| Cloudflare documentation | `https://docs.mcp.cloudflare.com/mcp` | none | Yes, 2026-10-31: `initialize` and `tools/list` returned 200 anonymously (`serverInfo` `docs-ai-search` 0.5.0, protocol `2025-06-18`, tool `search_cloudflare_documentation`, `readOnlyHint: true`). |
+| GitHub (read only) | `https://api.githubcopilot.com/mcp/readonly` | your own GitHub token | Not verified; needs a user token, so it is labelled as such and only becomes ready after a successful test. |
+| Linear (read only) | `https://mcp.linear.app/mcp/readonly` | your own bearer token | Not verified; needs a user token. OAuth comes in a later milestone. |
+
 ## Environments in Sentry, PostHog and OpenObserve
 
 All three tag what they send with the same value, so local testing never mixes

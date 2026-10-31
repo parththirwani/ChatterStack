@@ -1,16 +1,10 @@
 import { z } from 'zod';
-import { auth } from '@/src/lib/auth';
 import { SkillFilesSchema, SkillInputSchema, MAX_SKILL_EXTRA_FRONTMATTER } from '@/src/lib/skills/skill-file';
 import { SkillError } from './skills';
 
 /** Shared pieces of the /api/skills routes. */
 
-export async function sessionUserId() {
-  const session = await auth();
-  return session?.user?.id ?? null;
-}
-
-export const unauthorized = () => Response.json({ error: 'Unauthorized' }, { status: 401 });
+export { sessionUserId, unauthorized } from './route-auth';
 export const notFound = () => Response.json({ error: 'Skill not found' }, { status: 404 });
 
 export const SkillContentSchema = SkillInputSchema.extend({
