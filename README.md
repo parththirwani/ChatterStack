@@ -204,6 +204,27 @@ not a system instruction, and the full transcript remains visible and saved.
 See [docs/auto-compaction.md](docs/auto-compaction.md) for the design,
 defaults and known limits.
 
+## MCP tools in a chat
+
+`MCP_TOOLS=on` lets the chat turn run a bounded tool loop: the model may ask for
+a tool, the user approves that exact call, the result goes back, and the model
+answers. `off` (the default) sends no tool definitions at all, so every turn
+looks exactly like it did before.
+
+- Only single model chats take part. Council and scheduled tasks never advertise
+  or run a tool.
+- The loop is bounded: rounds, calls per round and per turn, wall-clock time,
+  argument bytes, result bytes and prompt tokens. A spent budget is stated in
+  the transcript, and the model gets one last tool-free turn to summarise.
+- Every tool call id the model produced is answered, including denials,
+  invalid arguments, disabled tools and cancellations, so a replayed or forked
+  chat stays valid to send back to OpenRouter.
+- A model that cannot take a `tools` array is refused with a clear message
+  rather than sent a request it would reject.
+
+See [docs/mcp-support-plan.md](docs/mcp-support-plan.md) for the design and the
+connections UI that builds on this.
+
 ## Environments in Sentry, PostHog and OpenObserve
 
 All three tag what they send with the same value, so local testing never mixes

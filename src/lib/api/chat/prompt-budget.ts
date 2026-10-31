@@ -2,7 +2,7 @@ import { effectiveThinkingLevel, getModel, type ThinkingLevel } from '@/src/conf
 import { countTokens } from '@/src/lib/tokens';
 import type { OpenRouterPart } from './attachments';
 
-type PromptMessage = { role: string; content: string | OpenRouterPart[] };
+type PromptMessage = { role: string; content: string | OpenRouterPart[] | null };
 
 /** Reasoning tokens count against `max_tokens`, so higher effort needs more room. */
 export const MAX_OUTPUT_TOKENS: Record<ThinkingLevel, number> = {
@@ -44,7 +44,8 @@ export function inputBudgetFor(model: string, level: ThinkingLevel): number {
   return Math.max(0, window - outputTokenCap(model, level) - margin);
 }
 
-export function contentTokens(content: string | OpenRouterPart[]): number {
+export function contentTokens(content: string | OpenRouterPart[] | null): number {
+  if (content === null) return 0;
   if (typeof content === 'string') return countTokens(content);
 
   let total = 0;

@@ -13,8 +13,40 @@ import {
 import type { OpenRouterPart } from './attachments';
 import type { ParsedSkill } from '@/src/lib/skills/skill-file';
 import { outputTokenCap } from './prompt-budget';
+import { ToolCallAccumulator, type RawToolCallDelta, type StreamedToolCall } from './tool-stream';
 
-type ChatMessage = { role: string; content: string | OpenRouterPart[] };
+/** An assistant message asking for tool calls, as OpenRouter expects it. */
+export interface OutgoingToolCall {
+  id: string;
+  type: 'function';
+  function: { name: string; arguments: string };
+}
+
+export type ChatMessage = {
+  role: string;
+  content: string | OpenRouterPart[] | null;
+  tool_calls?: OutgoingToolCall[];
+  tool_call_id?: string;
+};
+
+/** A tool the model may call, already normalized to an OpenRouter-safe name. */
+export interface ToolDefinition {
+  type: 'function';
+  function: { name: string; description?: string; parameters?: unknown };
+}
+
+/** The structured result of one streamed model response. */
+export interface StreamedTurn {
+  content: string;
+  /** Complete calls only; arguments are never parsed here. */
+  toolCalls: StreamedToolCall[];
+  finishReason?: string;
+  usage: { promptTokens: number; completionTokens: number };
+  /** True when the user stopped or disconnected before the stream ended. */
+  aborted: boolean;
+  /** True when the answer ended with tool calls instead of text. */
+  wantsTools: boolean;
+}
 
 /** Everything except the model and the signal, which the call already knows. */
 export type StreamTrace = Omit<LlmTraceContext, 'model' | 'signal'>;
@@ -27,6 +59,8 @@ export interface StreamOptions {
   signal?: AbortSignal;
   /** When set, this call is recorded to OpenObserve. No-op when it is unset. */
   trace?: StreamTrace;
+  /** Tool definitions for this call. Sending them is what enables tool calls. */
+  tools?: ToolDefinition[];
 }
 
 // Reasoning tokens count against max_tokens, so higher effort needs more room
@@ -55,9 +89,9 @@ const idleMetrics: LlmCallMetrics = {
 async function runStream(
   messages: ChatMessage[],
   model: string,
-  { thinkingLevel = 'off', onChunk, onReasoning, signal }: StreamOptions,
+  { thinkingLevel = 'off', onChunk, onReasoning, signal, tools }: StreamOptions,
   metrics: LlmCallMetrics
-): Promise<string> {
+): Promise<StreamedTurn> {
   // Clamp to what this model supports; e.g. Gemini has no Off and no Max.
   const level = effectiveThinkingLevel(model, thinkingLevel);
   if (!process.env.OPENROUTER_API_KEY) {
@@ -80,6 +114,7 @@ async function runStream(
       // Non-reasoning models (GPT-4.1, Llama, Kimi K2, …) reject or ignore a
       // reasoning request, so only send it when the model actually reasons.
       ...(modelSupportsReasoning(model) ? { reasoning: reasoningParam(level) } : {}),
+      ...(tools && tools.length > 0 ? { tools } : {}),
     }),
     signal,
   });
@@ -99,13 +134,16 @@ async function runStream(
   let fullContent = '';
   let pending = '';
   let finishReason: string | undefined;
+  const toolCalls = new ToolCallAccumulator();
+  const usage = { promptTokens: 0, completionTokens: 0 };
 
-  // A stream that ends normally without any answer text (for example, the
-  // model spent its whole token budget thinking) must not look like success.
-  const finish = () => {
+  const turn = (aborted: boolean): StreamedTurn => {
+    const calls = toolCalls.list();
     metrics.completion(fullContent);
-    // Stop before any text is not a failure.
-    if (fullContent || signal?.aborted) return fullContent;
+    // A call that asked for tools answered even though it streamed no text.
+    if (fullContent || calls.length > 0 || aborted || signal?.aborted) {
+      return { content: fullContent, toolCalls: calls, finishReason, usage, aborted, wantsTools: calls.length > 0 };
+    }
     throw new Error(
       finishReason === 'length'
         ? 'The model ran out of tokens while thinking and gave no answer. Try a lower thinking level.'
@@ -123,7 +161,11 @@ async function runStream(
     if (parsed.error) {
       throw new Error(parsed.error.message || 'OpenRouter stream error');
     }
-    if (parsed.usage) metrics.usage(parsed.usage);
+    if (parsed.usage) {
+      usage.promptTokens = parsed.usage.prompt_tokens ?? usage.promptTokens;
+      usage.completionTokens = parsed.usage.completion_tokens ?? usage.completionTokens;
+      metrics.usage(parsed.usage);
+    }
     const choice = parsed.choices?.[0];
     if (choice?.finish_reason) {
       finishReason = choice.finish_reason;
@@ -139,6 +181,7 @@ async function runStream(
       fullContent += delta.content;
       onChunk?.(delta.content);
     }
+    toolCalls.push(delta?.tool_calls as RawToolCallDelta[] | undefined);
     return false;
   };
 
@@ -151,21 +194,18 @@ async function runStream(
       const lines = pending.split(/\r?\n/);
       pending = lines.pop() || '';
       for (const line of lines) {
-        if (handleLine(line)) return finish();
+        if (handleLine(line)) return turn(false);
       }
     }
   } catch (error) {
-    if (isAbort(error)) {
-      metrics.completion(fullContent);
-      return fullContent;
-    }
+    if (isAbort(error)) return turn(true);
     throw error;
   }
 
   pending += decoder.decode();
-  if (pending && handleLine(pending)) return finish();
+  if (pending && handleLine(pending)) return turn(false);
 
-  return finish();
+  return turn(false);
 }
 
 function traceContext(
@@ -194,6 +234,22 @@ export async function streamCompletion(
   model: string,
   options: StreamOptions = {}
 ): Promise<string> {
+  const streamed = await streamTurn(messages, model, options);
+  return streamed.content;
+}
+
+/**
+ * The structured form of `streamCompletion`: the answer text, the complete
+ * tool calls (arguments are accumulated but never parsed here), the provider
+ * usage and whether the call was aborted. Tool definitions are only sent when
+ * `options.tools` is non-empty, so a call without tools behaves exactly as
+ * before.
+ */
+export async function streamTurn(
+  messages: ChatMessage[],
+  model: string,
+  options: StreamOptions = {}
+): Promise<StreamedTurn> {
   if (!options.trace) return runStream(messages, model, options, idleMetrics);
 
   return traceLlmCall(traceContext(options.trace, model, options.signal, messages), (metrics) =>
@@ -206,7 +262,21 @@ export async function createCompletion(
   model: string,
   { skills, ...options }: StreamOptions & { skills?: readonly ParsedSkill[] } = {}
 ): Promise<string> {
-  const formatted = formatMessagesWithSystemContext(messages, model, skills);
+  const formatted = await streamChat(messages, model, { skills, ...options });
+  return formatted.content;
+}
+
+/** `createCompletion` with system context applied and the structured result. */
+export async function streamChat(
+  messages: ChatMessage[],
+  model: string,
+  { skills, ...options }: StreamOptions & { skills?: readonly ParsedSkill[] } = {}
+): Promise<StreamedTurn> {
+  const formatted = formatMessagesWithSystemContext(
+    messages as Array<{ role: string; content: string | OpenRouterPart[] }>,
+    model,
+    skills
+  ) as ChatMessage[];
   if (!options.trace) return runStream(formatted, model, options, idleMetrics);
 
   return traceLlmCall(traceContext(options.trace, model, options.signal, formatted), (metrics) =>
