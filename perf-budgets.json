@@ -1,0 +1,55 @@
+{
+  "$comment": "Regression budgets checked in CI, all measured against a production build on a GitHub runner with a seeded user (60 chats, one 200-message chat). API numbers are the p95 of `samples` timed requests after `warmup` untimed calls. Page numbers are the worst of 3 navigations after one warm load, as TTFB and time to visible content. Budgets sit about 3-5x above the measured runner baseline to absorb noise. Bundle numbers are gzipped First Load JS per build target. Raise a budget only when the growth is intended, in the same PR.",
+  "samples": 30,
+  "warmup": 5,
+  "api": {
+    "conversations": {
+      "p95Ms": 100
+    },
+    "conversation": {
+      "p95Ms": 80
+    },
+    "models": {
+      "p95Ms": 60
+    },
+    "skills": {
+      "p95Ms": 60
+    },
+    "documents": {
+      "p95Ms": 60
+    },
+    "scheduled-tasks": {
+      "p95Ms": 60
+    },
+    "activity": {
+      "p95Ms": 80
+    }
+  },
+  "pages": {
+    "home": {
+      "ttfbMs": 200,
+      "readyMs": 1500
+    },
+    "long-chat": {
+      "ttfbMs": 2000,
+      "readyMs": 5000
+    }
+  },
+  "bundle": {
+    "$comment": "Gzipped First Load JS per page, page plus its layouts. vercel = `npm run build:vercel` (webpack), docker = `npm run build` (Turbopack).",
+    "vercel": {
+      "totalKb": 715,
+      "pages": {
+        "/[[...slug]]/page": 715,
+        "/_not-found/page": 300
+      }
+    },
+    "docker": {
+      "totalKb": 800,
+      "pages": {
+        "/[[...slug]]/page": 800,
+        "/_not-found/page": 315
+      }
+    }
+  }
+}

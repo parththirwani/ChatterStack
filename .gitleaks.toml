@@ -1,0 +1,13 @@
+# Secret scanning for CI. Starts from the gitleaks defaults and allows only the
+# dummy credentials that unit tests use as fixtures.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Dummy credentials in test fixtures"
+condition = "AND"
+paths = ['''^tests/''']
+regexes = [
+  '''cmVhZ[AE]Bjb21wYW55OnNlY3JldA==''',
+  '''sk-or-v1-0123456789abcdef''',
+]
