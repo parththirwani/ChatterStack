@@ -10,25 +10,169 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NEXT_TELEMETRY_DISABLED: '1'
+
 jobs:
   preflight:
     name: Preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
           cache: npm
       - run: npm ci
       - run: npm run test:static
       - run: npm run test:vitest
       - run: npm run build:vercel
+      - name: Bundle size budget (Vercel build)
+        run: npm run check:bundle:vercel -- --json bundle-size-vercel.json
+      - name: Job summary
+        if: always()
+        run: node scripts/ci-summary.mjs bundle-size-vercel.json >> "$GITHUB_STEP_SUMMARY"
+
+  e2e:
+    name: E2E and performance budgets
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: chatterstack
+          POSTGRES_PASSWORD: ci_only
+          POSTGRES_DB: chatterstack
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U chatterstack"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://chatterstack:ci_only@127.0.0.1:5432/chatterstack
+      E2E_BASE_URL: http://127.0.0.1:3000
+      E2E_PG_DB: chatterstack
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+
+      # The Docker image's build: Turbopack with standalone output.
+      - name: Production build (standalone)
+        run: npm run build
+      - name: Bundle size budget (Docker build)
+        run: npm run check:bundle -- --json bundle-size-docker.json
+
+      - name: Create database schema
+        run: npx prisma db push
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start production server
+        env:
+          NODE_ENV: production
+          PORT: '3000'
+          HOSTNAME: 127.0.0.1
+          REDIS_URL: redis://127.0.0.1:6379
+          NEXTAUTH_URL: http://127.0.0.1:3000
+          NEXTAUTH_SECRET: ci-only-not-a-real-secret-0123456789
+          AUTH_TRUST_HOST: 'true'
+        run: |
+          nohup node .next/standalone/server.js > server.log 2>&1 &
+          for i in $(seq 1 60); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/ || true)
+            if [ "$code" = 200 ]; then echo "Server ready after ${i}s"; exit 0; fi
+            sleep 1
+          done
+          echo "Server did not start"; cat server.log; exit 1
+
+      # The e2e helpers seed sessions and data with `docker exec <container> psql`.
+      - name: End-to-end tests
+        run: npx playwright test
+        env:
+          E2E_PG_CONTAINER: ${{ job.services.postgres.id }}
+      # Reported even when an e2e test fails, so one failure does not hide a slowdown.
+      - name: Response-time budgets
+        if: ${{ !cancelled() }}
+        run: npm run test:perf
+        env:
+          E2E_PG_CONTAINER: ${{ job.services.postgres.id }}
+
+      - name: Job summary
+        if: always()
+        run: node scripts/ci-summary.mjs bundle-size-docker.json test-results/perf.json >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-results
+          path: |
+            test-results/
+            bundle-size-docker.json
+            server.log
+          if-no-files-found: ignore
+          retention-days: 14
+
+  security:
+    name: Dependency audit and secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+
+      # Fails on any high or critical advisory in code that ships to production.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      # Dev tooling advisories are reported, not blocking; Dependabot raises the upgrades.
+      - name: Audit all dependencies (report only)
+        continue-on-error: true
+        run: npm audit --audit-level=critical
+
+      - name: Scan git history for secrets
+        run: >-
+          docker run --rm -v "$PWD:/repo:ro"
+          zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git /repo --config /repo/.gitleaks.toml --redact --no-banner --log-opts=--all
+
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: high
+          fail-on-scopes: runtime
 
   deploy:
     name: Deploy production
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: preflight
+    needs: [preflight, e2e, security]
     runs-on: ubuntu-latest
     concurrency:
       group: production-deployment
@@ -41,10 +185,10 @@ jobs:
       # devDependencies, just like the preflight build.
       NPM_CONFIG_PRODUCTION: false
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version-file: .nvmrc
       - name: Check deployment credentials
         run: |
           test -n "$VERCEL_ORG_ID" || { echo '::error::VERCEL_ORG_ID is missing'; exit 1; }

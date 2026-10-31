@@ -46,6 +46,7 @@ test('forks at an answer, opens the copy, and leaves the source whole', async ({
   await expect(page).toHaveURL(new RegExp(`/${forkId}$`));
   const origin = page.getByLabel('Continued from Caching plan');
   await expect(origin).toBeVisible();
+  expect(await origin.evaluate((element) => element.closest('.overflow-y-auto'))).toBeNull();
   await expect(page.getByLabel('Forked chat')).toBeVisible();
   await expect(origin.getByRole('button', { name: 'Caching plan' })).toBeVisible();
   await expect(page.getByText('It defers writes to memory first.')).toBeVisible();

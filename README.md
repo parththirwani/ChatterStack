@@ -38,9 +38,18 @@ npm run dev
 
 ## CI and production deploys
 
-Pull requests into `dev` or `main` run the CI preflight: install from `package-lock.json`, typecheck, lint, Vitest, and the same `next build` command configured for Vercel. The `main` push runs those checks again, then builds with Vercel's production environment and deploys that build. Vercel's Git auto-deployments are disabled in `vercel.json`, so branch pushes do not start preview deployments before CI finishes.
+Pull requests into `dev` or `main`, and pushes to them, run these jobs in `.github/workflows/ci.yml`:
 
-The production job needs the repository secret `VERCEL_TOKEN`, scoped to the `chatter-stack-7lvm` project, and repository variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`. The Vercel token is used only by the production job. Require the `Preflight` status on `dev` and `main` branch protection before merging. The build command does not run `prisma db push`; apply reviewed schema migrations separately before deploying code that needs them.
+- **Preflight**: install from `package-lock.json`, typecheck, lint, Vitest (unit, integration and component tests, including a check that every API route refuses signed-out callers), the same `next build` command configured for Vercel, and that build's bundle-size budget.
+- **E2E and performance budgets**: the Docker build (`npm run build`) and its bundle-size budget, then the Playwright suite and the response-time budgets (`npm run test:perf`) against the standalone server with Postgres and Redis.
+- **Dependency audit and secret scan**: `npm audit` fails on any high or critical advisory in production dependencies, and gitleaks scans the whole git history.
+- **Dependency review** (pull requests only): fails when a change adds a runtime dependency with a high or critical advisory.
+
+Budgets live in `perf-budgets.json`. Raise one only when the growth is intended, in the same pull request. CodeQL (`.github/workflows/codeql.yml`) runs on changes and weekly, and Dependabot opens weekly npm and Actions updates against `dev`.
+
+The `main` push runs those checks again, then builds with Vercel's production environment and deploys that build only if Preflight, E2E and the security job all pass. Vercel's Git auto-deployments are disabled in `vercel.json`, so branch pushes do not start preview deployments before CI finishes.
+
+The production job needs the repository secret `VERCEL_TOKEN`, scoped to the `chatter-stack-7lvm` project, and repository variables `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID`. The Vercel token is used only by the production job. Require the `Preflight`, `E2E and performance budgets`, and `Dependency audit and secret scan` statuses on `dev` and `main` branch protection before merging. The build command does not run `prisma db push`; apply reviewed schema migrations separately before deploying code that needs them.
 
 CI catches code and build failures before deployment. A Vercel outage or deployment quota can still stop the production job. In that case the previous production deployment stays live and the GitHub Actions job reports the failure.
 
