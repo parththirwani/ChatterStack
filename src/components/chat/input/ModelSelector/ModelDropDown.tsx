@@ -2,7 +2,7 @@
 
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { Check, ChevronDown, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Check, ChevronDown, ChevronLeft, ChevronRight, Search, X } from 'lucide-react';
 import { AVAILABLE_MODELS, useModelSelection, type ModelInfo } from '@/src/context/ModelSelectionContext';
 import { COUNCIL_MAX_MEMBERS, COUNCIL_MIN_MEMBERS } from '@/src/config/models';
 
@@ -409,16 +409,40 @@ const ChairPicker: React.FC = () => {
 };
 
 const SelectedCouncilModels: React.FC = () => {
-  const { councilMembers, getModelInfo } = useModelSelection();
+  const { councilMembers, getModelInfo, toggleCouncilMember } = useModelSelection();
+  const listRef = useRef<HTMLUListElement>(null);
+  const focusAfterRemoval = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (focusAfterRemoval.current === null) return;
+    const buttons = listRef.current?.querySelectorAll<HTMLButtonElement>('button');
+    buttons?.[Math.min(focusAfterRemoval.current, buttons.length - 1)]?.focus();
+    focusAfterRemoval.current = null;
+  }, [councilMembers]);
 
   return (
-    <ul aria-label="Selected models" className="px-2 pb-1">
-      {councilMembers.map((id) => {
+    <ul ref={listRef} aria-label="Selected models" className="px-2 pb-1">
+      {councilMembers.map((id, index) => {
         const model = getModelInfo(id);
+        const locked = councilMembers.length <= COUNCIL_MIN_MEMBERS;
         return (
-          <li key={id} className="flex min-h-8 items-center gap-2 rounded-md px-1.5 text-[12.5px] text-[#f0eeeb]">
-            {model && <ModelLogo model={model} />}
-            <span className="truncate">{model?.name ?? id}</span>
+          <li key={id}>
+            <button
+              type="button"
+              aria-label={`Deselect ${model?.name ?? id}`}
+              aria-disabled={locked || undefined}
+              title={locked ? `A council needs at least ${COUNCIL_MIN_MEMBERS} members` : undefined}
+              onClick={() => {
+                if (locked) return;
+                focusAfterRemoval.current = index;
+                toggleCouncilMember(id);
+              }}
+              className={`flex min-h-8 w-full items-center gap-2 rounded-md px-1.5 text-left text-[12.5px] text-[#f0eeeb] ${locked ? 'cursor-default' : 'cursor-pointer hover:bg-white/[0.045]'}`}
+            >
+              {model && <ModelLogo model={model} />}
+              <span className="min-w-0 flex-1 truncate">{model?.name ?? id}</span>
+              <X className={`h-3.5 w-3.5 shrink-0 ${locked ? 'text-[#6f6b66]' : 'text-[#aaa6a2]'}`} aria-hidden="true" />
+            </button>
           </li>
         );
       })}

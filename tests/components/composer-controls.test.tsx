@@ -268,11 +268,26 @@ describe('council mode', () => {
     expect(within(providers).getByRole('button', { name: /^DeepSeek, \d+ models$/ })).toBeInTheDocument();
     expect(within(dialog).queryByRole('checkbox')).toBeNull();
 
-    await user.click(within(providers).getByRole('button', { name: /^Anthropic,/ }));
-    await user.click(within(dialog).getByRole('checkbox', { name: /Claude Sonnet 5.5/ }));
+    await user.click(within(selected).getByRole('button', { name: 'Deselect Claude Sonnet 5.5' }));
     expect(within(selected).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
       'GPT-6.1 Sol', 'Gemini 4 Argon',
     ]);
+    expect(within(selected).getByRole('button', { name: 'Deselect Gemini 4 Argon' })).toHaveFocus();
+    expect(within(selected).getByRole('button', { name: 'Deselect GPT-6.1 Sol' })).toHaveAttribute('aria-disabled', 'true');
+    await user.click(within(selected).getByRole('button', { name: 'Deselect GPT-6.1 Sol' }));
+    expect(within(selected).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('updates the chair when deselecting it from the selected list', async () => {
+    const user = setup({ councilSettings: JSON.stringify({ enabled: true, members: [GPT, GEMINI, CLAUDE], chair: GEMINI }) });
+    await user.click(screen.getByRole('button', { name: 'Council settings' }));
+    const dialog = screen.getByRole('dialog', { name: 'Council settings' });
+    const selected = within(dialog).getByRole('list', { name: 'Selected models' });
+
+    await user.click(within(selected).getByRole('button', { name: 'Deselect Gemini 4 Argon' }));
+    expect(within(dialog).getByRole('button', { name: /Chair/ })).toHaveTextContent('GPT-6.1 Sol');
+    expect(JSON.parse(localStorage.getItem('councilSettings')!).members).toEqual([GPT, CLAUDE]);
+    expect(JSON.parse(localStorage.getItem('councilSettings')!).chair).toBe(GPT);
   });
 
   it('shows a provider’s models newest first, and Escape steps back before closing', async () => {
