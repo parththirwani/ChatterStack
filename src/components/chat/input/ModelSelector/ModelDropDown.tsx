@@ -408,6 +408,24 @@ const ChairPicker: React.FC = () => {
   );
 };
 
+const SelectedCouncilModels: React.FC = () => {
+  const { councilMembers, getModelInfo } = useModelSelection();
+
+  return (
+    <ul aria-label="Selected models" className="px-2 pb-1">
+      {councilMembers.map((id) => {
+        const model = getModelInfo(id);
+        return (
+          <li key={id} className="flex min-h-8 items-center gap-2 rounded-md px-1.5 text-[12.5px] text-[#f0eeeb]">
+            {model && <ModelLogo model={model} />}
+            <span className="truncate">{model?.name ?? id}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+};
+
 /** Member checkboxes, either one provider's models or grouped search results. */
 const CouncilCheckboxes: React.FC<{ models: readonly ModelInfo[]; grouped: boolean; autoFocus?: boolean }> = ({
   models,
@@ -503,6 +521,11 @@ const CouncilMemberList: React.FC = () => {
           {councilMembers.length <= COUNCIL_MIN_MEMBERS ? `Minimum ${COUNCIL_MIN_MEMBERS}` : `${councilMembers.length} of ${COUNCIL_MAX_MEMBERS}`}
         </span>
       </div>
+      <SelectedCouncilModels />
+      <ChairPicker />
+      <div className="border-t border-white/[0.07]">
+        <div className={sectionLabel}>{searching ? 'Matching models' : step.company ?? 'Providers'}</div>
+      </div>
       <div ref={bodyRef} onKeyDown={searching ? undefined : step.onKeyDown}>
         {searching ? (
           <CouncilCheckboxes models={filtered} grouped />
@@ -527,7 +550,6 @@ const CouncilMemberList: React.FC = () => {
           />
         )}
       </div>
-      <ChairPicker />
       <p className="mx-3 mb-3 px-0.5 text-[12px] leading-[17px] text-[#a9a5a0]">The chair writes the final answer from everyone’s input.</p>
     </>
   );
@@ -553,7 +575,7 @@ export const ModelDropdown: React.FC<ModelDropdownProps> = ({ placement, onClose
           closeAndReturn();
         }
       }}
-      className={`animate-menu-in absolute right-[-3.5rem] z-50 w-[300px] max-w-[calc(100vw-3rem)] overflow-y-auto rounded-[14px] border border-white/[0.11] bg-[#242424] shadow-[0_18px_44px_rgba(0,0,0,0.42)] md:right-0 ${placement === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'}`}
+      className={`animate-menu-in absolute right-[-3.5rem] z-50 max-h-[min(70vh,560px)] w-[300px] max-w-[calc(100vw-3rem)] overflow-y-auto rounded-[14px] border border-white/[0.11] bg-[#242424] shadow-[0_18px_44px_rgba(0,0,0,0.42)] md:right-0 ${placement === 'down' ? 'top-full mt-2' : 'bottom-full mb-2'}`}
     >
       <div>
         {councilMode ? <CouncilMemberList /> : <ModelList onPicked={closeAndReturn} />}
