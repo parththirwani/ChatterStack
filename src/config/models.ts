@@ -1305,6 +1305,17 @@ export function modelSupportsReasoning(id: string): boolean {
   return getThinkingLevels(id).some((level) => level !== 'off');
 }
 
+/**
+ * Whether a model may be sent a `tools` array. Registered chat models are
+ * tool-capable unless an entry opts out with `supportsTools: false` (mirrors
+ * the per-entry capability flags above); ids outside the registry are refused,
+ * so MCP turns fail with a visible error instead of a provider rejection.
+ */
+export function modelSupportsTools(id: string): boolean {
+  const model = getModel(id) as { supportsTools?: boolean } | undefined;
+  return model ? model.supportsTools !== false : false;
+}
+
 /** The closest level in `supported`, rounding down on a tie (faster and cheaper). */
 export function closestThinkingLevel(supported: readonly ThinkingLevel[], preferred: ThinkingLevel): ThinkingLevel {
   if (supported.includes(preferred)) return preferred;

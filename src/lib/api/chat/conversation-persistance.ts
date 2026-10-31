@@ -1,7 +1,7 @@
 import { prisma } from '@/src/lib/prisma';
 import { MESSAGE_ORDER_DESC, nextPosition } from '@/src/lib/server/message-order';
 import { Role } from '@/src/types/chat.types';
-import type { DocumentAttachment } from '@/src/types/chat.types';
+import type { DocumentAttachment, MessageToolCallView } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
 import type { Prisma } from '@prisma/client';
 import crypto from 'crypto';
@@ -40,7 +40,9 @@ export interface SavedMessage {
 /**
  * Save one exchange. `aiResponse` is empty when the model failed or the user
  * stopped it before any text arrived: then only the question is kept, which
- * matches what the client shows (the question and an error, no answer).
+ * matches what the client shows (the question and an error, no answer). A turn
+ * that ran MCP tools always keeps its assistant row, even with no prose, so
+ * the tool calls have a turn to belong to and the chat stays replayable.
  *
  * The rows keep their generated ids in the returned value, so the route can
  * cache the same ids that the compaction boundary later refers to.
@@ -51,7 +53,8 @@ export async function addMessagesToConversation(
   aiResponse: string,
   selectedModel: string,
   attachments: DocumentAttachment[] = [],
-  skills: SkillTag[] = []
+  skills: SkillTag[] = [],
+  toolCalls: MessageToolCallView[] = []
 ): Promise<SavedMessage[]> {
   const userMessageTime = new Date();
   const aiMessageTime = new Date(userMessageTime.getTime() + 1);
@@ -66,7 +69,7 @@ export async function addMessagesToConversation(
       ...(skills.length ? { skills: skills as unknown as Prisma.InputJsonValue } : {}),
       createdAt: userMessageTime,
     },
-    ...(aiResponse
+    ...(aiResponse || toolCalls.length
       ? [{
           id: crypto.randomUUID(),
           conversationId,
@@ -87,6 +90,27 @@ export async function addMessagesToConversation(
     const position = await firstFreePosition(tx, conversationId);
     messages.forEach((message, index) => { message.position = position + index; });
     await tx.message.createMany({ data: messages as unknown as Prisma.MessageCreateManyInput[] });
+    if (toolCalls.length) {
+      const assistant = messages.find((message) => message.role === Role.Assistant);
+      if (assistant) {
+        await tx.messageToolCall.createMany({
+          data: toolCalls.map((call, index) => ({
+            messageId: assistant.id,
+            callId: call.callId,
+            position: index,
+            connectionId: call.connectionId,
+            toolId: call.toolId,
+            name: call.name,
+            arguments: call.arguments,
+            status: call.status,
+            approval: call.approval,
+            result: call.result,
+            truncated: call.truncated,
+            error: call.error ?? null,
+          })),
+        });
+      }
+    }
     // Bump activity so the chat sorts by its latest message.
     await tx.conversation.update({ where: { id: conversationId }, data: { updatedAt: messages[messages.length - 1].createdAt } });
   });
@@ -97,6 +121,7 @@ export async function addMessagesToConversation(
 /**
  * Drop the last exchange (the question and the answer saved with it) so a retry
  * can save its replacement in that spot instead of appending a second copy.
+ * The saved MCP tool calls go with the answer row through its cascade.
  * Returns how many rows went away.
  */
 export async function deleteLastExchange(conversationId: string): Promise<number> {

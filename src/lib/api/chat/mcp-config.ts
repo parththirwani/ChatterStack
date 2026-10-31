@@ -29,3 +29,19 @@ export class McpDisabledError extends Error {
 export function assertMcpToolsEnabled(): void {
   if (!mcpToolsEnabled()) throw new McpDisabledError();
 }
+
+export const DEFAULT_APPROVAL_TTL_SECONDS = 120;
+
+/**
+ * How long a pending tool approval stays decidable. Short on purpose: the
+ * approval waits in a live chat stream, and a stale prompt should expire
+ * rather than sit on a half-finished turn.
+ */
+export function mcpApprovalTtlSeconds(): number {
+  const raw = Number(process.env.MCP_APPROVAL_TTL_SECONDS?.trim());
+  if (!Number.isFinite(raw) || raw <= 0) return DEFAULT_APPROVAL_TTL_SECONDS;
+  return Math.min(Math.max(Math.floor(raw), 1), 600);
+}
+
+/** Upper bound on tool definitions offered to the model in one chat turn. */
+export const MAX_OFFERED_TOOLS = 64;

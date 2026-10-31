@@ -239,7 +239,18 @@ MCP_CREDENTIAL_KEY=<64 hex characters>
 # Optional. Trusted origins for a self-hosted LAN server, e.g. http://mcp.lan:8080
 # Empty in a hosted deployment, where HTTPS plus a public address is required.
 MCP_ALLOWED_ORIGINS=
+# Optional. Seconds a pending approval stays decidable (default 120, max 600).
+MCP_APPROVAL_TTL_SECONDS=120
 ```
+
+Tool calls are persisted on the assistant turn that made them, in model order,
+so retry, fork, compaction and a reloaded chat all replay the same
+assistant-calls-then-one-result-per-call sequence. Arguments and results are
+stored already bounded by the loop, and a turn that ran tools keeps its
+assistant row even if the model wrote no prose, so the calls have a turn to
+belong to. The transcript streams typed events
+(`toolDiscoveryFailed`, `toolApprovalRequest`, `toolCallStarted`,
+`toolCallResult`, `toolCallFailure`, `toolLoopStopped`) that carry no token.
 
 Everything else about a connection is user scoped and untrusted by default:
 

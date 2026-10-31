@@ -167,7 +167,12 @@ export async function startMcpFixture(options: McpFixtureOptions = {}): Promise<
     close: async () => {
       for (const transport of transports.values()) await transport.close().catch(() => {});
       transports.clear();
-      await new Promise<void>((resolve, rejectClose) => nodeServer.close((error) => (error ? rejectClose(error) : resolve())));
+      // Close stops listening, but an open streamable-HTTP GET would hold the
+      // server for seconds; drop every socket so the fixture ends promptly.
+      const closing = new Promise<void>((resolve, rejectClose) =>
+        nodeServer.close((error) => (error ? rejectClose(error) : resolve())));
+      nodeServer.closeAllConnections();
+      await closing;
     },
   };
 }

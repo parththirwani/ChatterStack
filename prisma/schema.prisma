@@ -118,11 +118,43 @@ model Message {
   updatedAt      DateTime     @updatedAt
   
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolCalls      MessageToolCall[]
 
   @@index([modelId])
   @@index([conversationId, modelId])
   @@unique([conversationId, position])
   @@map("messages")
+}
+
+/**
+ * One MCP tool call made during an assistant turn, in model order. A retried
+ * or deleted turn takes its calls with it (cascade), so a replayed chat can
+ * rebuild the exact assistant/tool message sequence OpenRouter requires.
+ * Arguments and results are the bounded texts the loop already produced.
+ */
+model MessageToolCall {
+  id           String   @id @default(uuid())
+  messageId    String
+  // OpenRouter's call id; the tool result row is addressed by it.
+  callId       String
+  // Order within the assistant turn, 0-based.
+  position     Int
+  connectionId String
+  // The server's own tool name; `name` is the normalized function name.
+  toolId       String
+  name         String
+  arguments    String   @db.Text
+  status       String
+  approval     String
+  result       String   @db.Text
+  truncated    Boolean  @default(false)
+  error        String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, position])
+  @@map("message_tool_calls")
 }
 
 /**

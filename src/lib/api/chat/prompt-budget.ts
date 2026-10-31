@@ -2,7 +2,26 @@ import { effectiveThinkingLevel, getModel, type ThinkingLevel } from '@/src/conf
 import { countTokens } from '@/src/lib/tokens';
 import type { OpenRouterPart } from './attachments';
 
-type PromptMessage = { role: string; content: string | OpenRouterPart[] | null };
+type PromptMessage = {
+  role: string;
+  content: string | OpenRouterPart[] | null;
+  /** OpenRouter-shaped assistant calls; arguments are untrusted model text. */
+  tool_calls?: readonly { function: { name: string; arguments: string } }[];
+  /** Stored tool calls on a history row; counted as the model would see them. */
+  toolCalls?: readonly { name: string; arguments: string; result: string }[];
+};
+
+/** Extra tokens a message's tool payloads cost the prompt, if any. */
+function toolPayloadTokens(message: PromptMessage): number {
+  let total = 0;
+  if (message.tool_calls?.length) {
+    total += countTokens(message.tool_calls.map((call) => `${call.function.name} ${call.function.arguments}`).join(''));
+  }
+  if (message.toolCalls?.length) {
+    total += countTokens(message.toolCalls.map((call) => `${call.name} ${call.arguments} ${call.result}`).join(''));
+  }
+  return total;
+}
 
 /** Reasoning tokens count against `max_tokens`, so higher effort needs more room. */
 export const MAX_OUTPUT_TOKENS: Record<ThinkingLevel, number> = {
@@ -66,7 +85,7 @@ export function contentTokens(content: string | OpenRouterPart[] | null): number
 /** Tokens in a rendered OpenAI-style message list, including small framing costs. */
 export function messagesTokens(messages: readonly PromptMessage[]): number {
   return messages.reduce(
-    (total, message) => total + contentTokens(message.content) + MESSAGE_OVERHEAD_TOKENS,
+    (total, message) => total + contentTokens(message.content) + toolPayloadTokens(message) + MESSAGE_OVERHEAD_TOKENS,
     0
   );
 }

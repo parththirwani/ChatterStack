@@ -12,6 +12,7 @@
  */
 import { randomUUID } from 'node:crypto';
 import { redisStore } from '@/src/lib/redis';
+import { mcpApprovalTtlSeconds } from '@/src/lib/api/chat/mcp-config';
 
 export type ApprovalDecision = 'approved' | 'denied';
 
@@ -106,7 +107,7 @@ const parse = (raw: string | null): PendingApproval | null => {
 
 export async function createApproval(
   input: Omit<PendingApproval, 'id' | 'createdAt' | 'expiresAt'>,
-  ttlSeconds = APPROVAL_TTL_SECONDS
+  ttlSeconds = mcpApprovalTtlSeconds()
 ): Promise<PendingApproval> {
   const approval: PendingApproval = {
     ...input,
@@ -159,7 +160,11 @@ export async function waitForDecision(
   approval: PendingApproval,
   options: { signal: AbortSignal; timeoutMs?: number; pollMs?: number }
 ): Promise<WaitOutcome> {
-  const deadline = Date.now() + (options.timeoutMs ?? APPROVAL_TTL_SECONDS * 1000);
+  // Never wait past the stored expiry: the record is undecidable after that.
+  const deadline = Math.min(
+    options.timeoutMs !== undefined ? Date.now() + options.timeoutMs : approval.expiresAt,
+    approval.expiresAt
+  );
   while (Date.now() < deadline) {
     if (options.signal.aborted) {
       await cancelApproval(approval.id);

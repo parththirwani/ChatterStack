@@ -26,8 +26,42 @@ export interface Message {
   contextCompacted?: ContextCompactionInfo;
   /** Skills tagged on a user message. */
   skills?: SkillTag[];
+  /** MCP tool calls made during this assistant turn, in model order. */
+  toolCalls?: MessageToolCallView[];
   /** Row order within the saved chat; absent on unsent or legacy messages. */
   position?: number;
+}
+
+/** How one MCP tool call ended; mirrors the loop's statuses. */
+export type ToolCallState =
+  | 'completed'
+  | 'failed'
+  | 'denied'
+  | 'not_approved'
+  | 'invalid_arguments'
+  | 'not_enabled'
+  | 'too_large'
+  | 'repeated'
+  | 'cancelled'
+  | 'timed_out';
+
+export type ToolCallApproval = 'approved' | 'denied' | 'expired' | 'not_requested';
+
+/** One persisted tool call, safe to send to the browser. */
+export interface MessageToolCallView {
+  callId: string;
+  /** The normalized function name the model used. */
+  name: string;
+  /** The server's own tool name. */
+  toolId: string;
+  connectionId: string;
+  arguments: string;
+  status: ToolCallState;
+  approval: ToolCallApproval;
+  /** The bounded text handed back to the model. */
+  result: string;
+  truncated: boolean;
+  error?: string;
 }
 
 export interface AttachmentMeta {
@@ -219,4 +253,25 @@ export interface SSEData {
   savedMessages?: { userMessageId: string; assistantMessageId?: string };
   /** Older turns were summarized for this request. */
   contextCompacted?: ContextCompactionInfo;
+  /** A connection's tool list could not be fetched; its tools were skipped. */
+  toolDiscoveryFailed?: { connectionId: string; error: string };
+  /** The model asked for this call; the user's decision spends the approval id. */
+  toolApprovalRequest?: {
+    approvalId: string;
+    callId: string;
+    name: string;
+    toolId: string;
+    connectionId: string;
+    arguments: Record<string, unknown>;
+    round: number;
+    expiresAt: number;
+  };
+  /** An approved call started executing. */
+  toolCallStarted?: { callId: string; name: string };
+  /** A call finished successfully; the model already saw the result. */
+  toolCallResult?: MessageToolCallView;
+  /** A call ended without a result: denied, failed, cancelled or capped. */
+  toolCallFailure?: MessageToolCallView;
+  /** A loop limit was reached; the answer was written without more tools. */
+  toolLoopStopped?: { limit: string; message: string };
 }

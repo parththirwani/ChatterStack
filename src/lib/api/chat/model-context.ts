@@ -13,6 +13,7 @@ import {
 import { captureError } from '@/src/lib/observability/capture';
 import type { ParsedSkill } from '@/src/lib/skills/skill-file';
 import type { OpenRouterPart } from './attachments';
+import type { MessageToolCallView } from '@/src/types/chat.types';
 import {
   COMPACTION_LIMITS,
   compactionMode,
@@ -39,6 +40,8 @@ export interface ContextMessage {
   role: 'user' | 'assistant';
   content: string;
   attachments?: ReadonlyArray<{ name: string; mimeType?: string }>;
+  /** MCP calls this assistant turn made; replayed to the model in order. */
+  toolCalls?: readonly MessageToolCallView[];
 }
 
 export interface TokenUsage {
@@ -318,7 +321,10 @@ export function summaryBlockMessage(summary: string): ContextMessage {
 function renderSummaryMessage(message: ContextMessage): string {
   const files = message.attachments?.map((file) => file.name).filter(Boolean);
   const fileLine = files?.length ? `\n[Attached files: ${files.join(', ')}]` : '';
-  return `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content}${fileLine}`;
+  const tools = message.toolCalls?.length
+    ? `\n[MCP tool calls: ${message.toolCalls.map((call) => `${call.name} (${call.status}): ${call.result.slice(0, 200)}`).join('; ')}]`
+    : '';
+  return `${message.role === 'user' ? 'User' : 'Assistant'}: ${message.content}${tools}${fileLine}`;
 }
 
 /** Split one oversized message without dropping its later content. */
