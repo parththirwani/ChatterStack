@@ -88,7 +88,7 @@ export function TokenDialog({
             type="password"
             autoComplete="off"
             spellCheck={false}
-            aria-label="Token"
+            aria-label={hasToken ? 'New token' : 'Token'}
             value={token}
             maxLength={MAX_TOKEN_LENGTH + 1}
             onChange={(event) => { setToken(event.target.value); setError(''); }}
@@ -304,7 +304,16 @@ export default function ConnectionsPage() {
 
         {(error || actionError) && <p role="alert" className="mt-4 text-sm text-red-300">{actionError || error}</p>}
 
-        <section aria-label="MCP servers" className="mt-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02]">
+        <section
+          aria-label="MCP servers"
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && removal.pending && !removal.pending.hidden) {
+              event.preventDefault();
+              hideRemovalBar();
+            }
+          }}
+          className="mt-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02]"
+        >
           <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] px-4 py-3">
             <h2 ref={headingRef} tabIndex={-1} className="text-sm font-medium text-[#d8d5d1] outline-none">MCP servers</h2>
             {connections.length > 0 && (

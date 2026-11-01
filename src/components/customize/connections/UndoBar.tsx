@@ -62,7 +62,7 @@ export default function UndoBar({ pending, getRemaining, windowMs, onUndo, onHid
       onBlur={(event) => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) onPauseSource('focus', false);
       }}
-      onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); onHide(); } }}
+      onKeyDown={(event) => { if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onHide(); } }}
       className="relative overflow-hidden rounded-b-2xl border-t border-amber-300/20 bg-amber-400/[0.07] px-4 py-3 outline-none"
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
