@@ -262,6 +262,57 @@ describe('MCP connection routes', () => {
       .toEqual([['read', null], ['write', null]]);
   });
 
+  it('names the class of every discovery failure so the add flow can offer the right retry', async () => {
+    // A refused token is an auth problem: the answer must say so, not just prose.
+    await fixture?.close();
+    fixture = await startMcpFixture({ token: 'correct-token' });
+    process.env.MCP_ALLOWED_ORIGINS = fixture.origin;
+    const auth = await createCustom({ token: 'wrong-token-value' });
+    const authId = auth.body.connection!.id;
+    const refused = await (await testOne(bare(`${authId}/test`), context(authId))).json();
+    expect(refused).toMatchObject({ ok: false, code: 'unauthorized' });
+
+    // A server that is simply not there.
+    const port = fixture.port;
+    await fixture.close();
+    fixture = null;
+    const gone = await (await testOne(bare(`${authId}/test`), context(authId))).json();
+    expect(gone).toMatchObject({ ok: false, code: 'unreachable' });
+
+    // Too many tools, and a schema past the size limit, are refused by the screen.
+    fixture = await startMcpFixture({ tools: 'many', port });
+    process.env.MCP_ALLOWED_ORIGINS = fixture.origin;
+    const { body: many } = await createCustom({ name: 'Many' });
+    const crowded = await (await testOne(bare(`${many.connection!.id}/test`), context(many.connection!.id))).json();
+    expect(crowded).toMatchObject({ ok: false, code: 'too_many_tools' });
+
+    await fixture.close();
+    fixture = await startMcpFixture({ tools: 'oversized', port });
+    process.env.MCP_ALLOWED_ORIGINS = fixture.origin;
+    const { body: big } = await createCustom({ name: 'Big' });
+    const bloated = await (await testOne(bare(`${big.connection!.id}/test`), context(big.connection!.id))).json();
+    expect(bloated).toMatchObject({ ok: false, code: 'oversized_schema' });
+    // A failure class never comes back on a successful test.
+    await fixture.close();
+    fixture = await startMcpFixture({ port });
+    process.env.MCP_ALLOWED_ORIGINS = fixture.origin;
+    const plain = await createCustom({ name: 'Plain' });
+    const ok = await (await testOne(bare(`${plain.body.connection!.id}/test`), context(plain.body.connection!.id))).json();
+    expect(ok.ok).toBe(true);
+    expect(ok.code).toBeUndefined();
+  });
+
+  it('says which kind of URL it refused when a connection is created', async () => {
+    delete process.env.MCP_ALLOWED_ORIGINS;
+    const privateAddress = await create(json('connections', { name: 'Private', url: 'https://127.0.0.1/mcp' }));
+    expect(privateAddress.status).toBe(400);
+    expect((await privateAddress.json()).code).toBe('blocked_address');
+    const nonsense = await create(json('connections', { name: 'Nonsense', url: 'not a url' }));
+    expect(nonsense.status).toBe(400);
+    expect((await nonsense.json()).code).toBe('invalid_url');
+    expect(rows.size).toBe(0);
+  });
+
   it('records a visible, redacted error when a server rejects the token', async () => {
     await fixture?.close();
     fixture = await startMcpFixture({ token: 'correct-token' });

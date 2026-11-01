@@ -1,12 +1,18 @@
 'use client';
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
-import type { McpConnectionView, McpConnectionsResponse } from '@/src/types/mcp.types';
+import type { McpConnectionView, McpConnectionsResponse, McpErrorCode, McpTestResult } from '@/src/types/mcp.types';
 
 /** Fired after any change to the user's connections, so every list refreshes. */
 export const MCP_CONNECTIONS_CHANGED_EVENT = 'chatterstack:mcp-connections-changed';
 
 export class McpApiError extends Error {
-  constructor(message: string, readonly status: number, readonly field?: string) {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly field?: string,
+    /** The MCP failure class, when the route sent one. Drives the add-server retry. */
+    readonly code?: McpErrorCode,
+  ) {
     super(message);
     this.name = 'McpApiError';
   }
@@ -24,6 +30,7 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       body.error ?? body.message ?? 'Something went wrong. Try again.',
       response.status,
       body.field ?? undefined,
+      typeof body.code === 'string' ? (body.code as McpErrorCode) : undefined,
     );
   }
   return body as T;
@@ -75,11 +82,8 @@ export const updateMcpConnection = async (id: string, patch: UpdateMcpConnection
 export const deleteMcpConnection = (id: string) =>
   withChange(request<void>(`/api/mcp/connections/${id}`, { method: 'DELETE' }));
 
-export interface McpTestResult {
-  connection: McpConnectionView;
-  ok: boolean;
-  error?: string;
-}
+/** The shared answer shape, re-exported so the client has one place to look. */
+export type { McpTestResult } from '@/src/types/mcp.types';
 
 /** Discovers tools and stores what was found; a failure comes back as `ok: false`. */
 export const testMcpConnection = async (id: string) => {

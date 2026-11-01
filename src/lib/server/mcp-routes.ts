@@ -24,7 +24,9 @@ export function mcpGuard(): ConnectionGuard {
 
 /** Turns an MCP failure into a response with the message the UI can show. */
 export function mcpErrorResponse(error: unknown) {
-  if (error instanceof McpConnectionError) return Response.json({ error: error.message }, { status: error.status });
+  if (error instanceof McpConnectionError) {
+    return Response.json({ error: error.message, ...(error.code ? { code: error.code } : {}) }, { status: error.status });
+  }
   if (error instanceof McpUrlError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
   if (error instanceof McpError) return Response.json({ error: error.message, code: error.code }, { status: error.status });
   throw error;

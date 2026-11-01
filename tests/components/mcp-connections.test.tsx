@@ -3,13 +3,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ConnectionsPage from '@/src/components/customize/ConnectionsPage';
-import { catalogAuthLabel, validateConnectionForm } from '@/src/components/customize/ConnectionsPage';
+import { catalogAuthLabel, filterCatalog, validateConnectionForm } from '@/src/lib/client/mcp-validation';
+import { describeMcpFailure } from '@/src/lib/client/mcp-failure';
 import { serverRowStatus } from '@/src/components/customize/connections/ServerRow';
 import { MCP_CATALOG } from '@/src/config/mcp-catalog';
 import { MCP_TOOL_DEFINITION_BUDGET_TOKENS } from '@/src/lib/client/mcp-budget';
 import { resetMcpConnectionsCache } from '@/src/lib/client/mcp';
 import { useAppStore } from '@/src/store/rootStore';
-import type { McpConnectionView } from '@/src/types/mcp.types';
+import type { McpConnectionView, McpToolView } from '@/src/types/mcp.types';
 import type { User } from '@/src/types/user.types';
 
 const cloudflare: McpConnectionView = {
@@ -34,6 +35,13 @@ const linear: McpConnectionView = {
 
 let connections: McpConnectionView[];
 let fetcher: ReturnType<typeof vi.fn>;
+/** What the next discovery attempt answers: the real tools, or a classified failure. */
+type Discovery = { kind: 'ok'; tools: McpToolView[] } | { kind: 'error'; code: string; error: string };
+let discovery: Discovery;
+const discoveredTools: McpToolView[] = [
+  { id: 'search_cloudflare_documentation', name: 'search_cloudflare_documentation', description: 'Search the Cloudflare docs.', readOnly: true, access: 'read', schemaBytes: 412, estimatedTokens: 180, enabled: false },
+  { id: 'fetch_url', name: 'fetch_url', description: 'Fetch one page.', readOnly: false, access: 'write', schemaBytes: 180, estimatedTokens: 96, enabled: false },
+];
 const calls = (method: string, url: string | RegExp) => fetcher.mock.calls.filter(([input, init]) =>
   (init as RequestInit | undefined)?.method === method && (typeof url === 'string' ? String(input) === url : url.test(String(input))));
 const bodyOf = (call: unknown[]) => JSON.parse((call[1] as RequestInit).body as string);
@@ -43,6 +51,7 @@ beforeEach(() => {
   window.history.replaceState(null, '', '/customize/connections');
   useAppStore.setState({ user: { id: 'user-1', name: 'Ada' } as User, drafts: {}, draftsOwner: 'user-1' });
   connections = [{ ...cloudflare }, { ...github }];
+  discovery = { kind: 'ok', tools: discoveredTools };
   fetcher = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? 'GET';
@@ -83,15 +92,17 @@ beforeEach(() => {
       return Response.json({ connection: connections.find((connection) => connection.id === match[1]) });
     }
     if (match && method === 'POST' && match[2]) {
-      const ok = match[1] === 'c1';
+      const answer = discovery;
+      if (answer.kind === 'error') {
+        connections = connections.map((connection) => (connection.id === match[1]
+          ? { ...connection, status: 'error', lastError: answer.error, enabled: false, tools: [], toolCount: 0 }
+          : connection));
+        return Response.json({ connection: connections.find((connection) => connection.id === match[1]), ok: false, error: answer.error, code: answer.code });
+      }
       connections = connections.map((connection) => (connection.id === match[1]
-        ? { ...connection, status: ok ? 'connected' : 'error', lastError: ok ? null : 'The server refused the token.' }
+        ? { ...connection, status: 'connected', lastError: null, tools: answer.tools, toolCount: answer.tools.length, needsReview: true }
         : connection));
-      return Response.json({
-        connection: { ...connections.find((connection) => connection.id === match[1])!, status: ok ? 'connected' : 'error', lastError: ok ? null : 'The server refused the token.' },
-        ok,
-        ...(ok ? {} : { error: 'The server refused the token.' }),
-      });
+      return Response.json({ connection: connections.find((connection) => connection.id === match[1]), ok: true });
     }
     if (match && method === 'DELETE') {
       connections = connections.filter((connection) => connection.id !== match[1]);
@@ -264,6 +275,7 @@ describe('turning servers off', () => {
   });
 
   it('tests a connection and shows a failing server’s error', async () => {
+    discovery = { kind: 'error', code: 'unauthorized', error: 'The server refused the token.' };
     const user = userEvent.setup();
     render(<ConnectionsPage />);
     await user.click(await rowTrigger(/^GitHub \(read only\), Not tested/));
@@ -423,9 +435,200 @@ describe('tokens', () => {
   });
 });
 
-describe('catalog', () => {
+describe('the add-server sheet', () => {
+  const sheet = () => screen.getByRole('dialog');
+  const openSheet = async (user: ReturnType<typeof userEvent.setup>) => {
+    await user.click(await screen.findByRole('button', { name: 'Add server' }));
+    await screen.findByRole('listbox', { name: 'MCP directory' });
+  };
+  const pageBackground = () => document.querySelector<HTMLElement>('[data-mcp-page]');
+
+  it('keeps the card inert while it is open and hands focus back on Escape', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    const trigger = await screen.findByRole('button', { name: 'Add server' });
+    await user.click(trigger);
+    expect(sheet()).toBeInTheDocument();
+    expect(pageBackground()).toHaveAttribute('inert');
+    expect(screen.getByLabelText('Search the directory')).toHaveFocus();
+    // Tab from the last control stays inside the sheet.
+    const close = within(sheet()).getByRole('button', { name: 'Close' });
+    close.focus();
+    await user.tab();
+    expect(sheet()).toContainElement(document.activeElement as HTMLElement);
+    await user.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(pageBackground()).not.toHaveAttribute('inert');
+    expect(trigger).toHaveFocus();
+  });
+
+  it('searches the real catalog by name, host or purpose and says when nothing matches', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    const list = screen.getByRole('listbox', { name: 'MCP directory' });
+    expect(within(list).getAllByRole('option')).toHaveLength(MCP_CATALOG.length);
+    const cloudflareEntry = within(list).getByRole('option', { name: /Cloudflare documentation/ });
+    expect(cloudflareEntry).toHaveTextContent('No token needed');
+    expect(cloudflareEntry).toHaveTextContent('Verified 2026-10-31 anonymously');
+    expect(within(list).getByRole('option', { name: /GitHub \(read only\)/ })).toHaveTextContent('Needs your own token');
+
+    await user.type(within(sheet()).getByLabelText('Search the directory'), 'linear');
+    expect(within(list).getAllByRole('option')).toHaveLength(1);
+    await user.clear(within(sheet()).getByLabelText('Search the directory'));
+    await user.type(within(sheet()).getByLabelText('Search the directory'), 'nowhere');
+    expect(within(list).queryByRole('option')).toBeNull();
+    expect(screen.getByText(/Nothing in the directory matches/)).toBeInTheDocument();
+  });
+
+  it('moves focus between the search field and the entries with the arrow keys', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    const search = screen.getByLabelText('Search the directory');
+    const list = screen.getByRole('listbox', { name: 'MCP directory' });
+    const [first, second] = within(list).getAllByRole('option');
+    expect(search).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(first).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(second).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(first).toHaveFocus();
+    await user.keyboard('{ArrowUp}');
+    expect(search).toHaveFocus();
+  });
+
+  it('connects the verified entry through the real API and lands every tool off for review', async () => {
+    connections = [{ ...github }];
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    await user.click(within(sheet()).getByRole('option', { name: /Cloudflare documentation/ }));
+    const dialog = sheet();
+    expect(within(dialog).getByRole('heading', { name: 'Connect Cloudflare documentation' })).toBeInTheDocument();
+    expect(within(dialog).getByText(/No token is needed/)).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText('Your token')).toBeNull();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Connect to docs.mcp.cloudflare.com' }));
+    await waitFor(() => expect(calls('POST', '/api/mcp/connections')).toHaveLength(1));
+    expect(bodyOf(calls('POST', '/api/mcp/connections')[0])).toEqual({ name: 'Cloudflare documentation', catalogId: 'cloudflare-docs' });
+    expect(calls('POST', '/api/mcp/connections/new-2/test')).toHaveLength(1);
+
+    // The row slid into the card behind the sheet while the tools were arriving.
+    const block = await findBlock();
+    expect(within(block).getByText('Cloudflare documentation')).toBeInTheDocument();
+    expect(document.querySelector('[data-row-id="new-2"]')).toHaveAttribute('data-entering', 'true');
+
+    // They land one by one rather than all at once.
+    expect(await within(sheet()).findByText(/more arriving…/)).toBeInTheDocument();
+    const found = await screen.findByRole('list', { name: 'Discovered tools' });
+    expect(await within(found).findByText('fetch_url')).toBeInTheDocument();
+    expect(within(found).getByText('read')).toBeInTheDocument();
+    expect(within(found).getByText('write')).toBeInTheDocument();
+    expect(within(found).getAllByText('off')).toHaveLength(2);
+    expect(within(found).getByText('≈180 tokens (est.)')).toBeInTheDocument();
+    // Nothing is switched on for the person, reads included.
+    expect(calls('PATCH', /\/api\/mcp\/connections\//)).toHaveLength(0);
+    expect(await within(sheet()).findByText(/Every tool arrived off/)).toBeInTheDocument();
+
+    await user.click(within(sheet()).getByRole('button', { name: 'Show me the server' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const row = await rowTrigger(/^Cloudflare documentation, Connected, remote transport, 0 of 2 tools on, no tools on/);
+    expect(row).toHaveFocus();
+  });
+
+  it('names the token a catalog entry needs and refuses to connect without it', async () => {
+    connections = [];
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    await user.click(within(sheet()).getByRole('option', { name: /GitHub \(read only\)/ }));
+    const dialog = sheet();
+    expect(within(dialog).getByText(/needs your own GitHub token/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/never to another server, another user, or the model/)).toBeInTheDocument();
+    await user.click(within(dialog).getByRole('button', { name: 'Connect to api.githubcopilot.com' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('This server needs your token before it will answer.');
+    expect(calls('POST', '/api/mcp/connections')).toHaveLength(0);
+
+    await user.type(within(dialog).getByLabelText('Your token'), 'ghp_mine');
+    await user.click(within(dialog).getByRole('button', { name: 'Connect to api.githubcopilot.com' }));
+    await waitFor(() => expect(calls('POST', '/api/mcp/connections')).toHaveLength(1));
+    expect(bodyOf(calls('POST', '/api/mcp/connections')[0])).toEqual({ name: 'GitHub (read only)', catalogId: 'github-readonly', token: 'ghp_mine' });
+  });
+
+  it('turns a refused token into words and retries the same connection with a new token', async () => {
+    connections = [];
+    discovery = { kind: 'error', code: 'unauthorized', error: 'The MCP server rejected the token.' };
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    await user.click(within(sheet()).getByRole('option', { name: /GitHub \(read only\)/ }));
+    const dialog = sheet();
+    await user.type(within(dialog).getByLabelText('Your token'), 'ghp_wrong');
+    await user.click(within(dialog).getByRole('button', { name: 'Connect to api.githubcopilot.com' }));
+    expect(await within(dialog).findByText(/The server said: The MCP server rejected the token\./)).toBeInTheDocument();
+    expect(within(dialog).getByText(/in your list, switched off/)).toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole('button', { name: 'Try another token' }));
+    expect(within(sheet()).getByRole('heading', { name: 'Connect GitHub (read only)' })).toBeInTheDocument();
+    discovery = { kind: 'ok', tools: discoveredTools };
+    await user.type(within(sheet()).getByLabelText('Your token'), 'ghp_right');
+    await user.click(within(sheet()).getByRole('button', { name: 'Connect to api.githubcopilot.com' }));
+    // The retry reuses the connection the first attempt made: one create, two tests.
+    await waitFor(() => expect(calls('POST', '/api/mcp/connections/new-1/test')).toHaveLength(2));
+    expect(calls('POST', '/api/mcp/connections')).toHaveLength(1);
+    expect(bodyOf(calls('PATCH', '/api/mcp/connections/new-1')[0])).toEqual({ token: 'ghp_right' });
+    expect(await screen.findByRole('list', { name: 'Discovered tools' })).toBeInTheDocument();
+  });
+
+  it('explains a server that offers more tools than one connection may hold', async () => {
+    connections = [];
+    discovery = { kind: 'error', code: 'too_many_tools', error: 'This MCP server offers 40 tools, which is more than the 32 allowed per connection.' };
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    await user.click(within(sheet()).getByRole('option', { name: /Cloudflare documentation/ }));
+    await user.click(within(sheet()).getByRole('button', { name: 'Connect to docs.mcp.cloudflare.com' }));
+    expect(await within(sheet()).findByText(/more tools than one connection may hold/)).toBeInTheDocument();
+    // Retrying cannot help a limit the server itself reports, so no Try again is offered.
+    expect(within(sheet()).queryByRole('button', { name: /^Try again/ })).toBeNull();
+    expect(within(sheet()).getByRole('button', { name: 'Back to the directory' })).toBeInTheDocument();
+  });
+
+  it('validates a custom URL before anything leaves the browser, then connects it', async () => {
+    connections = [];
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await openSheet(user);
+    await user.click(within(sheet()).getByRole('button', { name: /Add any HTTPS MCP server by URL/ }));
+    const dialog = sheet();
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Give this connection a name.');
+    expect(calls('POST', '/api/mcp/connections')).toHaveLength(0);
+
+    await user.type(within(dialog).getByLabelText('Connection name'), 'My server');
+    await user.type(within(dialog).getByLabelText('Server URL'), 'http://mcp.internal/mcp');
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('MCP servers must use HTTPS.');
+    expect(calls('POST', '/api/mcp/connections')).toHaveLength(0);
+
+    await user.clear(within(dialog).getByLabelText('Server URL'));
+    await user.type(within(dialog).getByLabelText('Server URL'), 'https://mcp.example.com/mcp');
+    await user.type(within(dialog).getByLabelText('Bearer token (optional)'), 'sk-abc');
+    await user.click(within(dialog).getByRole('button', { name: 'Continue' }));
+    expect(within(sheet()).getByText(/sends it just to mcp\.example\.com/)).toBeInTheDocument();
+    await user.click(within(sheet()).getByRole('button', { name: 'Connect to mcp.example.com' }));
+    await waitFor(() => expect(calls('POST', '/api/mcp/connections')).toHaveLength(1));
+    expect(bodyOf(calls('POST', '/api/mcp/connections')[0])).toEqual({ name: 'My server', url: 'https://mcp.example.com/mcp', token: 'sk-abc' });
+    expect(validateConnectionForm({ name: 'x', url: 'https://user:pw@mcp.example.com/mcp' })?.message).toMatch(/not in the URL/);
+  });
+});
+
+describe('the directory and its failure wording', () => {
+  const byId = new Map(MCP_CATALOG.map((entry) => [entry.id, entry]));
+
   it('labels each entry by whose token it needs and whether it was verified', () => {
-    const byId = new Map(MCP_CATALOG.map((entry) => [entry.id, entry]));
     expect(catalogAuthLabel(byId.get('cloudflare-docs')!)).toBe('No token needed');
     expect(catalogAuthLabel(byId.get('github-readonly')!)).toBe('Needs your own token');
     expect(catalogAuthLabel(byId.get('linear-readonly')!)).toBe('Needs your own token');
@@ -434,54 +637,24 @@ describe('catalog', () => {
     expect(byId.get('linear-readonly')!.verified).toBeNull();
   });
 
-  it('shows the labels, connects the anonymous entry directly and asks a token for the others', async () => {
-    const user = userEvent.setup();
-    render(<ConnectionsPage />);
-    const catalog = await screen.findByRole('region', { name: 'Catalog' });
-    expect(within(catalog).getByText('Verified 2026-10-31 anonymously')).toBeInTheDocument();
-    expect(within(catalog).getAllByText('Not verified yet')).toHaveLength(2);
-
-    await user.click(within(catalog).getByRole('button', { name: 'Connect Cloudflare documentation' }));
-    await waitFor(() => expect(calls('POST', '/api/mcp/connections').length).toBe(1));
-    expect(bodyOf(calls('POST', '/api/mcp/connections')[0])).toEqual({ name: 'Cloudflare documentation', catalogId: 'cloudflare-docs' });
-
-    await user.click(within(catalog).getByRole('button', { name: 'Connect GitHub (read only)' }));
-    const dialog = screen.getByRole('dialog', { name: 'Connect GitHub (read only)' });
-    await user.type(within(dialog).getByLabelText('Token'), 'ghp_mine');
-    await user.click(within(dialog).getByRole('button', { name: 'Save token' }));
-    await waitFor(() => expect(calls('POST', '/api/mcp/connections').length).toBe(2));
-    expect(bodyOf(calls('POST', '/api/mcp/connections')[1])).toEqual({ name: 'GitHub (read only)', catalogId: 'github-readonly', token: 'ghp_mine' });
-  });
-});
-
-describe('the custom server form', () => {
-  it('blocks a bad name or URL before any request', async () => {
-    const user = userEvent.setup();
-    render(<ConnectionsPage />);
-    const add = screen.getByRole('button', { name: 'Add' });
-    await user.click(add);
-    expect(await screen.findByRole('alert')).toHaveTextContent('Give this connection a name.');
-    expect(calls('POST', '/api/mcp/connections')).toHaveLength(0);
-
-    await user.type(screen.getByLabelText('Connection name'), 'Lan server');
-    await user.type(screen.getByLabelText('Server URL'), 'http://mcp.internal/mcp');
-    await user.click(add);
-    expect(await screen.findByRole('alert')).toHaveTextContent('MCP servers must use HTTPS.');
-    expect(calls('POST', '/api/mcp/connections')).toHaveLength(0);
-
-    expect(validateConnectionForm({ name: 'x', url: 'https://user:pw@mcp.example.com/mcp' })?.message).toMatch(/not in the URL/);
+  it('filters the directory by any word, in any field', () => {
+    expect(filterCatalog(MCP_CATALOG, '')).toHaveLength(MCP_CATALOG.length);
+    expect(filterCatalog(MCP_CATALOG, '  LiNeAr  ').map((entry) => entry.id)).toEqual(['linear-readonly']);
+    expect(filterCatalog(MCP_CATALOG, 'workers').map((entry) => entry.id)).toEqual(['cloudflare-docs']);
+    expect(filterCatalog(MCP_CATALOG, 'githubcopilot').map((entry) => entry.id)).toEqual(['github-readonly']);
+    expect(filterCatalog(MCP_CATALOG, 'issues projects')).toHaveLength(1);
+    expect(filterCatalog(MCP_CATALOG, 'nothing like this')).toHaveLength(0);
   });
 
-  it('adds a valid server with its optional token', async () => {
-    const user = userEvent.setup();
-    render(<ConnectionsPage />);
-    await user.type(screen.getByLabelText('Connection name'), 'My server');
-    await user.type(screen.getByLabelText('Server URL'), 'https://mcp.example.com/mcp');
-    await user.type(screen.getByLabelText('Bearer token (optional)'), 'sk-abc');
-    await user.click(screen.getByRole('button', { name: 'Add' }));
-    await waitFor(() => expect(calls('POST', '/api/mcp/connections')).toHaveLength(1));
-    expect(bodyOf(calls('POST', '/api/mcp/connections')[0])).toEqual({ name: 'My server', url: 'https://mcp.example.com/mcp', token: 'sk-abc' });
-    expect(await screen.findByText('My server')).toBeInTheDocument();
-    expect(screen.getByLabelText('Connection name')).toHaveValue('');
+  it('maps the real MCP failure classes onto the retry that can help', () => {
+    expect(describeMcpFailure('unauthorized', 'The MCP server rejected the token.'))
+      .toMatchObject({ retry: 'token', action: 'Try another token' });
+    expect(describeMcpFailure('unauthorized', 'The MCP server rejected the token.').message)
+      .toContain('The MCP server rejected the token.');
+    expect(describeMcpFailure('unreachable', 'The MCP server could not be reached.').retry).toBe('attempt');
+    expect(describeMcpFailure('oversized_schema', 'too big').retry).toBe('none');
+    expect(describeMcpFailure('too_many_tools', 'too many').retry).toBe('none');
+    // An unclassified failure is shown exactly as the server said it.
+    expect(describeMcpFailure(undefined, 'Something odd happened.')).toEqual({ message: 'Something odd happened.', retry: 'attempt', action: 'Try again' });
   });
 });

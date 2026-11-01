@@ -14,6 +14,7 @@ import { McpError as SdkMcpError } from '@modelcontextprotocol/sdk/types.js';
 import { McpUrlError, assertSafeMcpUrl, createSafeFetch, type AddressResolver } from './mcp-url';
 import { redactedErrorText, redactSecrets } from './mcp-redact';
 import { countTokens } from '@/src/lib/tokens';
+import type { McpErrorCode } from '@/src/types/mcp.types';
 
 export const MCP_LIMITS = {
   maxTools: 32,
@@ -28,21 +29,9 @@ export const MCP_LIMITS = {
   maxResultChars: 200_000,
 } as const;
 
-export type McpErrorCode =
-  | 'invalid_url'
-  | 'blocked_address'
-  | 'unauthorized'
-  | 'not_found'
-  | 'unreachable'
-  | 'timeout'
-  | 'cancelled'
-  | 'protocol'
-  | 'response_too_large'
-  | 'too_many_tools'
-  | 'oversized_schema'
-  | 'unsupported_schema'
-  | 'tool_failed'
-  | 'unknown';
+// The code list is a shared, credential-free shape: the browser maps these to the
+// wording it shows, so it lives with the other browser-safe MCP types.
+export type { McpErrorCode } from '@/src/types/mcp.types';
 
 export class McpError extends Error {
   readonly code: McpErrorCode;

@@ -75,6 +75,12 @@ const column = (name: string, expression: string) =>
 const connectionRows = () =>
   sql(`SELECT name || ':' || "authMode" || ':' || enabled || ':' || status || ':' || coalesce("catalogId", '-') FROM mcp_connections WHERE "userId" = ${literal(E2E_USER_ID)} ORDER BY name`);
 const credentialOf = (name: string) => column(name, 'coalesce(credential, \'\')');
+/** The same rows without the status, which a real connection attempt is free to change. */
+const connectionBasics = () =>
+  sql(`SELECT name || ':' || "authMode" || ':' || enabled || ':' || coalesce("catalogId", '-') FROM mcp_connections WHERE "userId" = ${literal(E2E_USER_ID)} ORDER BY name`);
+/** Every per-tool allowlist entry as `tool=value` pairs, empty when nothing was switched on. */
+const toolEnabledOf = (name: string) =>
+  column(name, `coalesce((SELECT string_agg(key || '=' || value, ',' ORDER BY key) FROM jsonb_each_text("toolEnabled")), '')`);
 /** The stored per-tool allowlist entry: 'true', 'false' or '-' when absent. */
 const toolSwitch = (name: string, tool: string) => column(name, `coalesce("toolEnabled"->>${literal(tool)}, '-')`);
 const statusOf = (name: string) => column(name, 'status');
@@ -96,7 +102,7 @@ test.beforeEach(() => {
   sql(`DELETE FROM mcp_connections WHERE "userId" = ${literal(E2E_USER_ID)}`);
 });
 
-test('Customize has a Connections tab that states what each catalog entry needs', async ({ page }) => {
+test('Customize has a Connections tab whose directory states what each entry needs', async ({ page }) => {
   await openApp(page);
   await page.getByRole('navigation', { name: 'Main' }).getByRole('button', { name: 'Customize' }).click();
   await expect(page).toHaveURL(/\/customize\/skills$/);
@@ -104,17 +110,24 @@ test('Customize has a Connections tab that states what each catalog entry needs'
   await expect(page).toHaveURL(/\/customize\/connections$/);
   await expect(page.getByRole('heading', { name: 'Customize', level: 1 })).toBeVisible();
 
-  const catalog = page.getByRole('region', { name: 'Catalog' });
-  const cloudflare = catalog.locator('li').filter({ hasText: 'Cloudflare documentation' });
-  await expect(cloudflare.getByText('No token needed')).toBeVisible();
-  await expect(cloudflare.getByText('Verified 2026-10-31 anonymously')).toBeVisible();
-  await expect(cloudflare.getByRole('button', { name: 'Connect Cloudflare documentation' })).toBeVisible();
-  const github = catalog.locator('li').filter({ hasText: 'GitHub (read only)' });
-  await expect(github.getByText('Needs your own token')).toBeVisible();
-  await expect(github.getByText('Not verified yet')).toBeVisible();
-  await expect(github.getByRole('button', { name: 'Connect GitHub (read only)' })).toBeVisible();
+  // The directory lives in the add-server sheet, inside the management card.
+  await connections(page).getByRole('button', { name: 'Add server' }).click();
+  const directory = page.getByRole('listbox', { name: 'MCP directory' });
+  const cloudflare = directory.getByRole('option', { name: /Cloudflare documentation/ });
+  await expect(cloudflare).toContainText('No token needed');
+  await expect(cloudflare).toContainText('Verified 2026-10-31 anonymously');
+  const github = directory.getByRole('option', { name: /GitHub \(read only\)/ });
+  await expect(github).toContainText('Needs your own token');
+  await expect(github).toContainText('Not verified from this deployment yet');
+  // Searching filters the directory without leaving the sheet.
+  await page.getByLabel('Search the directory').fill('linear');
+  await expect(directory.getByRole('option')).toHaveCount(1);
+  await expect(directory.getByRole('option', { name: /Linear \(read only\)/ })).toBeVisible();
+  await expect(page.getByRole('dialog')).toContainText('Add a server');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
 
-  await expect(connections(page)).toContainText('No connections yet');
+  await expect(connections(page)).toContainText('No servers yet');
   await expect(page.getByText('every call waits for your approval in the chat')).toBeVisible();
 
   // The page URL is the state: a reload lands on the same tab.
@@ -122,22 +135,38 @@ test('Customize has a Connections tab that states what each catalog entry needs'
   await expect(page.getByRole('tab', { name: 'Connections' })).toHaveAttribute('aria-selected', 'true');
 });
 
-test('connecting from the catalog starts off, untested and without a credential', async ({ page }) => {
+test('the add-server sheet connects for real and leaves the server off with every tool off', async ({ page }) => {
+  test.setTimeout(90_000);
   await openApp(page);
   await page.goto('/customize/connections');
-  await page.getByRole('button', { name: 'Connect Cloudflare documentation' }).click();
+  await connections(page).getByRole('button', { name: 'Add server' }).click();
+  await page.getByRole('option', { name: /Cloudflare documentation/ }).click();
+  // The auth step says plainly that this one needs no credential.
+  await expect(page.getByRole('dialog')).toContainText('No token is needed');
+  await page.getByRole('button', { name: 'Connect to docs.mcp.cloudflare.com' }).click();
+  await expect(page.getByRole('status')).toContainText('Connecting and asking for its tools');
+
+  // The connection row is real and switched off while the attempt is still going.
+  await expect.poll(() => connectionBasics(), dbPoll).toBe('Cloudflare documentation:none:false:cloudflare-docs');
+  expect(credentialOf('Cloudflare documentation')).toBe('');
+
+  // Either the tools arrive (and stay off) or the attempt reports its reason; the
+  // sheet never enables anything on its own.
+  const dialog = page.getByRole('dialog');
+  await expect.poll(async () => (await dialog.getByRole('list', { name: 'Discovered tools' }).count()) + (await dialog.getByRole('alert').count())).toBeGreaterThan(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
 
   const row = connectionRow(page, 'Cloudflare documentation');
   await expect(row).toBeVisible();
-  expect(connectionRows()).toBe('Cloudflare documentation:none:false:untested:cloudflare-docs');
-  expect(credentialOf('Cloudflare documentation')).toBe('');
-  await expect(row.getByText('Not tested')).toBeVisible();
   await expect(row.getByText('Off', { exact: true })).toBeVisible();
   await expect(row.getByText('Remote')).toBeVisible();
   await expect(row.getByText('0 of 0 tools on')).toBeVisible();
+  expect(toolEnabledOf('Cloudflare documentation')).toBe('');
+  // The status is whatever the real attempt recorded: never a pretend success.
+  expect(['untested', 'connected', 'error']).toContain(statusOf('Cloudflare documentation'));
   await openRow(page, 'Cloudflare documentation');
   await expect(row.getByText('https://docs.mcp.cloudflare.com/mcp')).toBeVisible();
-  await expect(row.getByText('No tools discovered yet')).toBeVisible();
   await expect(row.getByRole('switch', { name: 'Enable Cloudflare documentation', exact: true })).toHaveAttribute('aria-checked', 'false');
 });
 
@@ -216,25 +245,34 @@ test('a token typed into the dialog is stored encrypted or refused, never in the
   expect(await (await page.request.get('/api/mcp/connections')).text()).not.toContain(secret);
 });
 
-test('the custom server form refuses plain HTTP and URL credentials, then adds the server', async ({ page }) => {
+test('the custom URL field refuses plain HTTP and URL credentials, then connects', async ({ page }) => {
+  test.setTimeout(90_000);
   await openApp(page);
   await page.goto('/customize/connections');
-  const form = page.getByRole('region', { name: 'Add a custom server' });
-  await form.getByLabel('Connection name').fill('Docs server');
-  await form.getByLabel('Server URL').fill('http://mcp.example.com/mcp');
-  await form.getByRole('button', { name: 'Add', exact: true }).click();
-  await expect(form.getByRole('alert')).toContainText('MCP servers must use HTTPS.');
+  await connections(page).getByRole('button', { name: 'Add server' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: /Add any HTTPS MCP server by URL/ }).click();
 
-  await form.getByLabel('Server URL').fill('https://user:pass@mcp.example.com/mcp');
-  await form.getByRole('button', { name: 'Add', exact: true }).click();
-  await expect(form.getByRole('alert')).toContainText('Put credentials in the token field, not in the URL.');
+  await dialog.getByLabel('Connection name').fill('Docs server');
+  await dialog.getByLabel('Server URL').fill('http://mcp.example.com/mcp');
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('MCP servers must use HTTPS.');
 
-  await form.getByLabel('Server URL').fill(SERVER_URL);
-  await form.getByRole('button', { name: 'Add', exact: true }).click();
+  await dialog.getByLabel('Server URL').fill('https://user:pass@mcp.example.com/mcp');
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Put credentials in the token field, not in the URL.');
+
+  // Nothing left the browser for either refusal.
+  expect(connectionRows()).toBe('');
+
+  await dialog.getByLabel('Server URL').fill(SERVER_URL);
+  await dialog.getByRole('button', { name: 'Continue' }).click();
+  await expect(dialog).toContainText('sends it just to mcp.example.com');
+  await dialog.getByRole('button', { name: 'Connect to mcp.example.com' }).click();
+  await expect.poll(() => connectionBasics(), dbPoll).toBe('Docs server:none:false:-');
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
   await expect(connectionRow(page, 'Docs server')).toBeVisible();
-  expect(connectionRows()).toBe('Docs server:none:false:untested:-');
-  await expect(form.getByLabel('Connection name')).toHaveValue('');
-  await expect(form.getByLabel('Server URL')).toHaveValue('');
 });
 
 test('Test on an unreachable server stores a visible failure instead of a tool list', async ({ page }) => {

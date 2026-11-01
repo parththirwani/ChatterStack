@@ -57,6 +57,8 @@ export function serverRowLabel(connection: McpConnectionView, status: RowStatus)
 export interface ServerRowProps {
   connection: McpConnectionView;
   expanded: boolean;
+  /** The connection the add-server sheet just made: it slides in and stays lit for a moment. */
+  entering?: boolean;
   onExpandedChange: (expanded: boolean) => void;
   onToggleConnection: () => void;
   onToggleTool: (tool: McpToolView) => void;
@@ -70,6 +72,7 @@ export interface ServerRowProps {
 export default function ServerRow({
   connection,
   expanded,
+  entering = false,
   onExpandedChange,
   onToggleConnection,
   onToggleTool,
@@ -104,7 +107,14 @@ export default function ServerRow({
   };
 
   return (
-    <li data-row-id={connection.id} className="border-b border-white/[0.06] last:border-b-0">
+    <motion.li
+      data-row-id={connection.id}
+      data-entering={entering ? 'true' : undefined}
+      initial={entering && !reduceMotion ? { opacity: 0, x: -12 } : false}
+      animate={{ opacity: 1, x: 0 }}
+      transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.32, bounce: 0 }}
+      className={`border-b border-white/[0.06] transition-colors duration-500 last:border-b-0 ${entering ? 'bg-white/[0.06]' : ''}`}
+    >
       <div className="flex items-center gap-2 px-3 py-2.5">
         <button
           type="button"
@@ -234,6 +244,6 @@ export default function ServerRow({
           </motion.div>
         )}
       </AnimatePresence>
-    </li>
+    </motion.li>
   );
 }

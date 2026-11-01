@@ -7,8 +7,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/src/lib/prisma';
 import { findMcpCatalogEntry, type McpCatalogEntry } from '@/src/config/mcp-catalog';
-import { MCP_LIMITS, McpError, discoverMcpTools, estimateToolTokens, normalizeToolNames, type McpToolInfo, type NormalizedMcpTool } from './mcp-client';
-import { assertSafeMcpUrl, type AddressResolver } from './mcp-url';
+import { MCP_LIMITS, McpError, discoverMcpTools, estimateToolTokens, normalizeMcpError, normalizeToolNames, type McpErrorCode, type McpToolInfo, type NormalizedMcpTool } from './mcp-client';
+import { assertSafeMcpUrl, McpUrlError, type AddressResolver } from './mcp-url';
 import { credentialKeyConfigured, decryptCredential, encryptCredential } from './mcp-crypto';
 import { redactedErrorText } from './mcp-redact';
 
@@ -16,7 +16,7 @@ export const MAX_MCP_CONNECTIONS_PER_USER = 10;
 export const MAX_MCP_NAME = 60;
 
 export class McpConnectionError extends Error {
-  constructor(message: string, readonly status: number) {
+  constructor(message: string, readonly status: number, readonly code?: McpErrorCode) {
     super(message);
     this.name = 'McpConnectionError';
   }
@@ -139,6 +139,12 @@ function resolveTarget(input: CreateConnectionInput, guard: ConnectionGuard): { 
   try {
     parsed = assertSafeMcpUrl(url, { allowedOrigins: guard.allowedOrigins });
   } catch (error) {
+    // The status stays 400 (nothing was stored yet), but the class of the refusal
+    // travels with it so the UI can say *why* the URL was refused.
+    if (error instanceof McpUrlError) {
+      const classified = normalizeMcpError(error, { url });
+      throw new McpConnectionError(error.message, 400, classified.code);
+    }
     if (error instanceof Error) throw new McpConnectionError(error.message, 400);
     throw error;
   }
@@ -268,6 +274,8 @@ export interface TestResult {
   connection: McpConnectionView;
   ok: boolean;
   error?: string;
+  /** The failure class behind `error`, so the add-server flow can offer the right retry. */
+  code?: McpErrorCode;
 }
 
 /**
@@ -311,6 +319,7 @@ export async function testConnection(userId: string, id: string, guard: Connecti
     return { connection: publicConnection(updated), ok: true };
   } catch (error) {
     const message = error instanceof McpError ? redactedErrorText(error.message, secrets) : redactedErrorText(error, secrets);
+    const code: McpErrorCode = error instanceof McpError ? error.code : 'unknown';
     const updated = await write(userId, id, {
       status: 'error',
       lastError: message,
@@ -322,7 +331,7 @@ export async function testConnection(userId: string, id: string, guard: Connecti
       enabled: false,
     });
     if (!updated) return null;
-    return { connection: publicConnection(updated), ok: false, error: message };
+    return { connection: publicConnection(updated), ok: false, error: message, code };
   }
 }
 

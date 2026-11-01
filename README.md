@@ -236,12 +236,24 @@ connections UI that builds on this.
 
 ### Connecting MCP servers
 
-Manage them under **Customize → Connections** (`/customize/connections`): the
-verified catalog, a custom HTTPS server form, token entry, a **Test** button that
-stores the discovered tool list, an enable switch, per-tool switches, and a
-review step that blocks enabling until a changed tool list has been looked over.
-Tokens are typed into a dialog, sent once over the session and stored encrypted;
-the page only ever learns that a token exists.
+Manage them under **Customize → Connections** (`/customize/connections`) in one
+**MCP servers** block. Its header meter shows what the tools the model would
+actually receive are estimated to cost against a tool-definition budget, one
+segment per server, turning amber when the estimate goes over. Each server row
+shows its real status (connected, needs sign-in, or an error with the stored
+reason), the Remote transport, how many tools are on and their estimated cost,
+and expands to the endpoint, per-tool switches with a read/write label and a
+per-tool token estimate, token entry, **Test** and **Remove**. Removal waits a
+few seconds behind an Undo bar before the delete is sent, so changing your mind
+costs nothing; closing the page with the bar open leaves the server alone.
+
+**Add server** opens a sheet with the verified catalog (searchable, and honest
+about whose token each entry needs), a custom HTTPS URL field, live progress
+while the real connection is made, and the discovered tools landing one by one —
+every one of them off, because nothing is enabled without you reviewing it.
+Tokens are typed into a dialog or the sheet, sent once over the session and
+stored encrypted; the page only ever learns that a token exists. Every token
+count in this UI is an estimate, never a billed figure.
 
 `MCP_CREDENTIAL_KEY` is required before any user token can be stored. It
 encrypts bearer tokens at rest with AES-256-GCM and is deliberately separate from

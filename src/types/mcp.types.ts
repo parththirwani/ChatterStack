@@ -52,3 +52,33 @@ export interface McpConnectionsResponse {
   connections: McpConnectionView[];
   limit: number;
 }
+
+/**
+ * Why an MCP call failed, as the MCP client service classified it. Credential-free
+ * by construction: the classification is what lets the UI explain a failure and
+ * offer the matching retry instead of guessing from the message text.
+ */
+export type McpErrorCode =
+  | 'invalid_url'
+  | 'blocked_address'
+  | 'unauthorized'
+  | 'not_found'
+  | 'unreachable'
+  | 'timeout'
+  | 'cancelled'
+  | 'protocol'
+  | 'response_too_large'
+  | 'too_many_tools'
+  | 'oversized_schema'
+  | 'unsupported_schema'
+  | 'tool_failed'
+  | 'unknown';
+
+/** What the test endpoint answers: the stored view, plus whether discovery worked. */
+export interface McpTestResult {
+  connection: McpConnectionView;
+  ok: boolean;
+  error?: string;
+  /** The failure class when `ok` is false. Never present on a success. */
+  code?: McpErrorCode;
+}

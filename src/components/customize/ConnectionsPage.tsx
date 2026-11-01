@@ -1,13 +1,14 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { PlugZap } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
 import { useAppStore } from '@/src/store/rootStore';
-import { MCP_CATALOG, type McpCatalogEntry } from '@/src/config/mcp-catalog';
 import { formatMeterTokens } from '@/src/lib/client/mcp-budget';
+import { MAX_TOKEN_LENGTH } from '@/src/lib/client/mcp-validation';
 import type { McpConnectionView, McpToolView } from '@/src/types/mcp.types';
-import { createMcpConnection, updateMcpConnection, useMcpConnections } from '@/src/lib/client/mcp';
+import { updateMcpConnection, useMcpConnections } from '@/src/lib/client/mcp';
+import AddServerSheet from './connections/AddServerSheet';
 import ContextMeter from './connections/ContextMeter';
 import ServerRow from './connections/ServerRow';
 import UndoBar from './connections/UndoBar';
@@ -15,26 +16,10 @@ import { useUndoableRemoval } from './connections/useUndoableRemoval';
 import { PageHeaderToggle } from './SkillsPage';
 import CustomizeTabs from './CustomizeTabs';
 
-const MAX_URL_LENGTH = 2_048;
-const MAX_TOKEN_LENGTH = 4_096;
+/** How long a freshly added row stays lit after the add-server sheet closes. */
+export const JUST_ADDED_HIGHLIGHT_MS = 2_000;
 
-/** Mirrors the server's URL rules early, so a typo never leaves the browser. */
-export function validateConnectionForm({ name, url }: { name: string; url: string }): { field: 'name' | 'url'; message: string } | null {
-  if (!name.trim()) return { field: 'name', message: 'Give this connection a name.' };
-  if (!url.trim()) return { field: 'url', message: 'Give the server URL.' };
-  let parsed: URL;
-  try {
-    parsed = new URL(url.trim());
-  } catch {
-    return { field: 'url', message: 'That is not a valid URL.' };
-  }
-  if (parsed.protocol !== 'https:') return { field: 'url', message: 'MCP servers must use HTTPS.' };
-  if (parsed.username || parsed.password) return { field: 'url', message: 'Put credentials in the token field, not in the URL.' };
-  if (url.trim().length > MAX_URL_LENGTH) return { field: 'url', message: `Keep the URL under ${MAX_URL_LENGTH} characters.` };
-  return null;
-}
-
-/** Token entry, shared by the custom form, the catalog and the row's "Token" button. */
+/** Token entry, shared by the row's "Token" button and the catalog connect step. */
 export function TokenDialog({
   title,
   forConnection,
@@ -126,58 +111,23 @@ export function TokenDialog({
   );
 }
 
-/** Catalog entry labels: whose token it needs, and whether it was verified. */
-export function catalogAuthLabel(entry: McpCatalogEntry) {
-  if (entry.auth === 'none') return 'No token needed';
-  return entry.credentialOwner === 'user' ? 'Needs your own token' : 'Needs a token';
-}
-
-function CatalogCard({ entry, busy, onConnect }: { entry: McpCatalogEntry; busy: boolean; onConnect: (entry: McpCatalogEntry) => void }) {
-  return (
-    <li className="flex flex-col rounded-xl border border-white/[0.08] bg-white/[0.02] p-4">
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-[#aaa6a2]"><PlugZap className="h-4 w-4" /></span>
-        <div className="min-w-0 flex-1">
-          <h3 className="truncate text-sm font-medium text-[#eee]">{entry.name}</h3>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-[#aaa6a2]">{entry.blurb}</p>
-        </div>
-      </div>
-      <div className="mt-3 flex items-center gap-2 pl-12">
-        <span className="shrink-0 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] text-[#aaa6a2]">{catalogAuthLabel(entry)}</span>
-        <span className="flex-1 text-[11px] text-[#8f8b86]">
-          {entry.verified ? `Verified ${entry.verified.at}${entry.verified.anonymous ? ' anonymously' : ''}` : 'Not verified yet'}
-        </span>
-        <a href={entry.docsUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] text-[#8f8b86] underline underline-offset-2 hover:text-white">Docs</a>
-        <button
-          type="button"
-          onClick={() => onConnect(entry)}
-          disabled={busy}
-          aria-label={`Connect ${entry.name}`}
-          className="rounded-md border border-white/[0.1] px-2.5 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07] disabled:opacity-50"
-        >
-          {entry.auth === 'bearer' ? 'Connect with token' : 'Connect'}
-        </button>
-      </div>
-    </li>
-  );
-}
-
-/** Customize → Connections: the MCP servers management block, catalog and custom server. */
+/** Customize → Connections: the MCP servers management block and its add-server sheet. */
 export default function ConnectionsPage() {
   const userId = useAppStore((state) => state.user?.id);
   const { connections, limit, loading, error } = useMcpConnections(userId);
   const [actionError, setActionError] = useState('');
   const [live, setLive] = useState('');
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
-  const [busy, setBusy] = useState(false);
-  const [name, setName] = useState('');
-  const [url, setUrl] = useState('');
-  const [formToken, setFormToken] = useState('');
-  const [formError, setFormError] = useState('');
-  const [catalogTokenFor, setCatalogTokenFor] = useState<McpCatalogEntry | null>(null);
+  const [sheetOpen, setSheetOpen] = useState(false);
   const [tokenFor, setTokenFor] = useState<McpConnectionView | null>(null);
+  // The server that just arrived (lit, sliding in) and the one the sheet asked us to
+  // show. The hand-off waits for `sheetOpen` to be false so the sheet's own focus
+  // restoration (back to the trigger) cannot land after it.
+  const [addedId, setAddedId] = useState<string | null>(null);
+  const [handoffId, setHandoffId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const pageRef = useRef<HTMLDivElement>(null);
 
   const announce = useCallback((message: string) => setLive(message), []);
   const fail = useCallback((message: string) => setActionError(message), []);
@@ -192,6 +142,43 @@ export default function ConnectionsPage() {
   useEffect(() => { pruneCommitted(connections.map((connection) => connection.id)); }, [connections, pruneCommitted]);
 
   const atLimit = limit > 0 && connections.length >= limit;
+
+  // A connection the list has never shown is the one that just arrived: it slides in
+  // and stays lit, so adding a server is visible even while the sheet covers the card.
+  // The very first list of the session only primes the set - existing servers must
+  // not light up, and nothing may take focus, just because the page opened.
+  const seenIds = useRef(new Set<string>());
+  const primedList = useRef(false);
+  useEffect(() => {
+    if (loading) return;
+    const known = seenIds.current;
+    if (connections.length === 0) {
+      known.clear();
+      primedList.current = false;
+      return;
+    }
+    const first = !primedList.current;
+    primedList.current = true;
+    const fresh = first ? [] : connections.map((connection) => connection.id).filter((id) => !known.has(id));
+    connections.forEach((connection) => known.add(connection.id));
+    if (fresh.length > 0) setAddedId(fresh[fresh.length - 1]);
+  }, [connections, loading]);
+
+  // The sheet asked to be shown its server: once it is out of the way, hand focus to
+  // that row - once, however many refreshes follow.
+  useEffect(() => {
+    if (sheetOpen || !handoffId) return;
+    if (!connections.some((connection) => connection.id === handoffId)) return;
+    setHandoffId(null);
+    listRef.current?.querySelector<HTMLElement>(`[data-row-id="${handoffId}"] [data-mcp-row-trigger]`)?.focus();
+  }, [handoffId, connections, sheetOpen]);
+
+  // The lit row fades a moment after the sheet closes, not while it is still open.
+  useEffect(() => {
+    if (!addedId || sheetOpen) return;
+    const timer = setTimeout(() => setAddedId(null), JUST_ADDED_HIGHLIGHT_MS);
+    return () => clearTimeout(timer);
+  }, [addedId, sheetOpen]);
 
   const onAction = (work: () => Promise<unknown>) => {
     setActionError('');
@@ -227,6 +214,8 @@ export default function ConnectionsPage() {
     announce(`Removing ${connection.name}. Undo is available for a few seconds, or press Control or Command plus Z to bring the bar back.`);
     // Whatever held focus is vanishing with the row: hand focus to the block heading.
     if (focusWasInRow) headingRef.current?.focus();
+    if (addedId === connection.id) setAddedId(null);
+    if (handoffId === connection.id) setHandoffId(null);
   };
 
   const onListKeyDown = (event: React.KeyboardEvent) => {
@@ -242,43 +231,11 @@ export default function ConnectionsPage() {
     triggers[index === -1 ? 0 : next]?.focus();
   };
 
-  const connectCatalog = async (entry: McpCatalogEntry, token?: string) => {
-    setActionError('');
-    try {
-      await createMcpConnection({ name: entry.name, catalogId: entry.id, ...(token ? { token } : {}) });
-    } catch (failure) {
-      setActionError((failure as Error).message);
-    }
-  };
-
-  const addCustom = async () => {
-    const problem = validateConnectionForm({ name, url });
-    if (problem) {
-      setFormError(problem.message);
-      return;
-    }
-    const token = formToken.trim();
-    if (token.length > MAX_TOKEN_LENGTH) {
-      setFormError(`Keep the token under ${MAX_TOKEN_LENGTH} characters.`);
-      return;
-    }
-    setBusy(true);
-    setFormError('');
-    try {
-      await createMcpConnection({ name: name.trim(), url: url.trim(), ...(token ? { token } : {}) });
-      setName('');
-      setUrl('');
-      setFormToken('');
-    } catch (failure) {
-      setFormError((failure as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#191919]">
-      <div className="mx-auto w-full max-w-5xl px-5 pb-16 pt-6 sm:px-8">
+      {/* The polite region stays outside the sheet's inert background, so announcements survive the modal. */}
+      <p aria-live="polite" className="sr-only">{live}</p>
+      <div data-mcp-page ref={pageRef} className="mx-auto w-full max-w-5xl px-5 pb-16 pt-6 sm:px-8">
         <div className="flex items-center">
           <PageHeaderToggle />
           <h1 className="text-2xl font-medium text-white">Customize</h1>
@@ -296,7 +253,6 @@ export default function ConnectionsPage() {
         </p>
 
         {(error || actionError) && <p role="alert" className="mt-4 text-sm text-red-300">{actionError || error}</p>}
-        <p aria-live="polite" className="sr-only">{live}</p>
 
         <section aria-label="MCP servers" className="mt-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02]">
           <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3">
@@ -304,7 +260,16 @@ export default function ConnectionsPage() {
             {connections.length > 0 && (
               <span className="rounded-full bg-white/[0.07] px-1.5 text-[11px] text-[#aaa6a2]">{rows.length}{limit ? `/${limit}` : ''}</span>
             )}
-            <span className="ml-auto hidden text-[11px] text-[#8f8b86] min-[400px]:inline">Removal waits a few seconds and can be undone.</span>
+            <button
+              type="button"
+              onClick={() => setSheetOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={sheetOpen}
+              className="ml-auto flex items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07]"
+            >
+              <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+              Add server
+            </button>
           </div>
 
           <ContextMeter connections={rows} />
@@ -313,8 +278,11 @@ export default function ConnectionsPage() {
             <p className="border-t border-white/[0.06] px-4 py-6 text-sm text-[#aaa6a2]">Loading connections…</p>
           ) : rows.length === 0 ? (
             <div className="border-t border-white/[0.06] px-6 py-10 text-center">
-              <p className="text-base text-[#e5e2de]">No connections yet</p>
-              <p className="mx-auto mt-1 max-w-md text-sm text-[#aaa6a2]">Pick one from the catalog below, or add any Streamable HTTP MCP server by URL.</p>
+              <p className="text-base text-[#e5e2de]">No servers yet</p>
+              <p className="mx-auto mt-1 max-w-md text-sm text-[#aaa6a2]">
+                Use <span className="text-[#d7d4d0]">Add server</span> to pick one from the directory, or point ChatterStack at any
+                Streamable HTTP MCP server by URL.
+              </p>
             </div>
           ) : (
             <ul ref={listRef} onKeyDown={onListKeyDown} className="border-t border-white/[0.06]">
@@ -323,6 +291,7 @@ export default function ConnectionsPage() {
                   key={connection.id}
                   connection={connection}
                   expanded={expandedIds.includes(connection.id)}
+                  entering={connection.id === addedId}
                   onExpandedChange={(expanded) => setRowExpanded(connection.id, expanded)}
                   onToggleConnection={() => toggleConnection(connection)}
                   onToggleTool={(tool) => toggleTool(connection, tool)}
@@ -346,90 +315,25 @@ export default function ConnectionsPage() {
             />
           )}
         </section>
-
-        <section aria-label="Catalog" className="mt-8">
-          <h2 className="mb-2 px-3 text-sm font-medium text-[#d8d5d1]">Catalog</h2>
-          <ul className="grid gap-3 sm:grid-cols-2">
-            {MCP_CATALOG.map((entry) => (
-              <CatalogCard
-                key={entry.id}
-                entry={entry}
-                busy={busy || catalogTokenFor !== null || atLimit}
-                onConnect={(item) => {
-                  if (item.auth === 'bearer') setCatalogTokenFor(item);
-                  else onAction(() => connectCatalog(item));
-                }}
-              />
-            ))}
-          </ul>
-          {atLimit && <p className="mt-2 text-xs text-[#aaa6a2]">You can keep up to {limit} connections. Delete one to add another.</p>}
-        </section>
-
-        <section aria-label="Add a custom server" className="mt-8 rounded-2xl border border-white/[0.08] bg-white/[0.02] p-4">
-          <h2 className="text-sm font-medium text-[#d8d5d1]">Add a custom server</h2>
-          <p className="mt-1 text-xs text-[#aaa6a2]">Any remote MCP server over Streamable HTTP. HTTPS only, no credentials in the URL.</p>
-          <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,180px)_minmax(0,1fr)_auto]">
-            <div>
-              <input
-                aria-label="Connection name"
-                aria-invalid={formError.includes('name') ? true : undefined}
-                placeholder="My server"
-                value={name}
-                maxLength={60}
-                onChange={(event) => { setName(event.target.value); setFormError(''); }}
-                className="h-9 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-2.5 text-sm text-white placeholder:text-[#8a8681] focus:border-white/30 focus:outline-none"
-              />
-            </div>
-            <div>
-              <input
-                aria-label="Server URL"
-                aria-invalid={formError.includes('URL') || formError.includes('HTTPS') ? true : undefined}
-                placeholder="https://mcp.example.com/mcp"
-                value={url}
-                maxLength={MAX_URL_LENGTH}
-                onChange={(event) => { setUrl(event.target.value); setFormError(''); }}
-                className="h-9 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-2.5 font-mono text-sm text-white placeholder:text-[#8a8681] focus:border-white/30 focus:outline-none"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={() => void addCustom()}
-              disabled={busy}
-              className="h-9 rounded-lg bg-[#f0eeeb] px-4 text-sm font-medium text-[#1c1b19] hover:bg-white disabled:opacity-50"
-            >
-              {busy ? 'Adding…' : 'Add'}
-            </button>
-          </div>
-          <div className="mt-3">
-            <input
-              type="password"
-              aria-label="Bearer token (optional)"
-              autoComplete="off"
-              spellCheck={false}
-              placeholder="Bearer token (optional)"
-              value={formToken}
-              maxLength={MAX_TOKEN_LENGTH + 1}
-              onChange={(event) => { setFormToken(event.target.value); setFormError(''); }}
-              className="h-9 w-full rounded-lg border border-white/[0.12] bg-white/[0.03] px-2.5 font-mono text-sm text-white placeholder:font-sans placeholder:text-[#8a8681] focus:border-white/30 focus:outline-none"
-            />
-          </div>
-          {formError && <p role="alert" className="mt-2 text-xs text-red-300">{formError}</p>}
-        </section>
       </div>
 
-      {catalogTokenFor && (
-        <TokenDialog
-          title={`Connect ${catalogTokenFor.name}`}
-          forConnection={new URL(catalogTokenFor.url).host}
-          hasToken={false}
-          required
-          onClose={() => setCatalogTokenFor(null)}
-          onSubmit={async (token) => {
-            if (!token) throw new Error('This server needs a token.');
-            await connectCatalog(catalogTokenFor, token);
+      {sheetOpen && (
+        <AddServerSheet
+          backgroundRef={pageRef}
+          limit={limit}
+          atLimit={atLimit}
+          announce={announce}
+          onClose={() => setSheetOpen(false)}
+          onConnected={(connection) => {
+            // Closing first lets the sheet put focus back where it started, and the
+            // effect above then moves it from the trigger onto the new row.
+            setSheetOpen(false);
+            setHandoffId(connection.id);
+            announce(`${connection.name} is in your list, switched off, with every tool off until you review it.`);
           }}
         />
       )}
+
       {tokenFor && (
         <TokenDialog
           title={`${tokenFor.hasCredential ? 'Change' : 'Add'} token`}
