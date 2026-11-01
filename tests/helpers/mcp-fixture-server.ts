@@ -18,6 +18,8 @@ export interface McpFixtureOptions {
   tools?: 'default' | 'none' | 'many' | 'oversized';
   /** How long the slow tool waits before it answers. */
   slowMs?: number;
+  /** Optional gate that keeps the slow tool in flight until a test releases it. */
+  slowGate?: Promise<void>;
   /** Text the echo tool returns, so a size cap can be exercised. */
   echoText?: string;
   /** Redirect the first request to this location instead of serving it. */
@@ -64,7 +66,8 @@ const buildServer = (options: McpFixtureOptions): McpServer => {
       'slow',
       { description: 'Answers late.', inputSchema: {} },
       async () => {
-        await new Promise((resolve) => setTimeout(resolve, options.slowMs ?? 500));
+        if (options.slowGate) await options.slowGate;
+        else await new Promise((resolve) => setTimeout(resolve, options.slowMs ?? 500));
         return { content: [{ type: 'text', text: 'eventually' }] };
       }
     );

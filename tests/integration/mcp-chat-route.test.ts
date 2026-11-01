@@ -480,22 +480,29 @@ describe('POST /api/chat with an approved MCP tool call', () => {
   });
 
   it('cancels the in-flight MCP call when the user stops, and keeps what was written', async () => {
-    fixture = await startMcpFixture({ slowMs: 3_000 });
-    seedConnection(fixture.url);
+    let releaseSlow!: () => void;
+    const slowGate = new Promise<void>((resolve) => { releaseSlow = resolve; });
+    const slowFixture = await startMcpFixture({ slowGate });
+    fixture = slowFixture;
+    seedConnection(slowFixture.url);
     vi.stubEnv('MCP_TOOLS', 'on');
-    vi.stubEnv('MCP_ALLOWED_ORIGINS', fixture.origin);
+    vi.stubEnv('MCP_ALLOWED_ORIGINS', slowFixture.origin);
     chatScripts = [toolCallScript('Docs__slow', '{}')];
 
     const stop = new AbortController();
     const recorder = new Recorder(await post({ message: 'Take your time', selectedModel: MODEL, conversationId: CONVERSATION_ID }, stop.signal));
-    const request = approvalOf(await recorder.find((event) => 'toolApprovalRequest' in event));
-    await decisionPost({ approvalId: request.approvalId, conversationId: CONVERSATION_ID, decision: 'approved' });
-    await recorder.find((event) => 'toolCallStarted' in event);
-    await new Promise((resolve) => setTimeout(resolve, 150));
-    stop.abort();
-    await recorder.finished(4_000);
+    try {
+      const request = approvalOf(await recorder.find((event) => 'toolApprovalRequest' in event));
+      await decisionPost({ approvalId: request.approvalId, conversationId: CONVERSATION_ID, decision: 'approved' });
+      await recorder.find((event) => 'toolCallStarted' in event);
+      await vi.waitFor(() => expect(slowFixture.calls).toContain('slow'));
+      stop.abort();
+      await recorder.finished(4_000);
+    } finally {
+      releaseSlow();
+    }
 
-    expect(fixture.calls).toContain('slow');
+    expect(slowFixture.calls).toContain('slow');
     expect(toolCallRows[0]).toMatchObject({ status: 'cancelled', approval: 'approved' });
     // No second model call: stopping ends the loop.
     expect(openRouterBodies).toHaveLength(1);
