@@ -99,6 +99,7 @@ const redis = {
   // The approval store falls back to its in-memory backend, like a test run
   // without REDIS_URL.
   isReady: vi.fn(() => false),
+  hasConfiguration: vi.fn(() => false),
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));

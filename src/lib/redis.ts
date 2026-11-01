@@ -325,6 +325,16 @@ class RedisStore {
   }
 
   /**
+   * Whether an endpoint is configured at all, connected or not. Callers that
+   * need the shared store (not a per-process fallback) use this to decide
+   * whether connecting is worth attempting.
+   */
+  hasConfiguration(): boolean {
+    const upstash = Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+    return upstash || Boolean(process.env.REDIS_URL);
+  }
+
+  /**
    * Get connection info
    */
   getConnectionInfo(): { isUpstash: boolean; isConnected: boolean } {

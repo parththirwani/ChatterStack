@@ -55,11 +55,28 @@ const writeMemory = (key: string, value: string, ttlSeconds: number) => {
   memory.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
 };
 
-/** Redis when it is reachable, process memory otherwise - never both at once. */
-const redisBacked = () => redisStore.isReady();
+const REDIS_RETRY_MS = 30_000;
+let redisRetryAfter = 0;
+
+/**
+ * Redis when it is configured and reachable, process memory otherwise - never
+ * both at once. A configured Redis is connected lazily on first use: the
+ * approval may be the first Redis call in a fresh route bundle, and the
+ * decision has to land in the shared store the waiting chat request polls.
+ * After a failed attempt the memory fallback is used for a short while, so an
+ * outage costs one connect attempt instead of one per decision.
+ */
+async function redisBacked(): Promise<boolean> {
+  if (redisStore.isReady()) return true;
+  if (!redisStore.hasConfiguration() || Date.now() < redisRetryAfter) return false;
+  await redisStore.connect();
+  if (redisStore.isReady()) return true;
+  redisRetryAfter = Date.now() + REDIS_RETRY_MS;
+  return false;
+}
 
 async function take(key: string): Promise<string | null> {
-  if (redisBacked()) {
+  if (await redisBacked()) {
     try {
       const value = await redisStore.evalScript(
         "local v = redis.call('GET', KEYS[1]); if v then redis.call('DEL', KEYS[1]) end; return v",
@@ -76,7 +93,7 @@ async function take(key: string): Promise<string | null> {
 }
 
 async function put(key: string, value: string, ttlSeconds: number): Promise<void> {
-  if (redisBacked()) {
+  if (await redisBacked()) {
     await redisStore.setKey(key, value, ttlSeconds).catch(() => {});
     return;
   }
@@ -84,13 +101,13 @@ async function put(key: string, value: string, ttlSeconds: number): Promise<void
 }
 
 async function peek(key: string): Promise<string | null> {
-  if (redisBacked()) return await redisStore.getKey(key).catch(() => null);
+  if (await redisBacked()) return await redisStore.getKey(key).catch(() => null);
   return readMemory(key);
 }
 
 async function drop(key: string): Promise<void> {
   memory.delete(key);
-  if (redisBacked()) await redisStore.deleteKey(key).catch(() => {});
+  if (await redisBacked()) await redisStore.deleteKey(key).catch(() => {});
 }
 
 const parse = (raw: string | null): PendingApproval | null => {
@@ -183,4 +200,5 @@ export async function waitForDecision(
 /** Test helper: forget everything, so cases stay independent. */
 export function clearApprovalStore(): void {
   memory.clear();
+  redisRetryAfter = 0;
 }
