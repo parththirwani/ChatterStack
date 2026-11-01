@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus } from 'lucide-react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
+import { useAnnouncements } from '@/src/hooks/useAnnouncements';
 import { useAppStore } from '@/src/store/rootStore';
 import { formatMeterTokens } from '@/src/lib/client/mcp-budget';
 import { MAX_TOKEN_LENGTH } from '@/src/lib/client/mcp-validation';
@@ -10,6 +11,7 @@ import type { McpConnectionView, McpToolView } from '@/src/types/mcp.types';
 import { updateMcpConnection, useMcpConnections } from '@/src/lib/client/mcp';
 import AddServerSheet from './connections/AddServerSheet';
 import ContextMeter from './connections/ContextMeter';
+import HideOnNarrow from './connections/HideOnNarrow';
 import ServerRow from './connections/ServerRow';
 import UndoBar from './connections/UndoBar';
 import { useUndoableRemoval } from './connections/useUndoableRemoval';
@@ -116,7 +118,7 @@ export default function ConnectionsPage() {
   const userId = useAppStore((state) => state.user?.id);
   const { connections, limit, loading, error } = useMcpConnections(userId);
   const [actionError, setActionError] = useState('');
-  const [live, setLive] = useState('');
+  const { messages, announce } = useAnnouncements();
   const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [sheetOpen, setSheetOpen] = useState(false);
   const [tokenFor, setTokenFor] = useState<McpConnectionView | null>(null);
@@ -125,11 +127,13 @@ export default function ConnectionsPage() {
   // restoration (back to the trigger) cannot land after it.
   const [addedId, setAddedId] = useState<string | null>(null);
   const [handoffId, setHandoffId] = useState<string | null>(null);
+  // A row whose trigger vanished under the keyboard (an Undo that brings the row
+  // back): focus goes to it as soon as it is rendered again.
+  const [refocusRowId, setRefocusRowId] = useState<string | null>(null);
   const listRef = useRef<HTMLUListElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
 
-  const announce = useCallback((message: string) => setLive(message), []);
   const fail = useCallback((message: string) => setActionError(message), []);
   const removal = useUndoableRemoval({ announce, fail });
 
@@ -164,14 +168,25 @@ export default function ConnectionsPage() {
     if (fresh.length > 0) setAddedId(fresh[fresh.length - 1]);
   }, [connections, loading]);
 
+  const rowTriggerOf = useCallback((id: string) =>
+    listRef.current?.querySelector<HTMLElement>(`[data-row-id="${id}"] [data-mcp-row-trigger]`) ?? null, []);
+
   // The sheet asked to be shown its server: once it is out of the way, hand focus to
   // that row - once, however many refreshes follow.
   useEffect(() => {
     if (sheetOpen || !handoffId) return;
     if (!connections.some((connection) => connection.id === handoffId)) return;
     setHandoffId(null);
-    listRef.current?.querySelector<HTMLElement>(`[data-row-id="${handoffId}"] [data-mcp-row-trigger]`)?.focus();
-  }, [handoffId, connections, sheetOpen]);
+    rowTriggerOf(handoffId)?.focus();
+  }, [handoffId, connections, sheetOpen, rowTriggerOf]);
+
+  // An Undo puts the row back a render later: focus follows it there, so the
+  // keyboard never ends up on a control that no longer exists.
+  useEffect(() => {
+    if (!refocusRowId) return;
+    setRefocusRowId(null);
+    rowTriggerOf(refocusRowId)?.focus();
+  }, [refocusRowId, rowTriggerOf]);
 
   // The lit row fades a moment after the sheet closes, not while it is still open.
   useEffect(() => {
@@ -207,6 +222,12 @@ export default function ConnectionsPage() {
       announce(`${tool.name} on ${connection.name} turned ${turningOn ? 'on' : 'off'}.${estimate !== null && estimate !== undefined ? ` About ${formatMeterTokens(estimate)} estimated tokens.` : ''}`);
     });
 
+  const reviewTools = (connection: McpConnectionView) =>
+    onAction(async () => {
+      await updateMcpConnection(connection.id, { reviewTools: true });
+      announce(`Tool list for ${connection.name} marked reviewed. Nothing is switched on yet: open the tools and switch on the ones you want.`);
+    });
+
   const startRemoval = (connection: McpConnectionView) => {
     const active = document.activeElement;
     const focusWasInRow = active instanceof HTMLElement && Boolean(active.closest(`[data-row-id="${connection.id}"]`));
@@ -218,23 +239,52 @@ export default function ConnectionsPage() {
     if (handoffId === connection.id) setHandoffId(null);
   };
 
+  /** Undo: the bar and its button go away, the row comes back, and focus follows it. */
+  const undoRemoval = () => {
+    const id = removal.pending?.connection.id ?? null;
+    removal.undo();
+    if (id) setRefocusRowId(id);
+  };
+
+  /**
+   * Escape folds the bar away while the countdown runs. Focus was probably on the
+   * bar that is about to vanish, so it goes to the block heading, and the polite
+   * region says what the folded bar can no longer show: the removal is still coming.
+   */
+  const hideRemovalBar = () => {
+    const active = document.activeElement;
+    const focusWasInBar = active instanceof HTMLElement && Boolean(active.closest('[data-undo-bar]'));
+    const name = removal.pending?.connection.name;
+    removal.hide();
+    if (!name) return;
+    announce(`${name} is still being removed in a few seconds. Press Control or Command plus Z to bring the bar back, or stay on it to pause the countdown.`);
+    if (focusWasInBar) headingRef.current?.focus();
+  };
+
   const onListKeyDown = (event: React.KeyboardEvent) => {
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
     const triggers = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-mcp-row-trigger]') ?? []);
     if (triggers.length === 0) return;
+    const active = document.activeElement as HTMLElement | null;
+    // Focus may sit on anything inside a row (its switch, a tool switch in the open
+    // panel); arrows walk the rows from wherever they are, not just from the trigger.
+    const row = active?.closest<HTMLElement>('[data-row-id]') ?? null;
+    const direct = triggers.indexOf(active as HTMLElement);
+    const index = direct !== -1 ? direct : triggers.findIndex((trigger) => trigger.closest('[data-row-id]') === row);
+    const last = triggers.length - 1;
     event.preventDefault();
-    const index = triggers.indexOf(document.activeElement as HTMLElement);
     const next = event.key === 'Home' ? 0
-      : event.key === 'End' ? triggers.length - 1
-      : event.key === 'ArrowDown' ? Math.min(index + 1, triggers.length - 1)
-      : Math.max(index - 1, 0);
-    triggers[index === -1 ? 0 : next]?.focus();
+      : event.key === 'End' ? last
+      : event.key === 'ArrowDown' ? (index < 0 ? 0 : Math.min(index + 1, last))
+      : (index < 0 ? last : Math.max(index - 1, 0));
+    triggers[next]?.focus();
   };
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#191919]">
-      {/* The polite region stays outside the sheet's inert background, so announcements survive the modal. */}
-      <p aria-live="polite" className="sr-only">{live}</p>
+      {/* The polite regions stay outside the sheet's inert background, so announcements survive the modal. */}
+      <p aria-live="polite" className="sr-only">{messages[0]}</p>
+      <p aria-live="polite" className="sr-only">{messages[1]}</p>
       <div data-mcp-page ref={pageRef} className="mx-auto w-full max-w-5xl px-5 pb-16 pt-6 sm:px-8">
         <div className="flex items-center">
           <PageHeaderToggle />
@@ -255,7 +305,7 @@ export default function ConnectionsPage() {
         {(error || actionError) && <p role="alert" className="mt-4 text-sm text-red-300">{actionError || error}</p>}
 
         <section aria-label="MCP servers" className="mt-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02]">
-          <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] px-4 py-3">
             <h2 ref={headingRef} tabIndex={-1} className="text-sm font-medium text-[#d8d5d1] outline-none">MCP servers</h2>
             {connections.length > 0 && (
               <span className="rounded-full bg-white/[0.07] px-1.5 text-[11px] text-[#aaa6a2]">{rows.length}{limit ? `/${limit}` : ''}</span>
@@ -265,10 +315,10 @@ export default function ConnectionsPage() {
               onClick={() => setSheetOpen(true)}
               aria-haspopup="dialog"
               aria-expanded={sheetOpen}
-              className="ml-auto flex items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07]"
+              className="ml-auto flex shrink-0 items-center gap-1 rounded-lg border border-white/[0.1] px-2 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07]"
             >
               <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-              Add server
+              <HideOnNarrow>Add server</HideOnNarrow>
             </button>
           </div>
 
@@ -295,7 +345,7 @@ export default function ConnectionsPage() {
                   onExpandedChange={(expanded) => setRowExpanded(connection.id, expanded)}
                   onToggleConnection={() => toggleConnection(connection)}
                   onToggleTool={(tool) => toggleTool(connection, tool)}
-                  onReviewTools={() => onAction(() => updateMcpConnection(connection.id, { reviewTools: true }))}
+                  onReviewTools={() => reviewTools(connection)}
                   onRequestToken={() => setTokenFor(connection)}
                   onRequestRemove={() => startRemoval(connection)}
                   announce={announce}
@@ -309,8 +359,8 @@ export default function ConnectionsPage() {
               pending={removal.pending}
               getRemaining={removal.getRemaining}
               windowMs={removal.windowMs}
-              onUndo={removal.undo}
-              onHide={removal.hide}
+              onUndo={undoRemoval}
+              onHide={hideRemovalBar}
               onPauseSource={removal.setPauseSource}
             />
           )}
@@ -343,7 +393,7 @@ export default function ConnectionsPage() {
           onClose={() => setTokenFor(null)}
           onSubmit={async (token) => {
             await updateMcpConnection(tokenFor.id, token === null ? { clearToken: true } : { token });
-            setLive(`Token ${token === null ? 'removed from' : 'saved for'} ${tokenFor.name}.`);
+            announce(`Token ${token === null ? 'removed from' : 'saved for'} ${tokenFor.name}.`);
           }}
         />
       )}

@@ -3,6 +3,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Undo2 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import type { PendingRemoval } from './useUndoableRemoval';
+import HideOnNarrow from './HideOnNarrow';
 
 export interface UndoBarProps {
   pending: PendingRemoval;
@@ -47,6 +48,7 @@ export default function UndoBar({ pending, getRemaining, windowMs, onUndo, onHid
   return (
     <motion.div
       ref={containerRef}
+      data-undo-bar
       role="group"
       aria-label={`Removing ${pending.connection.name}`}
       tabIndex={-1}
@@ -65,7 +67,7 @@ export default function UndoBar({ pending, getRemaining, windowMs, onUndo, onHid
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         <p className="min-w-0 flex-1 text-sm text-[#f0e3c0]">
           Removing {pending.connection.name}.
-          <span className="text-[#aaa6a2]"> The stored token goes with it.</span>
+          <HideOnNarrow className="text-[#aaa6a2]"> The stored token goes with it.</HideOnNarrow>
         </p>
         <span aria-hidden="true" className="shrink-0 text-[11px] tabular-nums text-[#aaa6a2]">
           {pending.paused ? 'paused' : `${seconds}s`}

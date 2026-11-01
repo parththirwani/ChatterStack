@@ -402,6 +402,142 @@ describe('removal with an undo window', () => {
     expect(calls('DELETE', '/api/mcp/connections/c2')).toHaveLength(0);
     expect(within(block()).getByText('GitHub (read only)')).toBeInTheDocument();
   });
+
+  it('hands focus to the row that Undo brings back', async () => {
+    render(<ConnectionsPage />);
+    await screen.findByRole('meter');
+    vi.useFakeTimers();
+    await startRemoval(/^GitHub \(read only\), Not tested/, 'GitHub (read only)');
+    const undo = screen.getByRole('button', { name: 'Undo' });
+    undo.focus();
+    fireEvent.click(undo);
+    expect(screen.queryByRole('group', { name: /Removing/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /^GitHub \(read only\), Not tested/ })).toHaveFocus();
+  });
+
+  it('Escape from the bar moves focus out of the vanishing bar and says the removal is still coming', async () => {
+    render(<ConnectionsPage />);
+    await screen.findByRole('meter');
+    vi.useFakeTimers();
+    await startRemoval(/^GitHub \(read only\), Not tested/, 'GitHub (read only)');
+    bar().focus();
+    fireEvent.keyDown(bar(), { key: 'Escape' });
+    expect(screen.queryByRole('group', { name: /Removing/ })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'MCP servers' })).toHaveFocus();
+    expect(screen.getByText(/still being removed in a few seconds/)).toBeInTheDocument();
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(calls('DELETE', '/api/mcp/connections/c2')).toHaveLength(1);
+  });
+});
+
+describe('keyboard, announcements and narrow screens', () => {
+  it('has two polite regions so a repeated sentence is announced again', async () => {
+    render(<ConnectionsPage />);
+    await screen.findByRole('meter');
+    vi.useFakeTimers();
+    const regions = () => Array.from(document.querySelectorAll('[aria-live="polite"]')).map((region) => region.textContent);
+    expect(regions()).toHaveLength(2);
+    const fold = /still being removed in a few seconds/;
+    const bar = () => screen.getByRole('group', { name: /Removing/ });
+
+    fireEvent.click(screen.getByRole('button', { name: /^GitHub \(read only\), Not tested/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove GitHub (read only)' }));
+    fireEvent.keyDown(bar(), { key: 'Escape' });
+    expect(regions()[0]).toMatch(fold);
+    expect(regions()[1]).toBe('');
+
+    // Fold the same bar a second time: the sentence is word for word identical, so a
+    // single region would have kept the old text and said nothing at all.
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    fireEvent.keyDown(bar(), { key: 'Escape' });
+    expect(regions()[1]).toMatch(fold);
+    expect(regions()[0]).toBe('');
+
+    fireEvent.keyDown(document.body, { key: 'z', ctrlKey: true });
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
+    expect(within(block()).getByText('GitHub (read only)')).toBeInTheDocument();
+  });
+
+  it('walks rows with the arrow keys from a control inside a row', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    const first = await rowTrigger(/^Cloudflare documentation, Connected/);
+    const second = await rowTrigger(/^GitHub \(read only\), Not tested/);
+    // Standing on the second row's switch, not on its trigger.
+    (await screen.findByRole('switch', { name: 'Enable GitHub (read only)' })).focus();
+    await user.keyboard('{ArrowUp}');
+    expect(first).toHaveFocus();
+    await user.keyboard('{ArrowDown}');
+    expect(second).toHaveFocus();
+    // The row's connection switch is still reachable by keyboard afterwards.
+    const switchOnFirst = screen.getByRole('switch', { name: 'Enable Cloudflare documentation' });
+    switchOnFirst.focus();
+    await user.keyboard('{End}');
+    expect(second).toHaveFocus();
+  });
+
+  it('opens and closes a row with Enter and Space', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    const trigger = await rowTrigger(/^Cloudflare documentation, Connected/);
+    trigger.focus();
+    await user.keyboard('{Enter}');
+    expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('region', { name: 'Cloudflare documentation details' })).toBeInTheDocument();
+    await user.keyboard('{ }');
+    expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('switches a tool with the keyboard from its switch', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    await user.click(await rowTrigger(/^Cloudflare documentation, Connected/));
+    const tool = await screen.findByRole('switch', { name: 'Enable search_cloudflare_documentation on Cloudflare documentation' });
+    expect(tool).toHaveAttribute('aria-checked', 'true');
+    tool.focus();
+    await user.keyboard('{ }');
+    await waitFor(() => expect(tool).toHaveAttribute('aria-checked', 'false'));
+    expect(bodyOf(calls('PATCH', '/api/mcp/connections/c1')[0])).toEqual({ toolEnabled: { search_cloudflare_documentation: false } });
+    expect(screen.getByText(/turned off/)).toBeInTheDocument();
+  });
+
+  it('keeps the keyboard when the Review button disappears and says the review landed', async () => {
+    connections = [{ ...cloudflare, enabled: false, needsReview: true }];
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    const trigger = await rowTrigger(/^Cloudflare documentation, Connected/);
+    await user.click(trigger);
+    const review = await screen.findByRole('button', { name: 'Review tools for Cloudflare documentation' });
+    review.focus();
+    await user.click(review);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Review tools for Cloudflare documentation' })).toBeNull());
+    expect(trigger).toHaveFocus();
+    expect(await screen.findByText(/Tool list for Cloudflare documentation marked reviewed/)).toBeInTheDocument();
+  });
+
+  it('drops wordy labels below 400px while the words stay for screen readers', async () => {
+    const user = userEvent.setup();
+    render(<ConnectionsPage />);
+    const addServer = await screen.findByRole('button', { name: 'Add server' });
+    expect(addServer.querySelector('span')?.className).toContain('min-[400px]:not-sr-only');
+    expect(addServer.querySelector('span')?.className).toContain('sr-only');
+
+    await user.click(await rowTrigger(/^Cloudflare documentation, Connected/));
+    const tools = await screen.findByRole('list', { name: 'Tools on Cloudflare documentation' });
+    const read = within(tools).getByText('read');
+    expect(read.className).toContain('sr-only');
+    expect(read.className).toContain('min-[400px]:not-sr-only');
+    // Names and estimates can be long: they truncate inside their box instead of
+    // pushing the row wider than a 320px phone.
+    const name = within(tools).getByText('search_cloudflare_documentation');
+    expect(name.className).toContain('min-w-0');
+    expect(name.className).toContain('max-w-full');
+    const panel = screen.getByRole('region', { name: 'Cloudflare documentation details' });
+    expect(panel.firstElementChild?.className).toContain('min-[400px]:pl-12');
+    // The words that go are still in the accessible name of the row and the meter.
+    expect(screen.getByRole('button', { name: /about 180 tokens \(estimated\)/ })).toBeInTheDocument();
+    expect(screen.getByRole('meter')).toHaveAttribute('aria-valuetext', '180 of 8,000 budgeted tokens (estimated)');
+  });
 });
 
 describe('tokens', () => {

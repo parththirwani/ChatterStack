@@ -1,6 +1,6 @@
 import React, { useRef } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AddServerSheet from '@/src/components/customize/connections/AddServerSheet';
 import { resetMcpConnectionsCache } from '@/src/lib/client/mcp';
@@ -41,6 +41,10 @@ function Harness() {
   );
 }
 
+/** Lets the test decide when the discovery answer comes back. */
+let releaseTest: () => void = () => {};
+const holdReleased = new Promise<void>((resolve) => { releaseTest = resolve; });
+
 beforeEach(() => {
   resetMcpConnectionsCache();
   vi.stubGlobal('matchMedia', vi.fn().mockImplementation((query: string) => ({
@@ -59,6 +63,8 @@ beforeEach(() => {
     const method = init?.method ?? 'GET';
     if (url === '/api/mcp/connections' && method === 'POST') return Response.json({ connection: created }, { status: 201 });
     if (url === `/api/mcp/connections/${created.id}/test` && method === 'POST') {
+      // Hold the discovery answer so the connecting phase can be looked at.
+      await holdReleased;
       return Response.json({ connection: { ...created, tools, toolCount: tools.length, needsReview: true }, ok: true });
     }
     throw new Error(`unexpected ${method} ${url}`);
@@ -77,6 +83,13 @@ describe('the add-server sheet under reduced motion', () => {
     const dialog = await screen.findByRole('dialog', { name: 'Add a server' });
     await user.click(within(dialog).getByRole('option', { name: /Cloudflare documentation/ }));
     await user.click(within(dialog).getByRole('button', { name: 'Connect to docs.mcp.cloudflare.com' }));
+
+    // While it works there is a spinner in the DOM, and it does not spin.
+    await within(dialog).findByText('Connecting and asking for its tools…');
+    const spinner = within(dialog).getByRole('status').querySelector('svg')!;
+    expect(spinner.getAttribute('class')).not.toContain('animate-spin');
+    // Let discovery answer inside act, so the state it lands in is flushed.
+    await act(async () => { releaseTest(); });
 
     const found = await screen.findByRole('list', { name: 'Discovered tools' });
     expect(within(found).getByText('search_cloudflare_documentation')).toBeInTheDocument();

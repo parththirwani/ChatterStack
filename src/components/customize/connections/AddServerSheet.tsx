@@ -18,6 +18,7 @@ import {
   validateConnectionForm,
 } from '@/src/lib/client/mcp-validation';
 import type { McpConnectionView, McpToolView } from '@/src/types/mcp.types';
+import HideOnNarrow from './HideOnNarrow';
 
 /** How long one discovered tool waits before the next one lands. */
 export const TOOL_REVEAL_MS = 120;
@@ -303,7 +304,7 @@ export default function AddServerSheet({ backgroundRef, onConnected, onClose, an
         transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.4, bounce: 0 }}
         className="flex h-full w-full max-w-md flex-col border-l border-white/[0.08] bg-[#1f1f1f] shadow-2xl"
       >
-        <header className="flex items-start gap-2 border-b border-white/[0.06] px-5 py-4">
+        <header className="flex items-start gap-2 border-b border-white/[0.06] px-4 py-4 min-[400px]:px-5">
           {step !== 'pick' && step !== 'connect' && (
             <button
               type="button"
@@ -334,7 +335,7 @@ export default function AddServerSheet({ backgroundRef, onConnected, onClose, an
           </button>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 min-[400px]:px-5">
           {atLimit && step === 'pick' && (
             <p className="mb-3 rounded-lg border border-amber-300/20 bg-amber-400/[0.06] px-3 py-2 text-xs text-[#e6d9b8]">
               You can keep up to {limit} connections. Remove one to add another.
@@ -512,7 +513,7 @@ export default function AddServerSheet({ backgroundRef, onConnected, onClose, an
           {step === 'connect' && (
             <div className="space-y-3">
               <p role="status" className="flex items-center gap-2 text-sm text-[#d8d5d1]">
-                {connecting && <Loader2 className="h-4 w-4 animate-spin text-[#aaa6a2]" aria-hidden="true" />}
+                {connecting && <Loader2 className={`h-4 w-4 text-[#aaa6a2] ${reduceMotion ? '' : 'animate-spin'}`} aria-hidden="true" />}
                 {phase === 'creating' ? (created ? 'Saving the token…' : 'Adding the connection…')
                   : phase === 'testing' ? 'Connecting and asking for its tools…'
                   : phase === 'streaming' ? 'Tools arriving…'
@@ -558,15 +559,15 @@ export default function AddServerSheet({ backgroundRef, onConnected, onClose, an
                       initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.26, bounce: 0 }}
-                      className="flex items-center gap-3 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2"
+                      className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2 min-[400px]:gap-3"
                     >
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="truncate font-mono text-xs text-[#e5e2de]">{tool.name}</span>
+                          <span className="max-w-full min-w-0 truncate font-mono text-xs text-[#e5e2de]">{tool.name}</span>
                           {tool.access === 'read' ? (
-                            <span className="flex items-center gap-1 text-[11px] text-[#9fd49f]"><ShieldCheck className="h-3 w-3" aria-hidden="true" /> read</span>
+                            <span className="flex items-center gap-1 text-[11px] text-[#9fd49f]"><ShieldCheck className="h-3 w-3" aria-hidden="true" /><HideOnNarrow>read</HideOnNarrow></span>
                           ) : (
-                            <span className="flex items-center gap-1 text-[11px] text-amber-200"><PenLine className="h-3 w-3" aria-hidden="true" /> write</span>
+                            <span className="flex items-center gap-1 text-[11px] text-amber-200"><PenLine className="h-3 w-3" aria-hidden="true" /><HideOnNarrow>write</HideOnNarrow></span>
                           )}
                           <span className="text-[11px] tabular-nums text-[#8f8b86]">
                             {tool.estimatedTokens === null ? 'estimate pending' : `≈${formatMeterTokens(tool.estimatedTokens)} tokens (est.)`}

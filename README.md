@@ -255,6 +255,17 @@ Tokens are typed into a dialog or the sheet, sent once over the session and
 stored encrypted; the page only ever learns that a token exists. Every token
 count in this UI is an estimate, never a billed figure.
 
+The block is keyboard-first: **Enter** or **Space** opens a row, **Arrow
+up/down** and **Home**/**End** move between rows from anywhere inside one, a
+switch answers **Space**, **Escape** folds the Undo bar while its countdown keeps
+running and **Ctrl/Cmd+Z** brings it back, and the sheet keeps focus inside
+itself, closes on **Escape** and walks the directory with the arrow keys. Every
+toggle, connect, failure, removal and undo is announced in a polite live region.
+Down to a 320px screen nothing inside the block scrolls sideways; below 400px the
+word labels (`read`, `write`, the cost line, **Add server**) leave the layout and
+stay with screen readers. With reduced motion there is no travel, height spring
+or colour wash - the same state changes and announcements simply happen at once.
+
 `MCP_CREDENTIAL_KEY` is required before any user token can be stored. It
 encrypts bearer tokens at rest with AES-256-GCM and is deliberately separate from
 `AUTH_SECRET`, so rotating session secrets never invalidates stored tokens.

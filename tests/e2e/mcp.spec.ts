@@ -378,3 +378,79 @@ test('a tool call in the chat waits for a decision and spends it once', async ({
   await expect.poll(() => messageCount(chatId), dbPoll).toBe(2);
   await expect(page.getByText('What are Workers static assets?')).toBeVisible();
 });
+
+test.describe('on a phone', () => {
+  test.use({ viewport: { width: 320, height: 720 } });
+
+  const OTHER_ID = '44444444-4444-4444-8444-444444444444';
+  /** Nothing inside the card may reach past the 320px viewport, sideways or otherwise. */
+  const staysInsideTheScreen = async (page: Page) => {
+    const card = connections(page);
+    expect(await card.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+    const right = await card.locator('*').evaluateAll((nodes) => Math.max(0, ...nodes.map((node) => node.getBoundingClientRect().right)));
+    expect(right).toBeLessThanOrEqual(320.5);
+  };
+
+  test('the block fits 320px and the words it drops stay for screen readers', async ({ page }) => {
+    seedConnection({
+      id: SERVER_ID, name: 'Docs server', enabled: true, status: 'connected', tools: TOOLS,
+      toolsDigest: DIGEST, reviewedDigest: DIGEST, toolEnabled: `{"${SEARCH_TOOL}": true}`,
+    });
+    await openApp(page);
+    await page.goto('/customize/connections');
+    await expect(connections(page).getByRole('meter')).toBeVisible();
+    await staysInsideTheScreen(page);
+
+    const row = connectionRow(page, 'Docs server');
+    await openRow(page, 'Docs server');
+    await staysInsideTheScreen(page);
+
+    // Below 400px the read/write words and the cost phrase leave the layout: the
+    // clipped sr-only box proves it, and the accessible names still carry the words.
+    const readWord = row.getByText('read', { exact: true });
+    expect((await readWord.boundingBox())!.width).toBeLessThanOrEqual(1);
+    await expect(row.getByRole('button', { name: /^Docs server, Connected, remote transport, 1 of 2 tools on, / }))
+      .toHaveAccessibleName(/estimates pending|about .* tokens \(estimated\)/);
+    await expect(connections(page).getByRole('button', { name: 'Add server' })).toBeVisible();
+
+    // The sheet is a full-height panel with the same rules.
+    await connections(page).getByRole('button', { name: 'Add server' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByRole('listbox', { name: 'MCP directory' })).toBeVisible();
+    expect(await dialog.evaluate((element) => element.scrollWidth - element.clientWidth)).toBeLessThanOrEqual(0);
+    const sheetRight = await dialog.locator('*').evaluateAll((nodes) => Math.max(0, ...nodes.map((node) => node.getBoundingClientRect().right)));
+    expect(sheetRight).toBeLessThanOrEqual(320.5);
+  });
+
+  test('the keyboard drives rows, switches and the undo window', async ({ page }) => {
+    seedConnection({ id: SERVER_ID, name: 'Docs server', tools: TOOLS, toolsDigest: DIGEST });
+    seedConnection({ id: OTHER_ID, name: 'Other server', url: 'https://other.example.com/mcp', tools: TOOLS, toolsDigest: DIGEST });
+    await openApp(page);
+    await page.goto('/customize/connections');
+    const row = connectionRow(page, 'Docs server');
+    const trigger = row.getByRole('button', { name: /^Docs server, / });
+    await trigger.focus();
+    await page.keyboard.press('ArrowDown');
+    await expect(connectionRow(page, 'Other server').getByRole('button', { name: /^Other server, / })).toBeFocused();
+    await page.keyboard.press('ArrowUp');
+    await expect(trigger).toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'true');
+
+    await row.getByRole('switch', { name: `Enable ${SEARCH_TOOL} on Docs server` }).focus();
+    await page.keyboard.press('Space');
+    await expect.poll(() => toolSwitch('Docs server', SEARCH_TOOL), dbPoll).toBe('true');
+
+    // Remove on a phone: the bar offers Undo, Escape folds it, Ctrl+Z brings it back.
+    await row.getByRole('button', { name: 'Remove Docs server' }).click();
+    const bar = page.getByRole('group', { name: 'Removing Docs server' });
+    await expect(bar).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(bar).toBeHidden();
+    await page.keyboard.press('Control+z');
+    await expect(bar).toBeVisible();
+    await bar.getByRole('button', { name: 'Undo' }).click();
+    await expect(connectionRow(page, 'Docs server')).toBeVisible();
+    expect(connectionRows()).toBe('Docs server:none:false:untested:-\nOther server:none:false:untested:-');
+  });
+});

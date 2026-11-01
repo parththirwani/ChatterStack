@@ -1,11 +1,12 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Link2, PenLine, ShieldCheck } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import { Switch } from '@/src/components/arc/switch/switch';
 import { formatMeterTokens } from '@/src/lib/client/mcp-budget';
 import { testMcpConnection } from '@/src/lib/client/mcp';
 import type { McpConnectionView, McpToolView } from '@/src/types/mcp.types';
+import HideOnNarrow from './HideOnNarrow';
 
 export type RowStatusWord = 'Connected' | 'Needs sign-in' | 'Error' | 'Connecting' | 'Not tested';
 
@@ -84,9 +85,21 @@ export default function ServerRow({
   const reduceMotion = useReducedMotion();
   const [connecting, setConnecting] = useState(false);
   const [testError, setTestError] = useState('');
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const status = serverRowStatus(connection, connecting);
   const panelId = `mcp-server-panel-${connection.id}`;
   const onCount = connection.tools.filter((tool) => tool.enabled).length;
+  const awaitingReview = connection.needsReview && connection.toolCount > 0;
+
+  // The Review button disappears the moment the review is recorded. If keyboard
+  // focus was on it, the browser drops focus to the body, so hand it back to the
+  // row rather than leaving the keyboard user at the top of the document.
+  const wasAwaitingReview = useRef(awaitingReview);
+  useEffect(() => {
+    const was = wasAwaitingReview.current;
+    wasAwaitingReview.current = awaitingReview;
+    if (was && !awaitingReview && document.activeElement === document.body) triggerRef.current?.focus();
+  }, [awaitingReview]);
 
   const runTest = async () => {
     setConnecting(true);
@@ -113,30 +126,31 @@ export default function ServerRow({
       initial={entering && !reduceMotion ? { opacity: 0, x: -12 } : false}
       animate={{ opacity: 1, x: 0 }}
       transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.32, bounce: 0 }}
-      className={`border-b border-white/[0.06] transition-colors duration-500 last:border-b-0 ${entering ? 'bg-white/[0.06]' : ''}`}
+      className={`border-b border-white/[0.06] last:border-b-0 ${reduceMotion ? '' : 'transition-colors duration-500'} ${entering ? 'bg-white/[0.06]' : ''}`}
     >
       <div className="flex items-center gap-2 px-3 py-2.5">
         <button
           type="button"
+          ref={triggerRef}
           data-mcp-row-trigger
           aria-expanded={expanded}
           aria-controls={panelId}
           aria-label={serverRowLabel(connection, status)}
           onClick={() => onExpandedChange(!expanded)}
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/40 min-[400px]:gap-3"
         >
-          <ChevronRight className={`h-4 w-4 shrink-0 text-[#8f8b86] transition-transform duration-150 ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
+          <ChevronRight className={`h-4 w-4 shrink-0 text-[#8f8b86] ${reduceMotion ? '' : 'transition-transform duration-150'} ${expanded ? 'rotate-90' : ''}`} aria-hidden="true" />
           <span className="flex min-w-0 flex-col">
             <span className="flex min-w-0 items-center gap-2">
-              <span className="truncate text-sm font-medium text-[#eee]">{connection.name}</span>
+              <span className="min-w-0 truncate text-sm font-medium text-[#eee]">{connection.name}</span>
               <span className={`shrink-0 rounded-md px-1.5 py-0.5 text-[11px] ${TONE_CLASSES[status.tone]}`}>{status.word}</span>
               {!connection.enabled && <span className="shrink-0 text-[11px] text-[#8f8b86]">Off</span>}
             </span>
             <span className="mt-0.5 flex min-w-0 flex-wrap items-center gap-x-1.5 text-xs text-[#8f8b86]">
               <span className="shrink-0 rounded-md bg-white/[0.05] px-1.5 py-px text-[10px] uppercase tracking-wide text-[#aaa6a2]">Remote</span>
               <span className="shrink-0">{onCount} of {connection.toolCount} {connection.toolCount === 1 ? 'tool' : 'tools'} on</span>
-              <span aria-hidden="true">·</span>
-              <span className="shrink-0">{serverRowCostText(connection)}</span>
+              <span aria-hidden="true" className="shrink-0 sr-only min-[400px]:not-sr-only">·</span>
+              <HideOnNarrow>{serverRowCostText(connection)}</HideOnNarrow>
             </span>
           </span>
         </button>
@@ -144,9 +158,9 @@ export default function ServerRow({
       </div>
 
       {connection.status === 'error' && connection.lastError && (
-        <p className="px-3 pb-2 pl-12 text-xs leading-5 text-red-300">{connection.lastError}</p>
+        <p className="px-3 pb-2 pl-3 text-xs leading-5 text-red-300 min-[400px]:pl-12">{connection.lastError}</p>
       )}
-      {testError && <p role="alert" className="px-3 pb-2 pl-12 text-xs leading-5 text-red-300">{testError}</p>}
+      {testError && <p role="alert" className="px-3 pb-2 pl-3 text-xs leading-5 text-red-300 min-[400px]:pl-12">{testError}</p>}
 
       <AnimatePresence initial={false}>
         {expanded && (
@@ -157,11 +171,11 @@ export default function ServerRow({
             aria-label={`${connection.name} details`}
             initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
-            exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+            exit={reduceMotion ? { opacity: 1 } : { height: 0, opacity: 0 }}
             transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.32, bounce: 0 }}
             className="overflow-hidden"
           >
-            <div className="px-3 pb-3 pl-12">
+            <div className="px-3 pb-3 pl-3 min-[400px]:pl-12">
               <p className="flex min-w-0 items-center gap-1.5 text-xs text-[#8f8b86]">
                 <Link2 className="h-3 w-3 shrink-0" aria-hidden="true" />
                 <span className="sr-only">Endpoint</span>
@@ -169,9 +183,9 @@ export default function ServerRow({
                 <span className="shrink-0">· {connection.hasCredential ? 'Token stored' : 'No token'}</span>
               </p>
 
-              {connection.needsReview && connection.toolCount > 0 && (
-                <div className="mt-2 flex items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/[0.06] px-3 py-2">
-                  <p className="flex-1 text-xs text-[#e6d9b8]">The tool list changed since you last reviewed it. Look it over before turning this connection on.</p>
+              {awaitingReview && (
+                <div className="mt-2 flex flex-wrap items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/[0.06] px-3 py-2">
+                  <p className="min-w-0 flex-1 text-xs text-[#e6d9b8]">The tool list changed since you last reviewed it. Look it over before turning this connection on.</p>
                   <button
                     type="button"
                     onClick={onReviewTools}
@@ -186,14 +200,14 @@ export default function ServerRow({
               {connection.toolCount > 0 ? (
                 <ul aria-label={`Tools on ${connection.name}`} className="mt-2 space-y-1">
                   {connection.tools.map((tool) => (
-                    <li key={tool.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/[0.025]">
+                    <li key={tool.id} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-white/[0.025] min-[400px]:gap-3">
                       <div className="min-w-0 flex-1">
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          <span className="truncate font-mono text-xs text-[#e5e2de]">{tool.name}</span>
+                          <span className="max-w-full min-w-0 truncate font-mono text-xs text-[#e5e2de]">{tool.name}</span>
                           {tool.access === 'read' ? (
-                            <span className="flex items-center gap-1 text-[11px] text-[#9fd49f]"><ShieldCheck className="h-3 w-3" aria-hidden="true" /> read</span>
+                            <span className="flex items-center gap-1 text-[11px] text-[#9fd49f]"><ShieldCheck className="h-3 w-3" aria-hidden="true" /><HideOnNarrow>read</HideOnNarrow></span>
                           ) : (
-                            <span className="flex items-center gap-1 text-[11px] text-amber-200"><PenLine className="h-3 w-3" aria-hidden="true" /> write</span>
+                            <span className="flex items-center gap-1 text-[11px] text-amber-200"><PenLine className="h-3 w-3" aria-hidden="true" /><HideOnNarrow>write</HideOnNarrow></span>
                           )}
                           <span className="text-[11px] tabular-nums text-[#8f8b86]">
                             {tool.estimatedTokens === null ? 'estimate pending' : `≈${formatMeterTokens(tool.estimatedTokens)} tokens (est.)`}
