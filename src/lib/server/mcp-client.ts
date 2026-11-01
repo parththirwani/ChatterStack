@@ -228,6 +228,7 @@ async function withClient<T>(endpoint: McpEndpoint, options: McpCallOptions, run
   } finally {
     if (timer) clearTimeout(timer);
     await close();
+    await transportFetch.close();
   }
 }
 
