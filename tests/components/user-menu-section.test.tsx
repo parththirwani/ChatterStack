@@ -1,4 +1,5 @@
 import React from 'react';
+import { renderToString } from 'react-dom/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -39,15 +40,27 @@ describe('UserSection', () => {
     useProfileStore.getState().resetProfile();
   });
 
+  it('keeps the account menu ID stable across React tree paths', () => {
+    const section = <UserSection user={user} collapsed={false} isAuthenticated onLoginClick={vi.fn()} onLogoutClick={vi.fn()} />;
+    const direct = renderToString(section);
+    const nested = renderToString(<div><div>{section}</div></div>);
+
+    expect(direct).toContain('id="account-menu-trigger"');
+    expect(nested).toContain('id="account-menu-trigger"');
+  });
+
   it('opens the account menu upward from the avatar', async () => {
     const user_ = userEvent.setup();
     renderSection();
 
     const trigger = screen.getByRole('button', { name: /account menu, ada/i });
+    expect(trigger).toHaveAttribute('id', 'account-menu-trigger');
     expect(trigger).toHaveAttribute('data-side', 'top');
 
     await user_.click(trigger);
     const menu = await openMenu(user_);
+    expect(menu).toHaveAttribute('id', 'account-menu-menu');
+    expect(menu).toHaveAttribute('aria-labelledby', trigger.id);
     expect(within(menu).getByRole('menuitem', { name: /view profile/i })).toBeInTheDocument();
     expect(within(menu).getByRole('menuitem', { name: /sign out/i })).toBeInTheDocument();
   });

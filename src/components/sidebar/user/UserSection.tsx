@@ -80,6 +80,7 @@ const UserSection: React.FC<UserSectionProps> = ({
     <>
       <div className={collapsed ? 'flex justify-center' : undefined}>
         <UserMenu
+          idPrefix="account-menu"
           side="top"
           align={collapsed ? 'center' : 'start'}
           showName={!collapsed}
