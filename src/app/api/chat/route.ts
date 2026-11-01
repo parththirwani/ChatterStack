@@ -30,6 +30,14 @@ import type { CompletionAnalytics, ModelTiming } from '@/src/types/chat.types';
 import { markDocumentsUsed, resolveDocuments } from '@/src/lib/server/documents';
 import { resolveSkills, SkillError, skillTags } from '@/src/lib/server/skills';
 import { formatActiveSkills } from '@/src/services/prompt/promptService';
+import { mcpToolsEnabled } from '@/src/lib/api/chat/mcp-config';
+import { modelSupportsTools } from '@/src/config/models';
+import { runToolLoop, type ToolLoopEvent } from '@/src/lib/api/chat/tool-loop';
+import { prepareMcpTurn, toolCallEvent } from '@/src/lib/api/chat/mcp-turn';
+import { asOpenRouterMessages, loopCallToView, type ModelTurnMessage } from '@/src/lib/api/chat/tool-transcript';
+import { toolCallViews } from '@/src/lib/server/conversations';
+import type { ChatMessage } from '@/src/lib/api/chat/openrouter';
+import type { MessageToolCallView } from '@/src/types/chat.types';
 
 interface RedisMessage {
   /** The saved Message row id; the compaction boundary refers to it. */
@@ -38,6 +46,8 @@ interface RedisMessage {
   content: string;
   modelId?: string;
   attachments?: Array<ChatAttachment | DocumentAttachment>;
+  /** MCP calls made during this assistant turn; replayed to the model in order. */
+  toolCalls?: MessageToolCallView[];
   createdAt?: string;
 }
 
@@ -87,16 +97,20 @@ async function readMessages(conversationId: string): Promise<RedisMessage[]> {
   const rows = await prisma.message.findMany({
     where: { conversationId },
     orderBy: MESSAGE_ORDER,
-    select: { id: true, role: true, content: true, modelId: true, attachments: true, createdAt: true },
+    include: { toolCalls: { orderBy: { position: 'asc' } } },
   });
-  return rows.map((m) => ({
-    id: m.id ?? undefined,
-    role: m.role === 'user' ? 'user' : 'assistant',
-    content: m.content,
-    modelId: m.modelId ?? undefined,
-    attachments: Array.isArray(m.attachments) ? m.attachments as unknown as Array<ChatAttachment | DocumentAttachment> : undefined,
-    createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : undefined,
-  }));
+  return rows.map((m) => {
+    const toolCalls = toolCallViews((m as { toolCalls?: unknown }).toolCalls);
+    return {
+      id: m.id ?? undefined,
+      role: m.role === 'user' ? 'user' : 'assistant',
+      content: m.content,
+      modelId: m.modelId ?? undefined,
+      attachments: Array.isArray(m.attachments) ? m.attachments as unknown as Array<ChatAttachment | DocumentAttachment> : undefined,
+      ...(toolCalls ? { toolCalls } : {}),
+      createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : undefined,
+    };
+  });
 }
 
 async function historyAttachmentParts(userId: string, files: Array<ChatAttachment | DocumentAttachment>) {
@@ -334,13 +348,17 @@ export async function POST(request: NextRequest) {
 
       const conversationHistory = prepared.history;
 
-      const messagesForAI = await Promise.all([
+      const historyTurns: ModelTurnMessage[] = await Promise.all([
         ...conversationHistory,
         { role: 'user' as const, content: prepared.messageWithRag, attachments },
       ].map(async (m, index) => ({
         role: m.role === 'user' ? 'user' : 'assistant',
         content: messageContent(m.content, index === conversationHistory.length ? currentParts : await historyAttachmentParts(userId, (m.attachments ?? []) as Array<ChatAttachment | DocumentAttachment>)),
+        ...(m.role === 'assistant' && m.toolCalls?.length ? { toolCalls: m.toolCalls } : {}),
       })));
+      // An assistant row that ran MCP tools replays as the exact
+      // tool_calls + one result per call id sequence the provider accepted live.
+      const messagesForAI: ChatMessage[] = asOpenRouterMessages(historyTurns);
 
       // On Stop/disconnect the model call is cancelled and resolves with the
       // text written so far, which is still saved below.
@@ -350,57 +368,122 @@ export async function POST(request: NextRequest) {
       // down per model in the UI.
       const timings: ModelTiming[] = [];
       const promptText = messagesForAI
-        .map((m) => typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n'))
+        .map((m) => m.content === null ? '' : typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('\n'))
         .join('\n');
       let outcome: ChatResponseOutcome = 'success';
-      try {
-        fullContent = isCouncilMode
-          ? await runCouncilProcess(
-              prepared.messageWithRag,
-              // Members see earlier files too; the chair's prompt uses the text.
-              conversationHistory.map((m, index) => ({ ...m, parts: messagesForAI[index].content })),
-              {
-                members: data.council?.members,
-                chair: data.council?.chair,
-                thinkingLevel,
-                signal,
-                skills,
-                trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: requestRagUsed, attachmentCount: attachments.length },
-              },
-              {
-                onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
-                onChunk: (chunk) => send({ chunk }),
-                onReasoning: (reasoning) => send({ reasoning }),
-                onAnswer: (councilAnswer) => send({ councilAnswer }),
-                onRankings: (councilRankings) => send({ councilRankings }),
-                onTiming: (timing) => timings.push(timing),
-              },
-              currentParts
-            )
-          : await createCompletion(messagesForAI, selectedModel, {
+      // MCP turn state: the calls the loop finished and the model usage of
+      // its extra rounds, both folded into saving and analytics below.
+      const persistedCalls: MessageToolCallView[] = [];
+      const loopUsage = { input: 0, output: 0 };
+
+      const forwardToolLoopEvent = (event: ToolLoopEvent) => {
+        switch (event.kind) {
+          case 'call_started':
+            send({ toolCallStarted: { callId: event.callId, name: event.name } });
+            break;
+          case 'call_result':
+          case 'call_failure':
+            send(toolCallEvent(loopCallToView(event.call)));
+            break;
+          case 'discovery_failed':
+            send({ toolDiscoveryFailed: { connectionId: event.connectionId, error: event.error } });
+            break;
+          case 'stopped':
+            send({ toolLoopStopped: { limit: event.stop.limit, message: event.stop.message } });
+            break;
+          case 'approval_request':
+            // The route's own approval callback sends the richer event, with
+            // the id the decision endpoint needs.
+            break;
+        }
+      };
+
+      // One chat answer: the council, the plain single-model call, or - when
+      // the flag is on and the user has running connections - the tool loop.
+      const answer = async (): Promise<string> => {
+        if (isCouncilMode) {
+          return runCouncilProcess(
+            prepared.messageWithRag,
+            // Members see earlier files too; the chair's prompt uses the text.
+            conversationHistory.map((m, index) => ({ ...m, parts: historyTurns[index].content })),
+            {
+              members: data.council?.members,
+              chair: data.council?.chair,
               thinkingLevel,
               signal,
               skills,
+              trace: { traceId, inRequest: true, contentPrompt: data.message, userId, conversationId, ragUsed: requestRagUsed, attachmentCount: attachments.length },
+            },
+            {
+              onProgress: (stage, model, progress) => send({ status: 'progress', stage, model, progress }),
               onChunk: (chunk) => send({ chunk }),
               onReasoning: (reasoning) => send({ reasoning }),
-              trace: {
-                traceId,
-                inRequest: true,
-                contentPrompt: data.message,
-                span: 'completion',
-                userId,
-                conversationId,
-                thinkingLevel,
-                messageCount: messagesForAI.length,
-                attachmentCount: attachments.length,
-                ragUsed: requestRagUsed,
-              },
-            });
+              onAnswer: (councilAnswer) => send({ councilAnswer }),
+              onRankings: (councilRankings) => send({ councilRankings }),
+              onTiming: (timing) => timings.push(timing),
+            },
+            currentParts
+          );
+        }
+
+        const trace = {
+          traceId,
+          inRequest: true,
+          contentPrompt: data.message,
+          span: 'completion',
+          userId,
+          conversationId,
+          thinkingLevel,
+          messageCount: messagesForAI.length,
+          attachmentCount: attachments.length,
+          ragUsed: requestRagUsed,
+        };
+
+        // No enabled connections (or the flag off) means the old tool-free
+        // call, with the same request and the same events as before.
+        const mcpTurn = mcpToolsEnabled()
+          ? await prepareMcpTurn({ userId, conversationId, signal, send })
+          : undefined;
+        if (!mcpTurn || mcpTurn.tools.length === 0) {
+          return createCompletion(messagesForAI, selectedModel, {
+            thinkingLevel,
+            signal,
+            skills,
+            onChunk: (chunk) => send({ chunk }),
+            onReasoning: (reasoning) => send({ reasoning }),
+            trace,
+          });
+        }
+
+        const result = await runToolLoop({
+          userId,
+          model: selectedModel,
+          messages: messagesForAI,
+          tools: mcpTurn.tools,
+          supportsTools: modelSupportsTools(selectedModel),
+          thinkingLevel,
+          signal,
+          trace,
+          isToolEnabled: mcpTurn.isToolEnabled,
+          requestApproval: mcpTurn.requestApproval,
+          execute: mcpTurn.execute,
+          onChunk: (chunk) => send({ chunk }),
+          onReasoning: (reasoning) => send({ reasoning }),
+          onEvent: forwardToolLoopEvent,
+        });
+        loopUsage.input += result.usage.input;
+        loopUsage.output += result.usage.output;
+        persistedCalls.push(...result.calls.map(loopCallToView));
+        return result.content;
+      };
+
+      try {
+        fullContent = await answer();
         // Tokens and timing of the reply that just finished, for the client to
         // show under it. A counting failure must never lose the answer.
         try {
-          const input = countTokens(skillText) + countTokens(promptText) + prepared.usage.input;
-          const output = countTokens(fullContent) + prepared.usage.output;
+          const input = countTokens(skillText) + countTokens(promptText) + prepared.usage.input + loopUsage.input;
+          const output = countTokens(fullContent) + prepared.usage.output + loopUsage.output;
           const analytics: CompletionAnalytics = {
             durationMs: Date.now() - modelStartedAt,
             inputTokens: input,
@@ -440,7 +523,9 @@ export async function POST(request: NextRequest) {
 
       let exchange: RedisMessage[] = [
         { role: 'user', content: data.message, attachments },
-        ...(fullContent ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel }] : []),
+        ...(fullContent || persistedCalls.length
+          ? [{ role: 'assistant' as const, content: fullContent, modelId: selectedModel, ...(persistedCalls.length ? { toolCalls: persistedCalls } : {}) }]
+          : []),
       ];
       let savedMessageIds: { userMessageId: string; assistantMessageId?: string } | undefined;
       try {
@@ -448,7 +533,7 @@ export async function POST(request: NextRequest) {
           // A retry that produced nothing (failed, or stopped before the first
           // word) leaves the saved exchange untouched: there is nothing to put
           // in its place, so removing it would simply lose the answer.
-          if (!isRetry || fullContent) {
+          if (!isRetry || fullContent || persistedCalls.length) {
             // The retried answer takes the place of the one it replaces.
             if (isRetry) await deleteLastExchange(conversationId);
 
@@ -458,7 +543,8 @@ export async function POST(request: NextRequest) {
               fullContent,
               selectedModel,
               attachments,
-              skillTags(skills)
+              skillTags(skills),
+              persistedCalls
             );
             const userRow = saved.find((message) => message.role === 'user');
             const assistantRow = saved.find((message) => message.role === 'assistant');
@@ -471,12 +557,13 @@ export async function POST(request: NextRequest) {
                 attachments,
                 createdAt: userRow?.createdAt?.toISOString(),
               },
-              ...(fullContent
+              ...(fullContent || persistedCalls.length
                 ? [{
                     id: assistantRow?.id,
                     role: 'assistant' as const,
                     content: fullContent,
                     modelId: selectedModel,
+                    ...(persistedCalls.length ? { toolCalls: persistedCalls } : {}),
                     createdAt: assistantRow?.createdAt?.toISOString(),
                   }]
                 : []),

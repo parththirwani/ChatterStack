@@ -246,6 +246,22 @@ describe('scheduler', () => {
     expect(addMessages).toHaveBeenCalledWith(runs()[0].conversationId, 'Summarize AI news.', '', input.model);
   });
 
+  it('sends no tool list to the model even when MCP tools are switched on', async () => {
+    // The runner's in-memory database has no mcpConnection table at all, so a
+    // scheduled path that tried to load connections would crash outright.
+    vi.stubEnv('MCP_TOOLS', 'on');
+    try {
+      const task = await createTask();
+      makeDue(task.id);
+      expect(await runDueTasks()).toMatchObject({ started: 1 });
+      expect(createCompletion).toHaveBeenCalled();
+      const options = createCompletion.mock.calls.at(-1)![2] as Record<string, unknown>;
+      expect(options).not.toHaveProperty('tools');
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('fails runs left running by a crashed process', async () => {
     const task = await createTask({ frequency: 'manual' });
     const stale = await db.scheduledTaskRun.create({ data: { taskId: task.id, trigger: 'manual', status: 'running', startedAt: new Date(Date.now() - 20 * 60000) } });

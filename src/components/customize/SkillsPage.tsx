@@ -8,6 +8,7 @@ import { createSkillWithAI, openSkillEditor, useSkills } from '@/src/lib/client/
 import type { Skill } from '@/src/types/skill.types';
 import { findCatalogEntry } from '@/src/config/skill-catalog';
 import Menu from './Menu';
+import CustomizeTabs from './CustomizeTabs';
 import SkillsYours from './SkillsYours';
 import SkillsDiscover from './SkillsDiscover';
 import SkillUpload from './SkillUpload';
@@ -94,9 +95,7 @@ export default function SkillsPage({ view }: { view: SkillsView }) {
 
         {listView ? (
           <div className="mt-5 flex flex-wrap items-center gap-3">
-            <div role="tablist" aria-label="Customize" className="flex gap-1">
-              <button type="button" role="tab" aria-selected="true" className="rounded-lg bg-white/[0.09] px-3 py-1 text-sm text-white">Skills</button>
-            </div>
+            <CustomizeTabs active="skills" />
             <div role="radiogroup" aria-label="Show" className="flex rounded-lg border border-white/[0.1] p-0.5">
               {(['yours', 'discover'] as const).map((tab) => (
                 <button
