@@ -104,7 +104,7 @@ export function TokenDialog({
             type="password"
             autoComplete="off"
             spellCheck={false}
-            aria-label="Token"
+            aria-label={hasToken ? 'New token' : 'Token'}
             value={token}
             maxLength={MAX_TOKEN_LENGTH + 1}
             onChange={(event) => { setToken(event.target.value); setError(''); }}

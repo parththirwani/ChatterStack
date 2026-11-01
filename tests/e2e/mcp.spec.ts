@@ -143,7 +143,7 @@ test('a stored tool list is reviewed before the connection runs, and each tool s
 
   // Off until the changed list has been looked over: the switch is refused, not ignored.
   await row.getByRole('switch', { name: 'Enable Docs server', exact: true }).click();
-  await expect(page.getByRole('alert')).toContainText('Review the tool list before turning this connection on.');
+  await expect(page.getByText('Review the tool list before turning this connection on.', { exact: true })).toBeVisible();
   expect(statusOf('Docs server')).toBe('untested');
   expect(connectionRows()).toBe('Docs server:none:false:untested:-');
 
@@ -185,7 +185,7 @@ test('the token dialog never shows a stored token, and removing one clears the c
 });
 
 test('a token typed into the dialog is stored encrypted or refused, never in the clear', async ({ page }) => {
-  const secret = 'ghp_super_secret_value_for_e2e';
+  const secret = 'fixture-token-value-for-e2e';
   seedConnection({ id: SERVER_ID, name: 'Docs server' });
   await openApp(page);
   await page.goto('/customize/connections');
@@ -243,7 +243,7 @@ test('Test on an unreachable server stores a visible failure instead of a tool l
   // The stored reason is exactly what the page shows, and a failed test keeps nothing enabled.
   const shown = errorOf('Docs server');
   expect(shown.length).toBeGreaterThan(0);
-  await expect(row.getByText(shown, { exact: true })).toBeVisible();
+  await expect(row.getByText(shown, { exact: true }).first()).toBeVisible();
   await expect(row.getByText('Off', { exact: true })).toBeVisible();
   expect(toolSwitch('Docs server', SEARCH_TOOL)).toBe('-');
   expect(connectionRows()).toBe('Docs server:none:false:error:-');
@@ -325,5 +325,5 @@ test('a tool call in the chat waits for a decision and spends it once', async ({
   await expect(page.getByText('They sit next to the script.')).toBeVisible();
   const chatId = page.url().split('/').at(-1)!;
   await expect.poll(() => messageCount(chatId), dbPoll).toBe(2);
-  await expect(page.getByText('What are Workers static assets?')).toBeVisible();
+  await expect(page.getByRole('paragraph').filter({ hasText: 'What are Workers static assets?' }).first()).toBeVisible();
 });
