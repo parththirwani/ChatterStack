@@ -298,7 +298,8 @@ const ChatPage: React.FC<ChatPageProps> = ({
       onNewChat: handleNewChat,
       // Like claude.ai, no chat is highlighted while a page is open.
       currentConversationId: onAppPage ? undefined : activeConversationId,
-      activePage: view.kind === 'chat' ? undefined : view.kind,
+      // Connections sit under the same Customize entry as skills.
+      activePage: view.kind === 'chat' ? undefined : view.kind === 'connections' ? 'skills' : view.kind,
       onOpenPage: handleOpenPage,
       onLoginClick: handleLoginClick,
       onLogoutClick: handleLogoutClick,

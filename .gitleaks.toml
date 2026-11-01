@@ -10,4 +10,5 @@ paths = ['''^tests/''']
 regexes = [
   '''cmVhZ[AE]Bjb21wYW55OnNlY3JldA==''',
   '''sk-or-v1-0123456789abcdef''',
+  '''v1\.ivB64\.tagB64\.cipherB64''',
 ]

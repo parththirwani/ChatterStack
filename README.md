@@ -213,6 +213,113 @@ not a system instruction, and the full transcript remains visible and saved.
 See [docs/auto-compaction.md](docs/auto-compaction.md) for the design,
 defaults and known limits.
 
+## MCP tools in a chat
+
+`MCP_TOOLS=on` lets the chat turn run a bounded tool loop: the model may ask for
+a tool, the user approves that exact call, the result goes back, and the model
+answers. `off` (the default) sends no tool definitions at all, so every turn
+looks exactly like it did before.
+
+- Only single model chats take part. Council and scheduled tasks never advertise
+  or run a tool.
+- The loop is bounded: rounds, calls per round and per turn, wall-clock time,
+  argument bytes, result bytes and prompt tokens. A spent budget is stated in
+  the transcript, and the model gets one last tool-free turn to summarise.
+- Every tool call id the model produced is answered, including denials,
+  invalid arguments, disabled tools and cancellations, so a replayed or forked
+  chat stays valid to send back to OpenRouter.
+- A model that cannot take a `tools` array is refused with a clear message
+  rather than sent a request it would reject.
+
+See [docs/mcp-support-plan.md](docs/mcp-support-plan.md) for the design and the
+connections UI that builds on this.
+
+### Connecting MCP servers
+
+Manage them under **Customize → Connections** (`/customize/connections`) in one
+**MCP servers** block. Its header meter shows what the tools the model would
+actually receive are estimated to cost against a tool-definition budget, one
+segment per server, turning amber when the estimate goes over. Each server row
+shows its real status (connected, needs sign-in, or an error with the stored
+reason), the Remote transport, how many tools are on and their estimated cost,
+and expands to the endpoint, per-tool switches with a read/write label and a
+per-tool token estimate, token entry, **Test** and **Remove**. Removal waits a
+few seconds behind an Undo bar before the delete is sent, so changing your mind
+costs nothing; closing the page with the bar open leaves the server alone.
+
+**Add server** opens a sheet with the verified catalog (searchable, and honest
+about whose token each entry needs), a custom HTTPS URL field, live progress
+while the real connection is made, and the discovered tools landing one by one —
+every one of them off, because nothing is enabled without you reviewing it.
+Tokens are typed into a dialog or the sheet, sent once over the session and
+stored encrypted; the page only ever learns that a token exists. Every token
+count in this UI is an estimate, never a billed figure.
+
+The block is keyboard-first: **Enter** or **Space** opens a row, **Arrow
+up/down** and **Home**/**End** move between rows from anywhere inside one, a
+switch answers **Space**, **Escape** folds the Undo bar while its countdown keeps
+running and **Ctrl/Cmd+Z** brings it back, and the sheet keeps focus inside
+itself, closes on **Escape** and walks the directory with the arrow keys. Every
+toggle, connect, failure, removal and undo is announced in a polite live region.
+Down to a 320px screen nothing inside the block scrolls sideways; below 400px the
+word labels (`read`, `write`, the cost line, **Add server**) leave the layout and
+stay with screen readers. With reduced motion there is no travel, height spring
+or colour wash - the same state changes and announcements simply happen at once.
+
+`MCP_CREDENTIAL_KEY` is required before any user token can be stored. It
+encrypts bearer tokens at rest with AES-256-GCM and is deliberately separate from
+`AUTH_SECRET`, so rotating session secrets never invalidates stored tokens.
+Generate one with `openssl rand -hex 32`. Without it, connections can still be
+created and tested anonymously, but saving a token returns a clear 503.
+
+```bash
+MCP_TOOLS=on
+MCP_CREDENTIAL_KEY=<64 hex characters>
+# Optional. Trusted origins for a self-hosted LAN server, e.g. http://mcp.lan:8080
+# Empty in a hosted deployment, where HTTPS plus a public address is required.
+MCP_ALLOWED_ORIGINS=
+# Optional. Seconds a pending approval stays decidable (default 120, max 600).
+MCP_APPROVAL_TTL_SECONDS=120
+```
+
+Tool calls are persisted on the assistant turn that made them, in model order,
+so retry, fork, compaction and a reloaded chat all replay the same
+assistant-calls-then-one-result-per-call sequence. Arguments and results are
+stored already bounded by the loop, and a turn that ran tools keeps its
+assistant row even if the model wrote no prose, so the calls have a turn to
+belong to. The transcript streams typed events
+(`toolDiscoveryFailed`, `toolApprovalRequest`, `toolCallStarted`,
+`toolCallResult`, `toolCallFailure`, `toolLoopStopped`) that carry no token.
+
+Everything else about a connection is user scoped and untrusted by default:
+
+- Connections, tokens, discovered tools and approvals belong to one user. Every
+  query is filtered by the session user id, and a deleted user's rows cascade
+  away. `GET` responses never contain a token, only whether one is stored.
+- Servers must be HTTPS on the default port, with no credentials in the URL.
+  Loopback, link-local, private and other reserved addresses are refused, the
+  host is re-resolved and re-checked on every connection and every redirect hop,
+  and cross-origin redirects are blocked. Responses are byte capped. Known
+  limitation: the address is checked before the request is issued, so a DNS answer
+  that changes between that check and the connection is only caught by the
+  per-hop recheck.
+- Tool names, descriptions and schemas from a server are sanitized, capped
+  (32 tools, 8 KB per schema) and renamed into unique OpenRouter-safe function
+  names, with a reverse map for execution. An oversized or unsupported schema
+  becomes a visible connection error and nothing is enabled.
+- Errors and traces are redacted: the stored token never appears in a message,
+  and known secret shapes are stripped before anything is saved or logged.
+
+### Verified catalog
+
+Catalog entries are prefilled URLs, never prefilled credentials.
+
+| Entry | URL | Auth | Verified from this deployment |
+| --- | --- | --- | --- |
+| Cloudflare documentation | `https://docs.mcp.cloudflare.com/mcp` | none | Yes, 2026-10-31: `initialize` and `tools/list` returned 200 anonymously (`serverInfo` `docs-ai-search` 0.5.0, protocol `2025-06-18`, tool `search_cloudflare_documentation`, `readOnlyHint: true`). |
+| GitHub (read only) | `https://api.githubcopilot.com/mcp/readonly` | your own GitHub token | Not verified; needs a user token, so it is labelled as such and only becomes ready after a successful test. |
+| Linear (read only) | `https://mcp.linear.app/mcp/readonly` | your own bearer token | Not verified; needs a user token. OAuth comes in a later milestone. |
+
 ## Environments in Sentry, PostHog and OpenObserve
 
 All three tag what they send with the same value, so local testing never mixes

@@ -23,12 +23,13 @@ model User {
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 
-  accounts       Account[]
-  sessions       Session[]
-  conversations  Conversation[]
-  documents      Document[]
-  skills         Skill[]
-  scheduledTasks ScheduledTask[]
+  accounts        Account[]
+  sessions        Session[]
+  conversations   Conversation[]
+  documents       Document[]
+  skills          Skill[]
+  scheduledTasks  ScheduledTask[]
+  mcpConnections  McpConnection[]
 
   @@map("users")
 }
@@ -117,11 +118,43 @@ model Message {
   updatedAt      DateTime     @updatedAt
   
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  toolCalls      MessageToolCall[]
 
   @@index([modelId])
   @@index([conversationId, modelId])
   @@unique([conversationId, position])
   @@map("messages")
+}
+
+/**
+ * One MCP tool call made during an assistant turn, in model order. A retried
+ * or deleted turn takes its calls with it (cascade), so a replayed chat can
+ * rebuild the exact assistant/tool message sequence OpenRouter requires.
+ * Arguments and results are the bounded texts the loop already produced.
+ */
+model MessageToolCall {
+  id           String   @id @default(uuid())
+  messageId    String
+  // OpenRouter's call id; the tool result row is addressed by it.
+  callId       String
+  // Order within the assistant turn, 0-based.
+  position     Int
+  connectionId String
+  // The server's own tool name; `name` is the normalized function name.
+  toolId       String
+  name         String
+  arguments    String   @db.Text
+  status       String
+  approval     String
+  result       String   @db.Text
+  truncated    Boolean  @default(false)
+  error        String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, position])
+  @@map("message_tool_calls")
 }
 
 /**
@@ -255,4 +288,47 @@ model ScheduledTaskRun {
   @@index([taskId, startedAt])
   @@index([status, startedAt])
   @@map("scheduled_task_runs")
+}
+
+/**
+ * A user's remote MCP server. Credentials are encrypted with MCP_CREDENTIAL_KEY
+ * and are never returned by any API response. Tool metadata comes from the
+ * server and is treated as untrusted.
+ */
+model McpConnection {
+  id            String    @id @default(uuid())
+  userId        String
+  name          String
+  // Catalog entry this connection was prefilled from; null for a custom URL.
+  catalogId     String?
+  url           String
+  // Only streamable_http is supported in this release.
+  transport     String    @default("streamable_http")
+  // none | bearer
+  authMode      String    @default("none")
+  // AES-256-GCM material for the bearer token; null when authMode is none.
+  credential    String?
+  // Off until the user turns it on; a tool-free connection changes nothing.
+  enabled       Boolean   @default(false)
+  // untested | connected | error
+  status        String    @default("untested")
+  // Redacted reason for the last failure, safe to show.
+  lastError     String?
+  lastCheckedAt DateTime?
+  // Discovered tools: [{ id, name, description, readOnly, schemaBytes }].
+  tools         Json?
+  // Hash of the discovered tool list; a mismatch means re-review is required.
+  toolsDigest   String?
+  // Digest the user last reviewed before enabling.
+  reviewedDigest String?
+  // Per-tool enablement: { "<server tool name>": true }.
+  toolEnabled   Json      @default("{}")
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+  @@index([userId, enabled])
+  @@map("mcp_connections")
 }

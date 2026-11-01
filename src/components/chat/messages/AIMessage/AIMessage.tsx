@@ -4,11 +4,12 @@ import MarkdownContent from './MarkdownContent';
 import { PendingIndicator, ThinkingBlock } from './ThinkingBlock';
 import CouncilProgressIndicator from '@/src/components/council/progress/ProgressIndicator';
 import { CouncilSummary } from '@/src/components/council/summary/CouncilSummary';
-import type { CompletionAnalytics, ContextCompactionInfo, CouncilDetails, CouncilProgress } from '@/src/types/chat.types';
+import type { CompletionAnalytics, ContextCompactionInfo, CouncilDetails, CouncilProgress, LiveToolCallView, MessageToolCallView } from '@/src/types/chat.types';
 
 import Image from 'next/image';
 import MessageActions from '../../actions/MessageActions';
 import MessageAnalytics from '../../analytics/MessageAnalytics';
+import ToolCallCard from './ToolCallCard';
 import { getModelMeta } from '@/src/lib/models';
 
 interface AIMessageProps {
@@ -34,6 +35,14 @@ interface AIMessageProps {
   forking?: boolean;
   council?: CouncilDetails;
   councilProgress?: CouncilProgress[];
+  /** MCP tool calls this turn already made, in model order. */
+  toolCalls?: MessageToolCallView[];
+  /** Live-session only: the call awaiting a decision or still running. */
+  toolCall?: LiveToolCallView;
+  /** Live-session only: notes about tools that never ran. */
+  toolNotices?: string[];
+  /** Spends the pending approval; absent once the turn is over. */
+  onToolDecision?: (decision: 'approved' | 'denied') => void;
 }
 
 const AIMessage: React.FC<AIMessageProps> = ({
@@ -55,11 +64,16 @@ const AIMessage: React.FC<AIMessageProps> = ({
   forking = false,
   council,
   councilProgress = [],
+  toolCalls,
+  toolCall,
+  toolNotices,
+  onToolDecision,
 }) => {
   const model = getModelMeta(modelId);
   const streaming = loading && isLastMessage;
   const showCouncilCard = streaming && !!council && !content;
-  const showPending = streaming && !content && !reasoning && !showCouncilCard;
+  const showToolCard = Boolean(toolCalls?.length || toolCall || toolNotices?.length);
+  const showPending = streaming && !content && !reasoning && !showCouncilCard && !showToolCard;
 
   return (
     <div className="w-full" data-message-id={messageId}>
@@ -85,6 +99,7 @@ const AIMessage: React.FC<AIMessageProps> = ({
           <div className="flex-1 min-w-0">
             {council && content && <CouncilSummary details={council} />}
             {showCouncilCard && council && <CouncilProgressIndicator progress={councilProgress} details={council} />}
+            <ToolCallCard calls={toolCalls} live={toolCall} notices={toolNotices} onDecision={onToolDecision} />
             <ThinkingBlock
               reasoning={reasoning}
               startedAt={reasoningStartedAt}
@@ -143,6 +158,10 @@ export default memo(AIMessage, (prev, next) => {
     prev.onFork === next.onFork &&
     prev.forking === next.forking &&
     prev.council === next.council &&
-    prev.councilProgress === next.councilProgress
+    prev.councilProgress === next.councilProgress &&
+    prev.toolCalls === next.toolCalls &&
+    prev.toolCall === next.toolCall &&
+    prev.toolNotices === next.toolNotices &&
+    prev.onToolDecision === next.onToolDecision
   );
 });

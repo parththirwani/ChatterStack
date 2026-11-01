@@ -23,6 +23,35 @@ export function delta(fields: { content?: string; reasoning?: string }, finishRe
   return { choices: [{ delta: fields, ...(finishReason ? { finish_reason: finishReason } : {}) }] };
 }
 
+/** One `tool_calls` entry as it arrives on the wire. */
+export function toolCallDelta(entry: {
+  index?: number;
+  id?: string;
+  name?: string;
+  arguments?: string;
+}) {
+  return {
+    choices: [{
+      delta: {
+        tool_calls: [{
+          ...(entry.index === undefined ? {} : { index: entry.index }),
+          ...(entry.id === undefined ? {} : { id: entry.id }),
+          type: 'function',
+          function: {
+            ...(entry.name === undefined ? {} : { name: entry.name }),
+            ...(entry.arguments === undefined ? {} : { arguments: entry.arguments }),
+          },
+        }],
+      },
+    }],
+  };
+}
+
+/** Splits a JSON argument blob into per-token deltas for one tool call. */
+export function toolCallArgumentChunks(index: number, chunks: string[]) {
+  return chunks.map((part) => toolCallDelta({ index, arguments: part }));
+}
+
 /** Read a server SSE Response into the list of JSON payloads it sent. */
 export async function readEvents(response: Response): Promise<Array<Record<string, unknown> | '[DONE]'>> {
   const text = await response.text();

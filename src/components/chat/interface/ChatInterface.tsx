@@ -187,6 +187,8 @@ interface MessageListProps {
   onFork?: (messageId: string) => void;
   /** Message whose fork request is still running. */
   forkingMessageId?: string | null;
+  /** Spends the tool approval the streaming turn is waiting on. */
+  onToolDecision?: (decision: 'approved' | 'denied') => void;
 }
 
 const MessageList = memo(function MessageList({
@@ -197,6 +199,7 @@ const MessageList = memo(function MessageList({
   onRetry,
   onFork,
   forkingMessageId,
+  onToolDecision,
 }: MessageListProps) {
   const handoffs = useMemo(() => modelHandoffs(messages), [messages]);
   return (
@@ -246,6 +249,10 @@ const MessageList = memo(function MessageList({
               forking={forking}
               council={msg.council}
               councilProgress={isLastMessage ? councilProgress : undefined}
+              toolCalls={msg.toolCalls}
+              toolCall={isLastMessage ? msg.toolCall : undefined}
+              toolNotices={isLastMessage ? msg.toolNotices : undefined}
+              onToolDecision={isLastMessage && loading ? onToolDecision : undefined}
             />
           </React.Fragment>
         );
@@ -605,6 +612,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
     finishEditingQueued,
     clearError,
     stopGenerating,
+    decideToolCall,
   } = useChat(conversationKey);
 
   const { councilMode: isCouncilMode, activeModelId } = useModelSelection();
@@ -827,6 +835,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({
                   onRetry={handleRetry}
                   onFork={handleFork}
                   forkingMessageId={forkingMessageId}
+                  onToolDecision={decideToolCall}
                 />
               )}
             </div>

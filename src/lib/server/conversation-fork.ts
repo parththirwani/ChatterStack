@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { prisma } from '@/src/lib/prisma';
 import { MESSAGE_ORDER } from '@/src/lib/server/message-order';
 import { getConversation } from '@/src/lib/server/conversations';
@@ -12,6 +13,24 @@ const UNTITLED = 'untitled chat';
 
 /** Raised when the chosen message isn't in the snapshot the fork copies. */
 export class ForkTargetGone extends Error {}
+
+/** A copied tool call row minus what the fork re-assigns. */
+interface MessageToolCallSourceRow {
+  id: string;
+  messageId: string;
+  createdAt: Date;
+  callId: string;
+  position: number;
+  connectionId: string;
+  toolId: string;
+  name: string;
+  arguments: string;
+  status: string;
+  approval: string;
+  result: string;
+  truncated: boolean;
+  error: string | null;
+}
 
 /** `Fork of <source title>`, or of its first question when the source has no title. */
 export function forkTitle(sourceTitle: string | null | undefined, firstQuestion?: string | null): string {
@@ -56,6 +75,7 @@ export async function forkConversationAtMessage(
     const rows = await tx.message.findMany({
       where: { conversationId: source.id },
       orderBy: MESSAGE_ORDER,
+      include: { toolCalls: { orderBy: { position: 'asc' } } },
     });
     const cut = rows.findIndex((row) => row.id === selected.id);
     if (cut === -1) throw new ForkTargetGone();
@@ -72,25 +92,36 @@ export async function forkConversationAtMessage(
       select: { id: true },
     });
 
-    await tx.message.createMany({
-      data: prefix.map((row, index) => ({
-        conversationId: created.id,
-        content: row.content,
-        role: row.role,
-        modelId: row.modelId,
-        // Positions are renumbered from 1 so the copy is dense and its next
-        // exchange continues after the last copied row.
-        position: index + 1,
-        createdAt: row.createdAt,
-        updatedAt: row.updatedAt,
-        ...(row.attachments === null || row.attachments === undefined
-          ? {}
-          : { attachments: row.attachments as Prisma.InputJsonValue }),
-        ...(row.skills === null || row.skills === undefined
-          ? {}
-          : { skills: row.skills as Prisma.InputJsonValue }),
-      })),
-    });
+    // Ids are generated here (not by the copy) so the saved MCP tool calls can
+    // be re-attached to their new assistant rows in the same transaction.
+    const copies = prefix.map((row, index) => ({
+      id: crypto.randomUUID(),
+      conversationId: created.id,
+      content: row.content,
+      role: row.role,
+      modelId: row.modelId,
+      // Positions are renumbered from 1 so the copy is dense and its next
+      // exchange continues after the last copied row.
+      position: index + 1,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      ...(row.attachments === null || row.attachments === undefined
+        ? {}
+        : { attachments: row.attachments as Prisma.InputJsonValue }),
+      ...(row.skills === null || row.skills === undefined
+        ? {}
+        : { skills: row.skills as Prisma.InputJsonValue }),
+    }));
+    await tx.message.createMany({ data: copies });
+
+    const toolCalls = prefix.flatMap((row, index) =>
+      ((row as { toolCalls?: unknown[] }).toolCalls ?? []).map((tool, position) => ({
+        ...(tool as Omit<MessageToolCallSourceRow, 'id' | 'messageId' | 'createdAt'>),
+        messageId: copies[index].id,
+        position,
+      }))
+    );
+    if (toolCalls.length) await tx.messageToolCall.createMany({ data: toolCalls });
 
     // Shape the response before commit. A read or serialization failure must
     // roll back the fork instead of leaving a copy behind after a 500 response.
