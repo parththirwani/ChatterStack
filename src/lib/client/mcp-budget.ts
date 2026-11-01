@@ -34,7 +34,9 @@ export interface McpMeterState {
  * The tools this connection would actually put in front of the model: the
  * server is switched on, connected and reviewed, and the tool itself is on.
  * That is exactly the chat route's rule, so the meter and the model can never
- * drift apart (see chatConnections in src/lib/server/mcp-connections.ts).
+ * drift apart (see chatConnections in src/lib/server/mcp-connections.ts; the
+ * parity is pinned by the integration test "meters exactly the tool set the
+ * model is offered" in tests/integration/mcp-chat-route.test.ts).
  */
 export function modelFacingTools(connection: McpConnectionView): McpConnectionView['tools'] {
   if (!connection.enabled || connection.status !== 'connected' || connection.needsReview) return [];

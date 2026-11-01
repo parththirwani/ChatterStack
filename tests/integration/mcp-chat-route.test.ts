@@ -11,6 +11,8 @@ import crypto from 'node:crypto';
 import type { NextRequest } from 'next/server';
 import { delta, readEvents, sseResponse, toolCallArgumentChunks, toolCallDelta } from '../helpers/sse';
 import { startMcpFixture, type McpFixture } from '../helpers/mcp-fixture-server';
+import type { McpConnectionRow } from '@/src/lib/server/mcp-connections';
+import { buildMeterState, modelFacingTools } from '@/src/lib/client/mcp-budget';
 
 const nativeFetch = globalThis.fetch;
 
@@ -18,6 +20,9 @@ const auth = vi.fn();
 const MODEL = 'openai/gpt-6.1-sol';
 const CONVERSATION_ID = '0e7ba32e-05b0-477d-8e30-2bf0a849649e';
 const CONNECTION_ID = '11111111-2222-3333-4444-555555555555';
+const OFF_CONNECTION_ID = '22222222-3333-4444-5555-666666666666';
+const REVIEW_CONNECTION_ID = '33333333-4444-5555-6666-777777777777';
+const ERROR_CONNECTION_ID = '44444444-5555-6666-7777-888888888888';
 
 type Row = Record<string, unknown>;
 const messageRows = new Map<string, Row & { id: string }>();
@@ -69,6 +74,16 @@ const db = {
         row.userId === where.userId &&
         (where.enabled === undefined || row.enabled === where.enabled) &&
         (where.status === undefined || row.status === where.status))),
+    findFirst: vi.fn(async ({ where }: { where: { id: string; userId: string } }) => {
+      const row = mcpConnections.get(where.id);
+      return row && row.userId === where.userId ? row : null;
+    }),
+    updateMany: vi.fn(async ({ where, data }: { where: { id: string; userId: string }; data: Row }) => {
+      const row = mcpConnections.get(where.id);
+      if (!row || row.userId !== where.userId) return { count: 0 };
+      Object.assign(row, data);
+      return { count: 1 };
+    }),
     count: vi.fn(async () => mcpConnections.size),
   },
   skill: { findMany: vi.fn(async () => []) },
@@ -97,6 +112,8 @@ vi.mock('@/src/lib/tokens', () => ({ countTokens: (text: string) => text.length 
 
 const { POST } = await import('@/src/app/api/chat/route');
 const { POST: decide } = await import('@/src/app/api/mcp/tool-approvals/route');
+const { PATCH: patchConnection } = await import('@/src/app/api/mcp/connections/[id]/route');
+const { normalizedTools, publicConnection } = await import('@/src/lib/server/mcp-connections');
 const { clearApprovalStore } = await import('@/src/lib/server/tool-approvals');
 
 const fetchMock = vi.fn();
@@ -136,6 +153,55 @@ function seedConnection(url: string) {
     updatedAt: new Date(),
   });
 }
+
+/** Seeds a row in the shape discovery leaves behind, so the view helpers work. */
+function seedServer(overrides: Row & { id: string; name: string; url: string }) {
+  const row = {
+    userId: 'user-1',
+    catalogId: null,
+    transport: 'streamable_http',
+    authMode: 'none',
+    credential: null,
+    enabled: true,
+    status: 'connected',
+    lastError: null,
+    lastCheckedAt: new Date(),
+    tools: [],
+    toolsDigest: 'digest',
+    reviewedDigest: 'digest',
+    toolEnabled: {},
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+  mcpConnections.set(row.id, row);
+  return row;
+}
+
+const rowOf = (row: Row & { id: string }) => row as unknown as McpConnectionRow;
+const offeredNames = (body: Row) =>
+  ((body.tools ?? []) as Array<{ function: { name: string } }>).map((tool) => tool.function.name);
+const eventsOf = (recorder: Recorder, kind: string) =>
+  recorder.events.filter((event): event is Record<string, unknown> => event !== '[DONE]' && kind in event);
+
+/**
+ * The function names the management meter would count for these stored rows,
+ * computed with the browser's own rule from src/lib/client/mcp-budget.ts.
+ */
+function meterFacingNames(rows: Array<Row & { id: string }>): string[] {
+  return rows
+    .flatMap((row) => {
+      const fnNames = new Map(normalizedTools(rowOf(row)).map((tool) => [tool.name, tool.fnName]));
+      return modelFacingTools(publicConnection(rowOf(row))).map((tool) => fnNames.get(tool.id) ?? `missing:${tool.id}`);
+    })
+    .sort();
+}
+
+const patchConnectionRoute = (id: string, body: object) =>
+  patchConnection(
+    new Request(`http://localhost/api/mcp/connections/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    { params: Promise.resolve({ id }) }
+  );
 
 /** Streams the response as it arrives so a test can answer mid-turn. */
 class Recorder {
@@ -200,6 +266,12 @@ const approvalOf = (event: Record<string, unknown>) =>
   event.toolApprovalRequest as { approvalId: string; callId: string; name: string; toolId: string; connectionId: string; arguments: Record<string, unknown>; round: number; expiresAt: number };
 
 let fixture: McpFixture | null = null;
+const extraFixtures: McpFixture[] = [];
+const startExtraFixture = async (options: Parameters<typeof startMcpFixture>[0] = {}) => {
+  const server = await startMcpFixture(options);
+  extraFixtures.push(server);
+  return server;
+};
 
 beforeEach(() => {
   messageRows.clear();
@@ -217,6 +289,8 @@ beforeEach(() => {
   db.$transaction.mockClear();
   db.messageToolCall.createMany.mockClear();
   db.mcpConnection.findMany.mockClear();
+  db.mcpConnection.findFirst.mockClear();
+  db.mcpConnection.updateMany.mockClear();
   db.mcpConnection.count.mockClear();
   Object.values(db.message).forEach((fn) => fn.mockClear());
   Object.values(db.conversation).forEach((fn) => fn.mockClear());
@@ -242,6 +316,8 @@ beforeEach(() => {
 afterEach(async () => {
   await fixture?.close();
   fixture = null;
+  await Promise.all(extraFixtures.map((server) => server.close()));
+  extraFixtures.length = 0;
   vi.unstubAllEnvs();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -441,6 +517,131 @@ describe('POST /api/chat with an approved MCP tool call', () => {
 
     expect(openRouterBodies[0]).not.toHaveProperty('tools');
     expect([...messageRows.values()].some((row) => row.role === 'assistant' && row.content === 'No tools needed.')).toBe(true);
+  });
+});
+
+describe('POST /api/chat keeps MCP tools the user switched off away from the model', () => {
+  it('leaves a switched-off tool out of the model request and refuses the model when it calls it anyway', async () => {
+    fixture = await startMcpFixture();
+    seedConnection(fixture.url);
+    mcpConnections.get(CONNECTION_ID)!.toolEnabled = { 'docs.search': true, echo: false, slow: true };
+    vi.stubEnv('MCP_TOOLS', 'on');
+    vi.stubEnv('MCP_ALLOWED_ORIGINS', fixture.origin);
+    chatScripts = [toolCallScript('Docs__echo', '{"value":"hi"}'), textScript('Understood, skipping that.')];
+
+    const recorder = new Recorder(await post({ message: 'Echo hi', selectedModel: MODEL, conversationId: CONVERSATION_ID }));
+    await recorder.finished();
+
+    // The model was never shown the tool it was about to abuse.
+    expect(offeredNames(openRouterBodies[0])).toEqual(['Docs__docs_search', 'Docs__slow']);
+    // No approval was requested and nothing ran: a missing tool cannot be sneaked in.
+    expect(eventsOf(recorder, 'toolApprovalRequest')).toHaveLength(0);
+    expect(eventsOf(recorder, 'toolCallStarted')).toHaveLength(0);
+    expect(fixture.calls).toHaveLength(0);
+    expect(eventsOf(recorder, 'toolCallFailure')[0]?.toolCallFailure).toMatchObject({
+      callId: 'call-1', name: 'Docs__echo', status: 'not_enabled', approval: 'not_requested',
+    });
+    expect(toolCallRows[0]).toMatchObject({ status: 'not_enabled', approval: 'not_requested' });
+    // The model is told the call did not happen and still gets to answer.
+    const toolMessage = (openRouterBodies.at(-1)!.messages as Row[]).at(-1) as { role: string; content: string; tool_call_id: string };
+    expect(toolMessage).toMatchObject({ role: 'tool', tool_call_id: 'call-1' });
+    expect(toolMessage.content).toContain('Docs__echo');
+    expect([...messageRows.values()].some((row) => row.role === 'assistant' && String(row.content).includes('skipping that'))).toBe(true);
+  });
+
+  it('leaves a switched-off, unreviewed or broken server out of the request without even asking it for tools', async () => {
+    fixture = await startMcpFixture();
+    const idle = await startExtraFixture();
+    const stored = [{ name: 'echo', description: 'Echo the arguments back.', readOnly: false, schemaBytes: 50 }];
+    seedConnection(fixture.url);
+    seedServer({ id: OFF_CONNECTION_ID, name: 'Wiki', url: idle.url, enabled: false, tools: stored, toolEnabled: { echo: true } });
+    seedServer({ id: REVIEW_CONNECTION_ID, name: 'Atlas', url: idle.url, reviewedDigest: 'stale', tools: stored, toolEnabled: { echo: true } });
+    seedServer({
+      id: ERROR_CONNECTION_ID, name: 'Broken', url: idle.url, status: 'error',
+      lastError: 'The server refused the connection.', tools: stored, toolEnabled: { echo: true },
+    });
+    vi.stubEnv('MCP_TOOLS', 'on');
+    vi.stubEnv('MCP_ALLOWED_ORIGINS', `${fixture.origin},${idle.origin}`);
+    chatScripts = [textScript('Answered without the other servers.')];
+
+    const recorder = new Recorder(await post({ message: 'hi', selectedModel: MODEL, conversationId: CONVERSATION_ID }));
+    await recorder.finished();
+
+    expect(offeredNames(openRouterBodies[0])).toEqual(['Docs__docs_search', 'Docs__echo', 'Docs__slow']);
+    // Excluded before discovery, so those endpoints saw no traffic at all.
+    expect(idle.authorizations).toHaveLength(0);
+    // Silence rather than an error: a server the user switched off is not a failure.
+    expect(eventsOf(recorder, 'toolDiscoveryFailed')).toHaveLength(0);
+    expect([...messageRows.values()].some((row) => row.role === 'assistant' && row.content === 'Answered without the other servers.')).toBe(true);
+  });
+
+  it('meters exactly the tool set the model is offered', async () => {
+    fixture = await startMcpFixture();
+    const docs = seedServer({
+      id: CONNECTION_ID,
+      name: 'Docs',
+      url: fixture.url,
+      tools: [
+        { name: 'docs.search', description: 'Find documentation pages that match a query.', readOnly: true, schemaBytes: 60, estTokens: 120 },
+        { name: 'echo', description: 'Echo the arguments back.', readOnly: false, schemaBytes: 50, estTokens: 90 },
+        { name: 'slow', description: 'Answers late.', readOnly: false, schemaBytes: 20, estTokens: 40 },
+      ],
+      toolEnabled: { 'docs.search': true, echo: false, slow: true },
+    });
+    const switchedOff = seedServer({
+      id: OFF_CONNECTION_ID, name: 'Wiki', url: fixture.url, enabled: false,
+      tools: [{ name: 'echo', description: 'Echo the arguments back.', readOnly: false, schemaBytes: 50, estTokens: 900 }],
+      toolEnabled: { echo: true },
+    });
+    const awaitingReview = seedServer({
+      id: REVIEW_CONNECTION_ID, name: 'Atlas', url: fixture.url, reviewedDigest: 'stale',
+      tools: [{ name: 'echo', description: 'Echo the arguments back.', readOnly: false, schemaBytes: 50, estTokens: 1_500 }],
+      toolEnabled: { echo: true },
+    });
+    vi.stubEnv('MCP_TOOLS', 'on');
+    vi.stubEnv('MCP_ALLOWED_ORIGINS', fixture.origin);
+    chatScripts = [textScript('Metered turn.')];
+
+    const recorder = new Recorder(await post({ message: 'hi', selectedModel: MODEL, conversationId: CONVERSATION_ID }));
+    await recorder.finished();
+
+    const rows = [docs, switchedOff, awaitingReview];
+    const views = rows.map((row) => publicConnection(rowOf(row)));
+    // The browser-side meter and the real model request agree on the tool set.
+    expect(meterFacingNames(rows)).toEqual(offeredNames(openRouterBodies[0]).sort());
+    // And on the price: only Docs's two switched-on tools are counted.
+    const state = buildMeterState(views);
+    expect(state.total).toBe(160);
+    expect(state.segments.map((segment) => segment.name)).toEqual(['Docs']);
+    expect(state.segments[0]?.estimatedTokens).toBe(160);
+    expect(state.unestimated).toBe(0);
+    expect(state.overBy).toBe(0);
+  });
+
+  it('drops a tool from the next model request once the PATCH endpoint switches it off', async () => {
+    fixture = await startMcpFixture();
+    seedConnection(fixture.url);
+    vi.stubEnv('MCP_TOOLS', 'on');
+    vi.stubEnv('MCP_ALLOWED_ORIGINS', fixture.origin);
+    chatScripts = [textScript('First answer.'), textScript('Second answer.')];
+
+    const first = new Recorder(await post({ message: 'one', selectedModel: MODEL, conversationId: CONVERSATION_ID }));
+    await first.finished();
+    expect(offeredNames(openRouterBodies[0])).toContain('Docs__echo');
+
+    const response = await patchConnectionRoute(CONNECTION_ID, { toolEnabled: { 'docs.search': true, echo: false, slow: true } });
+    expect(response.status).toBe(200);
+    const { connection } = (await response.json()) as { connection: ReturnType<typeof publicConnection> };
+    expect(connection.tools.find((tool) => tool.name === 'echo')).toMatchObject({ enabled: false });
+    expect(meterFacingNames([mcpConnections.get(CONNECTION_ID)!])).toEqual(['Docs__docs_search', 'Docs__slow']);
+
+    const second = new Recorder(await post({ message: 'two', selectedModel: MODEL, conversationId: CONVERSATION_ID }));
+    await second.finished();
+
+    expect(openRouterBodies).toHaveLength(2);
+    expect(offeredNames(openRouterBodies[1])).toEqual(['Docs__docs_search', 'Docs__slow']);
+    // The choice is stored, so the tool stays out of every later request.
+    expect(mcpConnections.get(CONNECTION_ID)!.toolEnabled).toEqual({ 'docs.search': true, slow: true });
   });
 });
 
