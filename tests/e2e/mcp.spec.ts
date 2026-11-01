@@ -328,10 +328,10 @@ test('a saved tool call is part of the chat after a reload', async ({ page }) =>
   const card = page.getByRole('region', { name: 'Tool calls' });
   await expect(card.getByText('Docs_server_search_cloudflare_documentation')).toBeVisible();
   await expect(card.getByText('Completed', { exact: true })).toBeVisible();
-  await expect(card.getByText('result shortened')).toBeVisible();
+  await expect(card.getByText('result shortened')).toHaveCount(0);
   await expect(card.getByText('Denied', { exact: true })).toBeVisible();
-  await card.getByText('Result sent to the model').click();
-  await expect(card.getByText('Assets are files uploaded with a Worker.')).toBeVisible();
+  await expect(card.getByText('Result sent to the model')).toHaveCount(0);
+  await expect(card.getByText('Assets are files uploaded with a Worker.')).toHaveCount(0);
   await expect(page.getByText('They are files deployed alongside a Worker.')).toBeVisible();
 });
 
