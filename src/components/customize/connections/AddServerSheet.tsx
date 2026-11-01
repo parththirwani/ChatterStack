@@ -3,6 +3,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom';
 import { ArrowLeft, ArrowRight, Link2, Loader2, PenLine, PlugZap, Search, ShieldCheck, X } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
+import { motionTokens } from '@/src/components/arc/lib/motion-tokens';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
 import { MCP_CATALOG, type McpCatalogEntry } from '@/src/config/mcp-catalog';
 import { createMcpConnection, testMcpConnection, updateMcpConnection, McpApiError } from '@/src/lib/client/mcp';
@@ -301,7 +302,7 @@ export default function AddServerSheet({ backgroundRef, onConnected, onClose, an
         aria-labelledby="mcp-add-title"
         initial={reduceMotion ? false : { x: '100%' }}
         animate={{ x: 0 }}
-        transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.4, bounce: 0 }}
+        transition={reduceMotion ? { duration: 0 } : motionTokens.spring.smooth}
         className="flex h-full w-full max-w-md flex-col border-l border-white/[0.08] bg-[#1f1f1f] shadow-2xl"
       >
         <header className="flex items-start gap-2 border-b border-white/[0.06] px-4 py-4 min-[400px]:px-5">
@@ -558,7 +559,7 @@ export default function AddServerSheet({ backgroundRef, onConnected, onClose, an
                       key={tool.id}
                       initial={reduceMotion ? false : { opacity: 0, y: 6 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.26, bounce: 0 }}
+                      transition={reduceMotion ? { duration: 0 } : motionTokens.spring.snappy}
                       className="flex items-center gap-2 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-2 min-[400px]:gap-3"
                     >
                       <div className="min-w-0 flex-1">

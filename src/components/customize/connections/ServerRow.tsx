@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ChevronRight, Link2, PenLine, ShieldCheck } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
+import { motionTokens } from '@/src/components/arc/lib/motion-tokens';
 import { Switch } from '@/src/components/arc/switch/switch';
 import { formatMeterTokens } from '@/src/lib/client/mcp-budget';
 import { testMcpConnection } from '@/src/lib/client/mcp';
@@ -125,7 +126,7 @@ export default function ServerRow({
       data-entering={entering ? 'true' : undefined}
       initial={entering && !reduceMotion ? { opacity: 0, x: -12 } : false}
       animate={{ opacity: 1, x: 0 }}
-      transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.32, bounce: 0 }}
+      transition={reduceMotion ? { duration: 0 } : motionTokens.spring.smooth}
       className={`border-b border-white/[0.06] last:border-b-0 ${reduceMotion ? '' : 'transition-colors duration-500'} ${entering ? 'bg-white/[0.06]' : ''}`}
     >
       <div className="flex items-center gap-2 px-3 py-2.5">
@@ -172,7 +173,7 @@ export default function ServerRow({
             initial={reduceMotion ? false : { height: 0, opacity: 0 }}
             animate={{ height: 'auto', opacity: 1 }}
             exit={reduceMotion ? { opacity: 1 } : { height: 0, opacity: 0 }}
-            transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.32, bounce: 0 }}
+            transition={reduceMotion ? { duration: 0 } : motionTokens.spring.smooth}
             className="overflow-hidden"
           >
             <div className="px-3 pb-3 pl-3 min-[400px]:pl-12">

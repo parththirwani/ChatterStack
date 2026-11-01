@@ -2,6 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Undo2 } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
+import { motionTokens } from '@/src/components/arc/lib/motion-tokens';
 import type { PendingRemoval } from './useUndoableRemoval';
 import HideOnNarrow from './HideOnNarrow';
 
@@ -54,7 +55,7 @@ export default function UndoBar({ pending, getRemaining, windowMs, onUndo, onHid
       tabIndex={-1}
       initial={reduceMotion ? false : { opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={reduceMotion ? { duration: 0 } : { type: 'spring', visualDuration: 0.26, bounce: 0 }}
+      transition={reduceMotion ? { duration: 0 } : motionTokens.spring.snappy}
       onPointerEnter={() => onPauseSource('pointer', true)}
       onPointerLeave={() => onPauseSource('pointer', false)}
       onFocus={() => onPauseSource('focus', true)}
