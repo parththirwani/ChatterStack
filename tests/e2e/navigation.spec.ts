@@ -129,7 +129,7 @@ test('back and forward move between chats without reloading', async ({ page }) =
   await openApp(page, {}, `/${A}`);
   await click(page, 'Chat B');
   await page.getByRole('button', { name: 'New chat', exact: true }).first().click();
-  await expect(page.getByRole('heading', { name: 'What can I help you work on?' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: /^(What can I help with\?|What should we make\?|Where should we start\?)$/ })).toBeVisible();
 
   const back = await watch(page, () => page.goBack());
   expect(back.serverRequests).toEqual([]);

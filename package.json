@@ -10,12 +10,15 @@
     "lint": "eslint",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit",
+    "check:bundle": "node scripts/check-bundle-size.mjs --target docker",
+    "check:bundle:vercel": "node scripts/check-bundle-size.mjs --target vercel",
     "test:static": "tsc --noEmit && eslint",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration --project components",
     "test:models": "OPENROUTER_LIVE_MODEL_CHECK=1 vitest run --project integration tests/integration/model-routing.live.test.ts",
     "test:vitest": "vitest run",
     "test:e2e": "playwright test",
+    "test:perf": "E2E_PERF=1 playwright test tests/e2e/perf.spec.ts",
     "test": "npm run test:static && vitest run && playwright test"
   },
   "engines": {
@@ -55,7 +58,7 @@
     "remark-math": "^6.0.0",
     "thinking-orbs": "^0.3.2",
     "uuid": "^14.0.3",
-    "zod": "^4.3.6",
+    "zod": "^4.6.7",
     "tailwindcss": "^4",
     "zustand": "^5.0.11"
   },
@@ -76,5 +79,11 @@
     "prisma": "^7.4.0",
     "typescript": "^5",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "zod": "$zod",
+    "next": {
+      "postcss": "^8.5.31"
+    }
   }
 }

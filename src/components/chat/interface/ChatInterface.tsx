@@ -20,9 +20,15 @@ import LoginModal from '@/src/components/auth/AuthModal';
 import type { User } from '@/src/types/user.types';
 import type { QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 import { COMPOSE_EVENT } from '@/src/lib/client/skills';
+import { MorphingText } from '@/src/components/ui/text-morphing';
 
 const EMPTY_MESSAGES: Message[] = [];
 const EMPTY_TURNS: Turn[] = [];
+const EMPTY_CHAT_HEADINGS = [
+  'What can I help with?',
+  'What should we make?',
+  'Where should we start?',
+];
 
 const starterPrompts = [
   { label: 'Explain code', prompt: 'Explain this code: ', Icon: Code2 },
@@ -259,8 +265,8 @@ const MessageList = memo(function MessageList({
 const EmptyState = memo(function EmptyState({ isCouncilMode }: { isCouncilMode: boolean }) {
   return (
     <div className="flex flex-col items-center justify-center px-5 pb-3 text-center">
-      <h1 className="max-w-[620px] text-balance font-serif text-[30px] font-normal leading-[1.18] tracking-[-0.025em] text-[#f1efec] sm:text-[44px]">
-        {isCouncilMode ? 'Bring the council together' : 'What can I help you work on?'}
+      <h1 className={`w-full max-w-[620px] text-balance font-serif font-normal leading-[1.18] tracking-[-0.025em] text-[#f1efec] sm:text-[44px] ${isCouncilMode ? 'text-[30px]' : 'text-[26px]'}`}>
+        {isCouncilMode ? 'Bring the council together' : <MorphingText texts={EMPTY_CHAT_HEADINGS} />}
       </h1>
       <p className="chat-empty-subtitle mt-3 max-w-[520px] text-sm leading-6 text-[#a7a39e] sm:text-[15px]">
         {isCouncilMode
