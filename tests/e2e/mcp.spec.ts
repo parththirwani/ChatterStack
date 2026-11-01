@@ -82,8 +82,13 @@ const errorOf = (name: string) => column(name, 'coalesce("lastError", \'\')');
 const toolCallRows = (messageId: string) =>
   sql(`SELECT "position" || ':' || name || ':' || status || ':' || approval FROM message_tool_calls WHERE "messageId" = ${literal(messageId)} ORDER BY "position"`);
 
-const connections = (page: Page) => page.getByRole('region', { name: 'Your connections' });
+const connections = (page: Page) => page.getByRole('region', { name: 'MCP servers' });
 const connectionRow = (page: Page, name: string) => connections(page).locator('li').filter({ hasText: name });
+/** Rows are collapsed review-first cards; open one through its full accessible name. */
+const openRow = async (page: Page, name: string) => {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  await connectionRow(page, name).getByRole('button', { name: new RegExp(`^${escaped}, `) }).click();
+};
 /** Waits for a column the app writes through the API, without hammering psql. */
 const dbPoll: { timeout: number; intervals: number[] } = { timeout: 15_000, intervals: [250, 500, 1_000] };
 
@@ -128,7 +133,11 @@ test('connecting from the catalog starts off, untested and without a credential'
   expect(credentialOf('Cloudflare documentation')).toBe('');
   await expect(row.getByText('Not tested')).toBeVisible();
   await expect(row.getByText('Off', { exact: true })).toBeVisible();
-  await expect(row).toContainText('docs.mcp.cloudflare.com · 0 tools · No token');
+  await expect(row.getByText('Remote')).toBeVisible();
+  await expect(row.getByText('0 of 0 tools on')).toBeVisible();
+  await openRow(page, 'Cloudflare documentation');
+  await expect(row.getByText('https://docs.mcp.cloudflare.com/mcp')).toBeVisible();
+  await expect(row.getByText('No tools discovered yet')).toBeVisible();
   await expect(row.getByRole('switch', { name: 'Enable Cloudflare documentation', exact: true })).toHaveAttribute('aria-checked', 'false');
 });
 
@@ -137,6 +146,7 @@ test('a stored tool list is reviewed before the connection runs, and each tool s
   await openApp(page);
   await page.goto('/customize/connections');
   const row = connectionRow(page, 'Docs server');
+  await openRow(page, 'Docs server');
   await expect(row.getByText('The tool list changed since you last reviewed it')).toBeVisible();
   await expect(row.getByRole('list', { name: 'Tools on Docs server' })).toContainText(SEARCH_TOOL);
   await expect(row.getByRole('switch', { name: `Enable ${SEARCH_TOOL} on Docs server` })).toHaveAttribute('aria-checked', 'false');
@@ -168,6 +178,7 @@ test('the token dialog never shows a stored token, and removing one clears the c
   await openApp(page);
   await page.goto('/customize/connections');
   const row = connectionRow(page, 'Docs server');
+  await openRow(page, 'Docs server');
   await expect(row).toContainText('Token stored');
 
   await row.getByRole('button', { name: 'Change token for Docs server' }).click();
@@ -189,6 +200,7 @@ test('a token typed into the dialog is stored encrypted or refused, never in the
   seedConnection({ id: SERVER_ID, name: 'Docs server' });
   await openApp(page);
   await page.goto('/customize/connections');
+  await openRow(page, 'Docs server');
   await connectionRow(page, 'Docs server').getByRole('button', { name: 'Add token for Docs server' }).click();
 
   const dialog = page.getByRole('dialog', { name: 'Add token' });
@@ -234,6 +246,7 @@ test('Test on an unreachable server stores a visible failure instead of a tool l
   await openApp(page);
   await page.goto('/customize/connections');
   const row = connectionRow(page, 'Docs server');
+  await openRow(page, 'Docs server');
   await expect(row.getByRole('list', { name: 'Tools on Docs server' })).toBeVisible();
   expect(toolSwitch('Docs server', SEARCH_TOOL)).toBe('true');
 

@@ -1,20 +1,17 @@
 'use client';
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link2, PlugZap, ShieldCheck, Trash2 } from 'lucide-react';
-import { Switch } from '@/src/components/arc/switch/switch';
+import { PlugZap } from 'lucide-react';
 import { useModalFocus } from '@/src/hooks/useModalFocus';
 import { useAppStore } from '@/src/store/rootStore';
 import { MCP_CATALOG, type McpCatalogEntry } from '@/src/config/mcp-catalog';
-import type { McpConnectionView } from '@/src/types/mcp.types';
-import {
-  createMcpConnection,
-  deleteMcpConnection,
-  testMcpConnection,
-  updateMcpConnection,
-  useMcpConnections,
-} from '@/src/lib/client/mcp';
-import { shortDate } from './format';
+import { formatMeterTokens } from '@/src/lib/client/mcp-budget';
+import type { McpConnectionView, McpToolView } from '@/src/types/mcp.types';
+import { createMcpConnection, updateMcpConnection, useMcpConnections } from '@/src/lib/client/mcp';
+import ContextMeter from './connections/ContextMeter';
+import ServerRow from './connections/ServerRow';
+import UndoBar from './connections/UndoBar';
+import { useUndoableRemoval } from './connections/useUndoableRemoval';
 import { PageHeaderToggle } from './SkillsPage';
 import CustomizeTabs from './CustomizeTabs';
 
@@ -129,163 +126,6 @@ export function TokenDialog({
   );
 }
 
-function StatusBadge({ connection }: { connection: McpConnectionView }) {
-  if (connection.status === 'connected') {
-    return <span className="shrink-0 rounded-md bg-emerald-400/10 px-1.5 py-0.5 text-[11px] text-[#9fd49f]">Connected{connection.lastCheckedAt ? ` · ${shortDate(connection.lastCheckedAt)}` : ''}</span>;
-  }
-  if (connection.status === 'error') return <span className="shrink-0 rounded-md bg-red-400/10 px-1.5 py-0.5 text-[11px] text-red-300">Error</span>;
-  return <span className="shrink-0 rounded-md bg-white/[0.06] px-1.5 py-0.5 text-[11px] text-[#aaa6a2]">Not tested</span>;
-}
-
-function ConnectionRow({ connection, onAction }: { connection: McpConnectionView; onAction: (work: () => Promise<unknown>) => void }) {
-  const [testing, setTesting] = useState(false);
-  const [testError, setTestError] = useState('');
-  const [tokenDialog, setTokenDialog] = useState(false);
-  const [confirming, setConfirming] = useState(false);
-
-  const runTest = async () => {
-    setTesting(true);
-    setTestError('');
-    try {
-      const result = await testMcpConnection(connection.id);
-      if (!result.ok) setTestError(result.error ?? 'The server did not answer.');
-    } catch (failure) {
-      setTestError((failure as Error).message);
-    } finally {
-      setTesting(false);
-    }
-  };
-
-  return (
-    <li className="border-b border-white/[0.06] px-3 py-3">
-      <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/[0.05] text-[#aaa6a2]"><Link2 className="h-4 w-4" /></span>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-[#eee]">{connection.name}</span>
-            <StatusBadge connection={connection} />
-            {!connection.enabled && <span className="shrink-0 text-[11px] text-[#8f8b86]">Off</span>}
-          </div>
-          <p className="mt-0.5 truncate text-xs text-[#8f8b86]">
-            {connection.host} · {connection.toolCount} {connection.toolCount === 1 ? 'tool' : 'tools'} · {connection.hasCredential ? 'Token stored' : 'No token'}
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            onClick={() => onAction(runTest)}
-            disabled={testing}
-            aria-label={`Test ${connection.name}`}
-            className="rounded-md border border-white/[0.1] px-2.5 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07] disabled:opacity-50"
-          >
-            {testing ? 'Testing…' : 'Test'}
-          </button>
-          <button
-            type="button"
-            onClick={() => setTokenDialog(true)}
-            aria-label={connection.hasCredential ? `Change token for ${connection.name}` : `Add token for ${connection.name}`}
-            className="rounded-md border border-white/[0.1] px-2.5 py-1 text-xs text-[#d7d4d0] hover:bg-white/[0.07]"
-          >
-            Token
-          </button>
-          <button
-            type="button"
-            onClick={() => setConfirming(true)}
-            aria-label={`Delete ${connection.name}`}
-            className="flex h-8 w-8 items-center justify-center rounded-md text-[#aaa6a2] hover:bg-white/[0.08] hover:text-white"
-          >
-            <Trash2 className="h-4 w-4" />
-          </button>
-          <Switch
-            checked={connection.enabled}
-            onCheckedChange={() => onAction(() => updateMcpConnection(connection.id, { enabled: !connection.enabled }))}
-            aria-label={`Enable ${connection.name}`}
-          />
-        </div>
-      </div>
-
-      {connection.lastError && <p className="mt-2 pl-12 text-xs text-red-300">{connection.lastError}</p>}
-      {testError && <p role="alert" className="mt-2 pl-12 text-xs text-red-300">{testError}</p>}
-
-      {connection.needsReview && connection.toolCount > 0 && (
-        <div className="mt-2 ml-12 flex items-center gap-3 rounded-lg border border-amber-300/20 bg-amber-400/[0.06] px-3 py-2">
-          <p className="flex-1 text-xs text-[#e6d9b8]">The tool list changed since you last reviewed it. Look it over before turning this connection on.</p>
-          <button
-            type="button"
-            onClick={() => onAction(() => updateMcpConnection(connection.id, { reviewTools: true }))}
-            aria-label={`Review tools for ${connection.name}`}
-            className="rounded-md bg-[#f0eeeb] px-2.5 py-1 text-xs font-medium text-[#1c1b19] hover:bg-white"
-          >
-            Review tools
-          </button>
-        </div>
-      )}
-
-      {connection.toolCount > 0 && (
-        <ul aria-label={`Tools on ${connection.name}`} className="mt-2 ml-12 space-y-1">
-          {connection.tools.map((tool) => (
-            <li key={tool.id} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-white/[0.025]">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="truncate font-mono text-xs text-[#e5e2de]">{tool.name}</span>
-                  {tool.readOnly && <span className="flex items-center gap-1 text-[11px] text-[#9fd49f]"><ShieldCheck className="h-3 w-3" /> read only</span>}
-                </div>
-                {tool.description && <p className="mt-0.5 line-clamp-2 text-[11px] text-[#8f8b86]">{tool.description}</p>}
-              </div>
-              <Switch
-                checked={tool.enabled}
-                onCheckedChange={() => onAction(() => updateMcpConnection(connection.id, { toolEnabled: { [tool.id]: !tool.enabled } }))}
-                aria-label={`Enable ${tool.name} on ${connection.name}`}
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-
-      {tokenDialog && (
-        <TokenDialog
-          title={`${connection.hasCredential ? 'Change' : 'Add'} token`}
-          forConnection={connection.name}
-          hasToken={connection.hasCredential}
-          required={connection.authMode === 'bearer'}
-          onClose={() => setTokenDialog(false)}
-          onSubmit={async (token) => {
-            await updateMcpConnection(connection.id, token === null ? { clearToken: true } : { token });
-          }}
-        />
-      )}
-      {confirming && (
-        <ConfirmDelete
-          connection={connection}
-          onCancel={() => setConfirming(false)}
-          onConfirm={() => {
-            setConfirming(false);
-            onAction(() => deleteMcpConnection(connection.id));
-          }}
-        />
-      )}
-    </li>
-  );
-}
-
-function ConfirmDelete({ connection, onCancel, onConfirm }: { connection: McpConnectionView; onCancel: () => void; onConfirm: () => void }) {
-  const ref = useRef<HTMLElement>(null);
-  useModalFocus(true, onCancel, ref);
-  return createPortal(
-    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-black/70 p-4">
-      <section ref={ref} role="alertdialog" aria-modal="true" aria-labelledby="mcp-delete-title" className="w-full max-w-sm rounded-2xl border border-white/15 bg-[#202020] p-5 shadow-2xl">
-        <h2 id="mcp-delete-title" className="text-base font-medium text-white">Delete {connection.name}?</h2>
-        <p className="mt-2 text-sm text-[#aaa6a2]">The stored token is deleted with it. Tool calls already in your chats keep their text.</p>
-        <div className="mt-5 flex justify-end gap-2">
-          <button type="button" onClick={onCancel} className="rounded-lg px-3 py-2 text-sm text-[#c9c6c2] hover:bg-white/10">Cancel</button>
-          <button type="button" onClick={onConfirm} className="rounded-lg bg-red-500/90 px-3 py-2 text-sm font-medium text-white hover:bg-red-500">Delete</button>
-        </div>
-      </section>
-    </div>,
-    document.body,
-  );
-}
-
 /** Catalog entry labels: whose token it needs, and whether it was verified. */
 export function catalogAuthLabel(entry: McpCatalogEntry) {
   if (entry.auth === 'none') return 'No token needed';
@@ -322,23 +162,84 @@ function CatalogCard({ entry, busy, onConnect }: { entry: McpCatalogEntry; busy:
   );
 }
 
-/** Customize → Connections: catalog, custom server, tokens, tools and approval. */
+/** Customize → Connections: the MCP servers management block, catalog and custom server. */
 export default function ConnectionsPage() {
   const userId = useAppStore((state) => state.user?.id);
   const { connections, limit, loading, error } = useMcpConnections(userId);
   const [actionError, setActionError] = useState('');
+  const [live, setLive] = useState('');
+  const [expandedIds, setExpandedIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [name, setName] = useState('');
   const [url, setUrl] = useState('');
   const [formToken, setFormToken] = useState('');
   const [formError, setFormError] = useState('');
   const [catalogTokenFor, setCatalogTokenFor] = useState<McpCatalogEntry | null>(null);
+  const [tokenFor, setTokenFor] = useState<McpConnectionView | null>(null);
+  const listRef = useRef<HTMLUListElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+
+  const announce = useCallback((message: string) => setLive(message), []);
+  const fail = useCallback((message: string) => setActionError(message), []);
+  const removal = useUndoableRemoval({ announce, fail });
+
+  // A removal hides its row the moment the bar opens; a committed one stays
+  // hidden through the refresh that confirms it. Undo brings the row straight back.
+  const hiddenIds = new Set(removal.committed);
+  if (removal.pending) hiddenIds.add(removal.pending.connection.id);
+  const rows = connections.filter((connection) => !hiddenIds.has(connection.id));
+  const pruneCommitted = removal.pruneCommitted;
+  useEffect(() => { pruneCommitted(connections.map((connection) => connection.id)); }, [connections, pruneCommitted]);
 
   const atLimit = limit > 0 && connections.length >= limit;
 
   const onAction = (work: () => Promise<unknown>) => {
     setActionError('');
-    work().catch((failure: Error) => setActionError(failure.message));
+    work().catch((failure: Error) => {
+      setActionError(failure.message);
+      announce(`Failed: ${failure.message}`);
+    });
+  };
+
+  const setRowExpanded = (id: string, expanded: boolean) =>
+    setExpandedIds((ids) => (expanded ? (ids.includes(id) ? ids : [...ids, id]) : ids.filter((held) => held !== id)));
+
+  const toggleConnection = (connection: McpConnectionView) =>
+    onAction(async () => {
+      await updateMcpConnection(connection.id, { enabled: !connection.enabled });
+      announce(connection.enabled
+        ? `${connection.name} turned off. Its tool switches went off with it.`
+        : `${connection.name} turned on. No tool is on yet; open it and review.`);
+    });
+
+  const toggleTool = (connection: McpConnectionView, tool: McpToolView) =>
+    onAction(async () => {
+      const turningOn = !tool.enabled;
+      const body = await updateMcpConnection(connection.id, { toolEnabled: { [tool.id]: turningOn } });
+      const estimate = body.connection.tools.find((held) => held.id === tool.id)?.estimatedTokens;
+      announce(`${tool.name} on ${connection.name} turned ${turningOn ? 'on' : 'off'}.${estimate !== null && estimate !== undefined ? ` About ${formatMeterTokens(estimate)} estimated tokens.` : ''}`);
+    });
+
+  const startRemoval = (connection: McpConnectionView) => {
+    const active = document.activeElement;
+    const focusWasInRow = active instanceof HTMLElement && Boolean(active.closest(`[data-row-id="${connection.id}"]`));
+    removal.start(connection);
+    announce(`Removing ${connection.name}. Undo is available for a few seconds, or press Control or Command plus Z to bring the bar back.`);
+    // Whatever held focus is vanishing with the row: hand focus to the block heading.
+    if (focusWasInRow) headingRef.current?.focus();
+  };
+
+  const onListKeyDown = (event: React.KeyboardEvent) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp' && event.key !== 'Home' && event.key !== 'End') return;
+    const triggers = Array.from(listRef.current?.querySelectorAll<HTMLElement>('[data-mcp-row-trigger]') ?? []);
+    if (triggers.length === 0) return;
+    event.preventDefault();
+    const index = triggers.indexOf(document.activeElement as HTMLElement);
+    const next = event.key === 'Home' ? 0
+      : event.key === 'End' ? triggers.length - 1
+      : event.key === 'ArrowDown' ? Math.min(index + 1, triggers.length - 1)
+      : Math.max(index - 1, 0);
+    triggers[index === -1 ? 0 : next]?.focus();
   };
 
   const connectCatalog = async (entry: McpCatalogEntry, token?: string) => {
@@ -389,26 +290,60 @@ export default function ConnectionsPage() {
 
         <p className="mt-4 max-w-2xl text-sm leading-6 text-[#aaa6a2]">
           Connect a remote MCP server to let your chats use its tools. Nothing runs on its own: a tool is
-          offered to the model only if you switch it on, and every call waits for your approval in the chat.
+          offered to the model only if you switch it on, and every call waits for your approval in the chat
+          — there is no &ldquo;always allow&rdquo;, not even for read-only tools.
           Council and scheduled tasks never use MCP tools.
         </p>
 
         {(error || actionError) && <p role="alert" className="mt-4 text-sm text-red-300">{actionError || error}</p>}
+        <p aria-live="polite" className="sr-only">{live}</p>
 
-        <section aria-label="Your connections" className="mt-6">
-          <h2 className="mb-1 flex items-center gap-2 px-3 text-sm font-medium text-[#d8d5d1]">
-            Your connections
-            {connections.length > 0 && <span className="rounded-full bg-white/[0.07] px-1.5 text-[11px] text-[#aaa6a2]">{connections.length}{limit ? `/${limit}` : ''}</span>}
-          </h2>
+        <section aria-label="MCP servers" className="mt-6 overflow-hidden rounded-2xl border border-white/[0.08] bg-white/[0.02]">
+          <div className="flex items-center gap-2 border-b border-white/[0.06] px-4 py-3">
+            <h2 ref={headingRef} tabIndex={-1} className="text-sm font-medium text-[#d8d5d1] outline-none">MCP servers</h2>
+            {connections.length > 0 && (
+              <span className="rounded-full bg-white/[0.07] px-1.5 text-[11px] text-[#aaa6a2]">{rows.length}{limit ? `/${limit}` : ''}</span>
+            )}
+            <span className="ml-auto hidden text-[11px] text-[#8f8b86] min-[400px]:inline">Removal waits a few seconds and can be undone.</span>
+          </div>
+
+          <ContextMeter connections={rows} />
+
           {loading ? (
-            <p className="px-3 text-sm text-[#aaa6a2]">Loading connections…</p>
-          ) : connections.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-white/[0.12] px-6 py-10 text-center">
+            <p className="border-t border-white/[0.06] px-4 py-6 text-sm text-[#aaa6a2]">Loading connections…</p>
+          ) : rows.length === 0 ? (
+            <div className="border-t border-white/[0.06] px-6 py-10 text-center">
               <p className="text-base text-[#e5e2de]">No connections yet</p>
               <p className="mx-auto mt-1 max-w-md text-sm text-[#aaa6a2]">Pick one from the catalog below, or add any Streamable HTTP MCP server by URL.</p>
             </div>
           ) : (
-            <ul>{connections.map((connection) => <ConnectionRow key={connection.id} connection={connection} onAction={onAction} />)}</ul>
+            <ul ref={listRef} onKeyDown={onListKeyDown} className="border-t border-white/[0.06]">
+              {rows.map((connection) => (
+                <ServerRow
+                  key={connection.id}
+                  connection={connection}
+                  expanded={expandedIds.includes(connection.id)}
+                  onExpandedChange={(expanded) => setRowExpanded(connection.id, expanded)}
+                  onToggleConnection={() => toggleConnection(connection)}
+                  onToggleTool={(tool) => toggleTool(connection, tool)}
+                  onReviewTools={() => onAction(() => updateMcpConnection(connection.id, { reviewTools: true }))}
+                  onRequestToken={() => setTokenFor(connection)}
+                  onRequestRemove={() => startRemoval(connection)}
+                  announce={announce}
+                />
+              ))}
+            </ul>
+          )}
+
+          {removal.pending && !removal.pending.hidden && (
+            <UndoBar
+              pending={removal.pending}
+              getRemaining={removal.getRemaining}
+              windowMs={removal.windowMs}
+              onUndo={removal.undo}
+              onHide={removal.hide}
+              onPauseSource={removal.setPauseSource}
+            />
           )}
         </section>
 
@@ -492,6 +427,19 @@ export default function ConnectionsPage() {
           onSubmit={async (token) => {
             if (!token) throw new Error('This server needs a token.');
             await connectCatalog(catalogTokenFor, token);
+          }}
+        />
+      )}
+      {tokenFor && (
+        <TokenDialog
+          title={`${tokenFor.hasCredential ? 'Change' : 'Add'} token`}
+          forConnection={tokenFor.name}
+          hasToken={tokenFor.hasCredential}
+          required={tokenFor.authMode === 'bearer'}
+          onClose={() => setTokenFor(null)}
+          onSubmit={async (token) => {
+            await updateMcpConnection(tokenFor.id, token === null ? { clearToken: true } : { token });
+            setLive(`Token ${token === null ? 'removed from' : 'saved for'} ${tokenFor.name}.`);
           }}
         />
       )}

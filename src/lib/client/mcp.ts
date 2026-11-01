@@ -36,6 +36,16 @@ const withChange = async <T,>(work: Promise<T>) => {
   return result;
 };
 
+/**
+ * Fold a fresh server-side view of one connection into the shared list before
+ * the general refresh lands, so switches, counts and the context meter move on
+ * the same frame the write was accepted.
+ */
+function mergeConnection(connection: McpConnectionView) {
+  if (!state.connections.some((held) => held.id === connection.id)) return;
+  setState({ connections: state.connections.map((held) => (held.id === connection.id ? connection : held)) });
+}
+
 export interface CreateMcpConnectionInput {
   name: string;
   url?: string;
@@ -55,8 +65,12 @@ export interface UpdateMcpConnectionInput {
 export const createMcpConnection = (input: CreateMcpConnectionInput) =>
   withChange(request<{ connection: McpConnectionView }>('/api/mcp/connections', { method: 'POST', body: JSON.stringify(input) }).then((body) => body.connection));
 
-export const updateMcpConnection = (id: string, patch: UpdateMcpConnectionInput) =>
-  withChange(request<{ connection: McpConnectionView }>(`/api/mcp/connections/${id}`, { method: 'PATCH', body: JSON.stringify(patch) }).then((body) => body.connection));
+export const updateMcpConnection = async (id: string, patch: UpdateMcpConnectionInput) => {
+  const body = await request<{ connection: McpConnectionView }>(`/api/mcp/connections/${id}`, { method: 'PATCH', body: JSON.stringify(patch) });
+  mergeConnection(body.connection);
+  changed();
+  return body;
+};
 
 export const deleteMcpConnection = (id: string) =>
   withChange(request<void>(`/api/mcp/connections/${id}`, { method: 'DELETE' }));
@@ -68,8 +82,12 @@ export interface McpTestResult {
 }
 
 /** Discovers tools and stores what was found; a failure comes back as `ok: false`. */
-export const testMcpConnection = (id: string) =>
-  withChange(request<McpTestResult>(`/api/mcp/connections/${id}/test`, { method: 'POST' }));
+export const testMcpConnection = async (id: string) => {
+  const result = await request<McpTestResult>(`/api/mcp/connections/${id}/test`, { method: 'POST' });
+  mergeConnection(result.connection);
+  changed();
+  return result;
+};
 
 /**
  * Spends one pending approval. The id is single use, so a second click (or a
