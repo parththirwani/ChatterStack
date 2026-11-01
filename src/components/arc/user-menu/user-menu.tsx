@@ -36,6 +36,8 @@ export interface UserMenuItem { label: string; icon?: ReactNode; keys?: string[]
  */
 export interface UserMenuProps {
   user: UserMenuUser;
+  /** Stable prefix for a singleton menu whose server and client React tree paths may differ. */
+  idPrefix?: string;
   /** Presence status. Passing `status` or `onStatusChange` shows the presence dot and an inline status switch. */
   status?: UserStatus;
   defaultStatus?: UserStatus;
@@ -153,8 +155,9 @@ function focusStop(stop: HTMLElement | undefined) {
   target?.focus({ preventScroll: true });
 }
 
-export function UserMenu({ user, status: statusProp, defaultStatus = "available", onStatusChange, theme: themeProp, defaultTheme = "system", onThemeChange, showTheme = true, items = [], onSignOut, signOutKeys, align = "end", side = "auto", showName = false, open: openProp, defaultOpen = false, onOpenChange, portal = true, ref, className }: UserMenuProps) {
-  const id = useId();
+export function UserMenu({ user, idPrefix, status: statusProp, defaultStatus = "available", onStatusChange, theme: themeProp, defaultTheme = "system", onThemeChange, showTheme = true, items = [], onSignOut, signOutKeys, align = "end", side = "auto", showName = false, open: openProp, defaultOpen = false, onOpenChange, portal = true, ref, className }: UserMenuProps) {
+  const generatedId = useId();
+  const id = idPrefix ?? generatedId;
   const menuId = `${id}-menu`;
   const triggerId = `${id}-trigger`;
   const reduced = !!useReducedMotion();
