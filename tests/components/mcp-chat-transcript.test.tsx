@@ -134,7 +134,7 @@ describe('streamed tool events land on the assistant message', () => {
 });
 
 describe('the tool card', () => {
-  it('labels every recorded state and opens the result', async () => {
+  it('labels every recorded state without showing successful tool output', async () => {
     const user = userEvent.setup();
     render(
       <ToolCallCard
@@ -149,9 +149,11 @@ describe('the tool card', () => {
     expect(within(list).getByLabelText('Tool call cloudflare-docs_search: Completed')).toBeInTheDocument();
     expect(within(list).getByText('Denied')).toBeInTheDocument();
     expect(within(list).getByText('Failed')).toBeInTheDocument();
-    expect(within(list).getByText('result shortened')).toBeInTheDocument();
-    await user.click(within(list).getAllByText('Result sent to the model')[0]);
-    expect(within(list).getByText('Workers run on the edge.')).toBeInTheDocument();
+    expect(within(list).queryByText('result shortened')).not.toBeInTheDocument();
+    expect(within(list).queryByText('Result sent to the model')).not.toBeInTheDocument();
+    expect(within(list).queryByText('Workers run on the edge.')).not.toBeInTheDocument();
+    await user.click(within(list).getAllByText('Details')[0]);
+    expect(within(list).getByText('The user denied this call.')).toBeInTheDocument();
   });
 
   it('asks for approval with the exact arguments and routes both buttons', async () => {

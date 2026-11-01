@@ -109,6 +109,7 @@ const redis = {
   set: vi.fn<(id: string, messages: unknown[]) => Promise<void>>(async () => {}),
   delete: vi.fn(async () => {}),
   isReady: vi.fn(() => false),
+  hasConfiguration: vi.fn(() => false),
 };
 
 vi.mock('@/src/lib/auth', () => ({ auth: () => auth() }));

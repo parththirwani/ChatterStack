@@ -31,7 +31,7 @@ const StatusIcon = ({ status }: { status: ToolCallState }) =>
       : <CircleX className="h-3.5 w-3.5" aria-hidden="true" />;
 
 function CallRow({ call }: { call: MessageToolCallView }) {
-  const detail = call.error || call.result;
+  const detail = call.status === 'completed' ? null : call.error || call.result;
   return (
     <li aria-label={`Tool call ${call.name}: ${statusLabel[call.status]}`} className="flex items-start gap-2 py-1.5">
       <span className="mt-0.5 shrink-0"><StatusIcon status={call.status} /></span>
@@ -39,12 +39,11 @@ function CallRow({ call }: { call: MessageToolCallView }) {
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs text-[#e5e2de]">{call.name}</span>
           <span className={`rounded-md px-1.5 py-0.5 text-[11px] ${statusClass(call.status)}`}>{statusLabel[call.status]}</span>
-          {call.truncated && <span className="text-[11px] text-[#8f8b86]">result shortened</span>}
         </div>
         {detail && (
           <details className="mt-1">
             <summary className="cursor-pointer text-[11px] text-[#8f8b86] hover:text-[#d8d5d1]">
-              {call.status === 'completed' ? 'Result sent to the model' : 'What the model was told'}
+              Details
             </summary>
             <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md bg-black/30 p-2 font-mono text-[11px] leading-4 text-[#c9c6c2]">{detail}</pre>
           </details>
