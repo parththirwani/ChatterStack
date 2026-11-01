@@ -9,6 +9,8 @@
  * is unit-testable, and tests can opt into private targets for a local fixture.
  */
 import { promises as dns } from 'node:dns';
+import { isIP } from 'node:net';
+import { Agent, fetch as undiciFetch } from 'undici';
 
 export type AddressResolver = (hostname: string) => Promise<string[]>;
 
@@ -205,13 +207,13 @@ const systemResolver: AddressResolver = async (hostname) => {
 };
 
 /** Re-resolves the host and rejects it when any answer is private or reserved. */
-export async function assertPublicEndpoint(url: URL, options: UrlGuardOptions & { resolveAddresses?: AddressResolver } = {}): Promise<void> {
-  if (isTrustedOrigin(url, options.allowedOrigins)) return;
+async function publicAddresses(url: URL, options: UrlGuardOptions & { resolveAddresses?: AddressResolver } = {}): Promise<string[]> {
+  if (isTrustedOrigin(url, options.allowedOrigins)) return [];
   const resolveAddresses = options.resolveAddresses ?? systemResolver;
   const hostname = normalizedHostname(url.hostname);
   if (parseIpv4(hostname) || hostname.includes(':')) {
     if (isBlockedAddress(hostname)) throw new McpUrlError('blocked_address', 'That address is inside a private or reserved range, so it cannot be connected to.');
-    return;
+    return [hostname];
   }
   let addresses: string[];
   try {
@@ -222,6 +224,11 @@ export async function assertPublicEndpoint(url: URL, options: UrlGuardOptions & 
   if (addresses.length === 0) throw new McpUrlError('dns_failed', `"${hostname}" could not be resolved.`);
   const blocked = addresses.find((address) => isBlockedAddress(address));
   if (blocked) throw new McpUrlError('blocked_address', `"${hostname}" resolves to ${blocked}, which is not an allowed MCP address.`);
+  return addresses;
+}
+
+export async function assertPublicEndpoint(url: URL, options: UrlGuardOptions & { resolveAddresses?: AddressResolver } = {}): Promise<void> {
+  await publicAddresses(url, options);
 }
 
 export interface SafeFetchOptions {
@@ -283,32 +290,42 @@ function bounded(response: Response, maxBytes: number): Response {
 
 /**
  * A `fetch` for MCP traffic: every hop is screened again, redirects stay on the
- * original origin, and responses are byte-capped. Note the documented limit: the
- * address is checked before the request is issued, so a DNS answer that changes
- * between the check and the connection is only caught by the per-hop recheck.
+ * original origin, and responses are byte-capped. The HTTP agent connects to an
+ * address from the checked DNS answer, so a later DNS change cannot redirect the
+ * socket to a private address between validation and connection.
  */
-export function createSafeFetch(options: SafeFetchOptions): typeof fetch {
+export function createSafeFetch(options: SafeFetchOptions): typeof fetch & { close: () => Promise<void> } {
   const resolve = options.resolveAddresses ?? systemResolver;
-  const transport: TransportFetch = options.transportFetch ?? ((url, init) => fetch(url, init));
+  const transport: TransportFetch = options.transportFetch ?? ((url, init) =>
+    undiciFetch(url, init as Parameters<typeof undiciFetch>[1]) as unknown as Promise<Response>);
   const maxRedirects = options.maxRedirects ?? 3;
   const guard = { allowedOrigins: options.allowedOrigins ?? [] };
-  return async (input, init) => {
+  const pinned = new Map<string, string>();
+  const agent = new Agent({ connect: {
+    lookup(hostname, lookupOptions, callback) {
+      const address = pinned.get(normalizedHostname(hostname));
+      if (!address) return callback(new Error('The MCP address was not validated.'), '', 0);
+      const family = isIP(address);
+      if (lookupOptions.all) callback(null, [{ address, family }]);
+      else callback(null, address, family);
+    },
+  } });
+  const safeFetch: typeof fetch = async (input, init) => {
     const start = typeof input === 'string' || input instanceof URL ? new URL(String(input)) : input.url ? new URL(input.url) : null;
     if (!start) throw new McpUrlError('invalid_url', 'MCP requests need a URL.');
     const method = (init?.method ?? (typeof input === 'object' && 'method' in input ? input.method : 'GET')).toUpperCase();
     let current = assertSafeMcpUrl(start.toString(), guard);
-    const checked = new Set<string>();
     for (let hop = 0; hop <= maxRedirects; hop += 1) {
-      if (!checked.has(current.origin)) {
-        await assertPublicEndpoint(current, { ...guard, resolveAddresses: resolve });
-        checked.add(current.origin);
-      }
+      const addresses = await publicAddresses(current, { ...guard, resolveAddresses: resolve });
+      if (addresses.length > 0) pinned.set(normalizedHostname(current.hostname), addresses[0]);
       const headers = new Headers(init?.headers ?? undefined);
       for (const [name, value] of Object.entries(options.headers ?? {})) if (!headers.has(name)) headers.set(name, value);
       const { signal, cleanup } = hopSignal(init?.signal ?? undefined, options.timeoutMs);
       let response: Response;
       try {
-        response = await transport(current.toString(), { ...init, method, headers, signal, redirect: 'manual' });
+        const requestInit = { ...init, method, headers, signal, redirect: 'manual' as const,
+          ...(addresses.length > 0 ? { dispatcher: agent } : {}) };
+        response = await transport(current.toString(), requestInit as RequestInit);
       } finally {
         cleanup();
       }
@@ -321,11 +338,11 @@ export function createSafeFetch(options: SafeFetchOptions): typeof fetch {
         if (hop === maxRedirects) throw new McpUrlError('too_many_redirects', 'The MCP server redirected too many times.', 502);
         // Every hop is screened again, including a fresh address resolution.
         current = assertSafeMcpUrl(next.toString(), guard);
-        checked.delete(next.origin);
         continue;
       }
       return bounded(response, options.maxResponseBytes);
     }
     throw new McpUrlError('too_many_redirects', 'The MCP server redirected too many times.', 502);
   };
+  return Object.assign(safeFetch, { close: () => agent.close() });
 }
