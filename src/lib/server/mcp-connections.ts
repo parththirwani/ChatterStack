@@ -230,7 +230,8 @@ export async function updateConnection(userId: string, id: string, input: Update
       if (typeof value !== 'boolean') throw new McpConnectionError('Tool switches must be on or off.', 400);
       if (!tools.includes(key)) throw new McpConnectionError(`"${key}" is not a tool on this connection. Test the connection first.`, 400);
     }
-    data.toolEnabled = Object.fromEntries(entries.filter(([, value]) => value));
+    const next = { ...enabledMap(row), ...input.toolEnabled };
+    data.toolEnabled = Object.fromEntries(Object.entries(next).filter(([, value]) => value));
   }
 
   if (input.reviewTools) {

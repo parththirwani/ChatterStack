@@ -333,6 +333,10 @@ describe('MCP connection routes', () => {
     await testOne(bare(`${id}/test`), context(id));
     expect((await update(json(id, { enabled: true }, 'PATCH'), context(id))).status).toBe(409);
     expect((await update(json(id, { toolEnabled: { echo: true } }, 'PATCH'), context(id))).status).toBe(200);
+    expect((await update(json(id, { toolEnabled: { explode: true } }, 'PATCH'), context(id))).status).toBe(200);
+    expect(rows.get(id)!.toolEnabled).toEqual({ echo: true, explode: true });
+    expect((await update(json(id, { toolEnabled: { explode: false } }, 'PATCH'), context(id))).status).toBe(200);
+    expect(rows.get(id)!.toolEnabled).toEqual({ echo: true });
     expect((await update(json(id, { toolEnabled: { 'not-a-tool': true } }, 'PATCH'), context(id))).status).toBe(400);
     expect((await update(json(id, { reviewTools: true }, 'PATCH'), context(id))).status).toBe(200);
     const enabled = await (await update(json(id, { enabled: true }, 'PATCH'), context(id))).json();
