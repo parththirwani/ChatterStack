@@ -51,6 +51,30 @@ Catalog seed candidates, subject to live verification during implementation:
 
 Store catalog metadata in code, not credentials. Pin the name, URL, source documentation, auth method, and supported transport. Test catalog URLs during implementation and remove or relabel any entry that cannot connect from the deployed environment. Avoid a general public registry installer in this release.
 
+### Connections UI reference and behavior
+
+Use the public preview and behavior reference for [Arc UI's MCP servers block](https://uiarc.dev/components/blocks/mcp-servers) as the design reference. The [Markdown reference](https://uiarc.dev/components/blocks/mcp-servers/markdown) describes its interactions, keyboard behavior, accessibility, and responsive layout. Its source and install command require Pro, so implement an original component in ChatterStack's visual style. The preview uses sample servers and a simulated authorization flow; do not treat its endpoints, token counts, or sign-in screen as live integrations.
+
+Add a Connections tab to the existing Customize area. Extend `src/lib/navigation.ts`, `src/components/pages/AppPages.tsx`, and the Customize UI in `src/components/customize/SkillsPage.tsx`, preserving the current app shell and history behavior. The page should have these parts:
+
+- A header with the number of enabled tools, their total tool-definition token cost, a context budget, and a segmented meter by server. Derive totals from enabled tools on connected servers so toggles, connection changes, and reloads cannot leave stale counts. Count real tool definitions with the provider's token counter when available; label an estimate if exact counting is unavailable. Show an over-budget state without silently disabling tools.
+- One row per server with its name or mark, Connected/Needs sign in/Error/Connecting status, Remote transport, enabled and total tool count, and token cost. Expand a row to show discovered tools, each tool's name, description, read/write indication, token cost, and enable switch. Show the endpoint and a disconnect/remove action. Explain that server annotations are hints, not proof that a tool is safe to run.
+- An Add server dialog or sheet with a searchable directory of verified catalog entries and a custom HTTPS URL form. Show the authentication method before connecting, then connection progress, real tool discovery, and a review step before enabling newly discovered tools. A failed connection should show the server error in plain language with a retry action. A catalog item already connected should show that state.
+- Clear empty, loading, expired-credential, discovery-error, and deleted states. Removal may offer Undo, but the server must stop being offered to the model immediately. Persist connection, tool, and status changes through the user-scoped API; never rely on the sample data in the reference block.
+
+The first release supports remote Streamable HTTP only. Do not include the local PostgreSQL, Figma, or Docker examples shown in the Arc preview. The first release also requires approval before **every** tool call. Do not add the preview's "Always allow reads" option until a separate authorization policy supports it. Keep tool-call approval and results in the chat transcript, not in this settings card.
+
+Match the reference's useful interaction details: server rows expand with Enter or Space, switches have names that include the tool and access type, the add dialog traps focus and closes with Escape, status is expressed in text as well as color, and focus returns to a sensible control after a connection or removal. Keep the page usable from 320px wide and honor reduced-motion settings. Favor ChatterStack's existing colors and controls over a pixel-for-pixel copy.
+
+#### UI verification for the implementation agent
+
+1. Open Customize → Connections, add a fixture remote MCP server, discover its tools, enable selected tools, reload, and confirm the connection and selections remain correct. Repeat with a custom HTTPS endpoint and a catalog entry whose endpoint and auth path were verified.
+2. Toggle a tool and a server. Confirm the displayed counts and context meter change, and inspect the next model request to confirm disabled tools and disconnected servers are absent. Confirm a newly discovered tool stays disabled until reviewed.
+3. Exercise missing credentials, expired credentials, invalid URL, discovery failure, retry, disconnect, and removal. Confirm these states have useful messages and that an unavailable server contributes no tool tokens or model tools.
+4. Run a single-model chat that requests an enabled tool. Confirm approval appears before execution, denial prevents execution, and the call and result survive reload and conversation fork. Confirm Stop cancels pending model and MCP work. Council and scheduled tasks must not receive MCP tools.
+5. Use keyboard-only navigation and a screen reader to check row expansion, switch names, dialog focus, Escape, status announcements, and focus after removal. Check a 320px viewport and reduced-motion mode. Compare the resulting behavior with the [Arc UI reference](https://uiarc.dev/components/blocks/mcp-servers/markdown).
+6. Run `npm run test:static`, relevant Vitest tests, chat and connection Playwright tests, and a production build. Record the commands, results, and any live catalog integrations that could not be tested.
+
 ## Delivery sequence
 
 1. Add a structured OpenRouter tool call parser and a bounded tool loop behind a feature flag. Verify fragmented streaming deltas, one result per call id, cancellation, empty text with tool calls, unsupported models, and accounting.
@@ -70,7 +94,7 @@ Store catalog metadata in code, not credentials. Pin the name, URL, source docum
 
 ## Prompt for the implementation agent
 
-> Implement `docs/mcp-support-plan.md` in ChatterStack. Start from the latest `origin/dev` on `feature/mcp-support`. Read `AGENTS.md`, the chat route, OpenRouter streaming code, Prisma schema, context compaction, and existing Skills UI before editing. Work through the delivery sequence in coherent commits and push checkpoints. Use the official MCP TypeScript SDK and confirm its current support for Streamable HTTP and the protocol revisions used by the catalog servers. Keep all MCP calls server side. Treat server metadata, tool schemas, arguments, and results as untrusted. Implement user scoped credentials, URL/DNS/redirect protection, tool allowlists, per call approval, bounded execution, cancellation, persistence, and transcript events. Preserve existing behavior for chats without MCP and keep Council and scheduled tasks tool free. Verify every catalog URL and auth flow before presenting it as ready. Run the specified checks and meaningful integration tests. Report the branch, head SHA, checks, remaining limits, and a review link. Open the PR to `dev` after the feature is reviewed, as required by `AGENTS.md`.
+> Implement `docs/mcp-support-plan.md` in ChatterStack. Use https://uiarc.dev/components/blocks/mcp-servers and its linked Markdown reference for the Connections UI behavior; its Pro source is unavailable, so write an original component and use real backend data. Start from the latest `origin/dev` on `feature/mcp-support`. Read `AGENTS.md`, the chat route, OpenRouter streaming code, Prisma schema, context compaction, and existing Skills UI before editing. Work through the delivery sequence in coherent commits and push checkpoints. Use the official MCP TypeScript SDK and confirm its current support for Streamable HTTP and the protocol revisions used by the catalog servers. Keep all MCP calls server side. Treat server metadata, tool schemas, arguments, and results as untrusted. Implement user scoped credentials, URL/DNS/redirect protection, tool allowlists, per call approval, bounded execution, cancellation, persistence, and transcript events. Preserve existing behavior for chats without MCP and keep Council and scheduled tasks tool free. Verify every catalog URL and auth flow before presenting it as ready. Follow the UI verification list above, run the specified checks and meaningful integration tests, and report the branch, head SHA, checks, remaining limits, and a review link. Open the PR to `dev` after the feature is reviewed, as required by `AGENTS.md`.
 
 ## Sources checked for this plan
 
@@ -80,3 +104,4 @@ Store catalog metadata in code, not credentials. Pin the name, URL, source docum
 - [GitHub remote MCP server](https://github.com/github/github-mcp-server/blob/main/docs/remote-server.md)
 - [Linear MCP server](https://linear.app/docs/mcp)
 - [Cloudflare MCP client guide](https://developers.cloudflare.com/agents/model-context-protocol/guides/connect-mcp-client/)
+- [Arc UI MCP servers preview and behavior reference](https://uiarc.dev/components/blocks/mcp-servers)
