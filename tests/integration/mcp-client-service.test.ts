@@ -4,9 +4,11 @@ import {
   McpError,
   callMcpTool,
   discoverMcpTools,
+  estimateToolTokens,
   normalizeToolNames,
   reverseToolName,
 } from '@/src/lib/server/mcp-client';
+import { countTokens } from '@/src/lib/tokens';
 import { startMcpFixture, type McpFixture } from '../helpers/mcp-fixture-server';
 
 let fixture: McpFixture | null = null;
@@ -104,6 +106,26 @@ describe('the MCP client service', () => {
     expect(error).toBeInstanceOf(McpError);
     expect(['unreachable', 'timeout']).toContain(error.code);
     expect(error.message).not.toContain('super-secret-token');
+  });
+
+  it('estimates each discovered tool from its real definition, using the model-facing name', async () => {
+    fixture = await startMcpFixture();
+    const tools = await discoverMcpTools({ url: fixture.url }, { allowedOrigins: [fixture.origin] });
+    const named = normalizeToolNames('Docs', tools);
+    for (const tool of named) {
+      const estimate = estimateToolTokens(tool);
+      expect(Number.isInteger(estimate), tool.name).toBe(true);
+      expect(estimate, tool.name).toBeGreaterThan(0);
+      // The definition text the model carries: name, description and schema.
+      expect(estimate, tool.name).toBeGreaterThanOrEqual(countTokens(`${tool.fnName}\n${tool.description}`));
+    }
+    // The estimate tracks the actual definition: a longer schema is more tokens.
+    const search = named.find((tool) => tool.name === 'docs.search')!;
+    const bare = { ...search, inputSchema: {}, fnName: search.fnName };
+    expect(estimateToolTokens(bare)).toBeLessThan(estimateToolTokens(search));
+    // It is the normalized model-facing name that counts, not the server's raw name.
+    expect(estimateToolTokens({ ...search, fnName: search.fnName })).toBe(estimateToolTokens(search));
+    expect(estimateToolTokens({ ...search, fnName: 'x' })).not.toBe(estimateToolTokens(search));
   });
 
   it('names every tool with a unique OpenRouter-safe function name and can reverse it', () => {

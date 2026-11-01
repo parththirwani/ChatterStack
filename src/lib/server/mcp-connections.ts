@@ -7,7 +7,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '@/src/lib/prisma';
 import { findMcpCatalogEntry, type McpCatalogEntry } from '@/src/config/mcp-catalog';
-import { MCP_LIMITS, McpError, discoverMcpTools, normalizeToolNames, type McpToolInfo, type NormalizedMcpTool } from './mcp-client';
+import { MCP_LIMITS, McpError, discoverMcpTools, estimateToolTokens, normalizeToolNames, type McpToolInfo, type NormalizedMcpTool } from './mcp-client';
 import { assertSafeMcpUrl, type AddressResolver } from './mcp-url';
 import { credentialKeyConfigured, decryptCredential, encryptCredential } from './mcp-crypto';
 import { redactedErrorText } from './mcp-redact';
@@ -109,7 +109,9 @@ export function publicConnection(row: McpConnectionRow): McpConnectionView {
       name: tool.name,
       description: tool.description,
       readOnly: tool.readOnly,
+      access: tool.readOnly ? 'read' : 'write',
       schemaBytes: tool.schemaBytes,
+      estimatedTokens: typeof tool.estTokens === 'number' && Number.isFinite(tool.estTokens) && tool.estTokens >= 0 ? Math.round(tool.estTokens) : null,
       enabled: allowlist[tool.name] === true,
     })),
     toolCount: tools.length,
@@ -287,8 +289,17 @@ export async function testConnection(userId: string, id: string, guard: Connecti
     const digest = toolDigest(tools);
     const allowlist = enabledMap(row);
     const kept = Object.fromEntries(Object.entries(allowlist).filter(([key]) => tools.some((tool) => tool.name === key)));
+    // Estimates come from the definition the model would actually receive, so
+    // they carry the normalized function name of this connection's row.
+    const withEstimates = normalizeToolNames(row.name, tools).map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      readOnly: tool.readOnly,
+      schemaBytes: tool.schemaBytes,
+      estTokens: estimateToolTokens(tool),
+    }));
     const updated = await write(userId, id, {
-      tools: tools.map((tool) => ({ name: tool.name, description: tool.description, readOnly: tool.readOnly, schemaBytes: tool.schemaBytes })),
+      tools: withEstimates,
       toolsDigest: digest,
       reviewedDigest: row.toolsDigest === digest ? row.reviewedDigest : null,
       toolEnabled: kept,

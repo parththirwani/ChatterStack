@@ -13,6 +13,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { McpError as SdkMcpError } from '@modelcontextprotocol/sdk/types.js';
 import { McpUrlError, assertSafeMcpUrl, createSafeFetch, type AddressResolver } from './mcp-url';
 import { redactedErrorText, redactSecrets } from './mcp-redact';
+import { countTokens } from '@/src/lib/tokens';
 
 export const MCP_LIMITS = {
   maxTools: 32,
@@ -81,12 +82,34 @@ export interface McpToolInfo {
   readOnly: boolean;
   inputSchema: unknown;
   schemaBytes: number;
+  /**
+   * Estimated model-facing token cost, persisted next to the stored tool entry
+   * at discovery. Absent on rows stored before estimates existed.
+   */
+  estTokens?: number | null;
 }
 
 /** A discovered tool plus the name the model is allowed to see. */
 export interface NormalizedMcpTool extends McpToolInfo {
   /** Unique OpenRouter-safe function name. */
   fnName: string;
+}
+
+/**
+ * Estimated tokens the model spends carrying one tool definition around: the
+ * model-facing function name, the description and the serialized input schema,
+ * counted with the same tokenizer the chat budget uses. An estimate for display
+ * and budgeting only - never a billed number.
+ */
+export function estimateToolTokens(tool: Pick<McpToolInfo, 'name' | 'description' | 'inputSchema'> & { fnName?: string }): number {
+  const facingName = tool.fnName ?? tool.name;
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(tool.inputSchema ?? {});
+  } catch {
+    serialized = '{}';
+  }
+  return countTokens(`${facingName}\n${tool.description}\n${serialized}`);
 }
 
 const slug = (value: string, max: number): string => {

@@ -14,7 +14,7 @@ const cloudflare: McpConnectionView = {
   id: 'c1', name: 'Cloudflare documentation', url: 'https://docs.mcp.cloudflare.com/mcp', host: 'docs.mcp.cloudflare.com',
   catalogId: 'cloudflare-docs', transport: 'streamable_http', authMode: 'none', hasCredential: false, enabled: true,
   status: 'connected', lastError: null, lastCheckedAt: '2026-10-31T10:00:00.000Z',
-  tools: [{ id: 'search_cloudflare_documentation', name: 'search_cloudflare_documentation', description: 'Search Cloudflare docs.', readOnly: true, schemaBytes: 900, enabled: true }],
+  tools: [{ id: 'search_cloudflare_documentation', name: 'search_cloudflare_documentation', description: 'Search Cloudflare docs.', readOnly: true, access: 'read', schemaBytes: 900, estimatedTokens: 180, enabled: true }],
   toolCount: 1, needsReview: false, createdAt: '2026-10-30T00:00:00.000Z', updatedAt: '2026-10-31T10:00:00.000Z',
 };
 const github: McpConnectionView = {

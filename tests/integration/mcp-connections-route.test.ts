@@ -224,6 +224,44 @@ describe('MCP connection routes', () => {
     expect(rows.get(id)!.lastError).toBeNull();
   });
 
+  it('estimates every tool from its model-facing definition and labels reads and writes', async () => {
+    const { body } = await createCustom();
+    const id = body.connection!.id;
+    const first = await (await testOne(bare(`${id}/test`), context(id))).json();
+    const byId = (list: unknown, name: string) =>
+      (list as { id: string; access?: string; estimatedTokens?: number | null }[]).find((tool) => tool.id === name)!;
+    const read = byId(first.connection.tools, 'docs.search');
+    expect(read).toMatchObject({ access: 'read', estimatedTokens: expect.any(Number) });
+    expect(read.estimatedTokens).toBeGreaterThan(0);
+    for (const name of ['echo', 'slow', 'explode']) {
+      expect(byId(first.connection.tools, name).access, name).toBe('write');
+      expect(byId(first.connection.tools, name).estimatedTokens).toBeGreaterThan(0);
+    }
+    // A richer definition (longer description + a real schema) must cost more than
+    // the bare-name-and-blurb tool, so the meter can rank tools meaningfully.
+    const slow = byId(first.connection.tools, 'slow');
+    expect(read.estimatedTokens!).toBeGreaterThan(slow.estimatedTokens!);
+    // The estimate is persisted next to the stored tool entry, not just returned.
+    const stored = rows.get(id)!.tools as { name: string; estTokens?: number }[];
+    expect(stored.map((tool) => typeof tool.estTokens)).toEqual(['number', 'number', 'number', 'number']);
+    expect(byId(first.connection.tools, 'docs.search').estimatedTokens).toBe(stored.find((tool) => tool.name === 'docs.search')!.estTokens);
+    // Re-discovery recomputes and keeps the numbers stable for the same server.
+    const again = await (await testOne(bare(`${id}/test`), context(id))).json();
+    expect(byId(again.connection.tools, 'docs.search').estimatedTokens).toBe(read.estimatedTokens);
+  });
+
+  it('reports a null estimate, never a fake one, for tools stored before estimates existed', async () => {
+    const { body } = await createCustom();
+    const id = body.connection!.id;
+    rows.get(id)!.tools = [
+      { name: 'legacy.read', description: 'Old read tool.', readOnly: true, schemaBytes: 20 },
+      { name: 'legacy.write', description: 'Old write tool.', readOnly: false, schemaBytes: 20 },
+    ];
+    const listed = await (await read(bare(id), context(id))).json();
+    expect(listed.connection.tools.map((tool: { access: string; estimatedTokens: unknown }) => [tool.access, tool.estimatedTokens]))
+      .toEqual([['read', null], ['write', null]]);
+  });
+
   it('records a visible, redacted error when a server rejects the token', async () => {
     await fixture?.close();
     fixture = await startMcpFixture({ token: 'correct-token' });

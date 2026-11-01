@@ -4,13 +4,24 @@
  * is replaced by `hasCredential`, and tool entries carry the server's own names.
  */
 
+/** How the tool may touch the world. Only an explicit readOnlyHint counts as read. */
+export type McpToolAccess = 'read' | 'write';
+
 export interface McpToolView {
   /** The server's own tool name; also the enablement map key. */
   id: string;
   name: string;
   description: string;
   readOnly: boolean;
+  /** `read` only when the server sent readOnlyHint true; anything else fails safe to `write`. */
+  access: McpToolAccess;
   schemaBytes: number;
+  /**
+   * Estimated tokens the model spends on this tool's definition (its model-facing
+   * name, description and serialized input schema). An estimate for budget
+   * display, never a billed figure; null until a discovery has computed it.
+   */
+  estimatedTokens: number | null;
   enabled: boolean;
 }
 
