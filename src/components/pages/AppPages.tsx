@@ -4,9 +4,10 @@ import type { AppView } from '@/src/lib/navigation';
 import type { User } from '@/src/types/user.types';
 import Resources from '@/src/components/sidebar/resources/Resources';
 import SkillsPage, { PageHeaderToggle } from '@/src/components/customize/SkillsPage';
+import ConnectionsPage from '@/src/components/customize/ConnectionsPage';
 import ScheduledPage from '@/src/components/scheduled/ScheduledPage';
 
-const SIGN_IN_SUBJECT = { resources: 'resources', scheduled: 'scheduled tasks', skills: 'skills' } as const;
+const SIGN_IN_SUBJECT = { resources: 'resources', scheduled: 'scheduled tasks', skills: 'skills', connections: 'connections' } as const;
 
 /** Pages shown in the main area instead of a chat (Resources, Scheduled, Customize). */
 export default function AppPages({ view, user }: { view: Exclude<AppView, { kind: 'chat' }>; user?: User | null }) {
@@ -16,6 +17,7 @@ export default function AppPages({ view, user }: { view: Exclude<AppView, { kind
     );
   }
   if (view.kind === 'skills') return <SkillsPage view={view} />;
+  if (view.kind === 'connections') return <ConnectionsPage />;
   if (view.kind === 'scheduled') return <ScheduledPage view={view} />;
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-[#191919]">

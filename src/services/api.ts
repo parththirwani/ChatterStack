@@ -6,7 +6,9 @@ import type {
   CouncilAnswer,
   CouncilProgress,
   CouncilRanking,
+  MessageToolCallView,
   SSEData,
+  ToolApprovalRequestView,
 } from "../types/chat.types";
 import { apiOptimizer, cacheInvalidators, HttpError } from "./apiOptimizer";
 import type { DailyActivityRow } from "@/src/lib/client/activity";
@@ -27,6 +29,18 @@ export interface ChatStreamHandlers {
   onSavedMessages?: (ids: { userMessageId: string; assistantMessageId?: string }) => void;
   /** This reply used a summary of older turns. */
   onContextCompacted?: (info: ContextCompactionInfo) => void;
+  /** A connection's tool list could not be fetched; its tools were skipped. */
+  onToolDiscoveryFailed?: (failure: { connectionId: string; error: string }) => void;
+  /** The model asked to run a tool; the decision spends `approvalId` once. */
+  onToolApprovalRequest?: (request: ToolApprovalRequestView) => void;
+  /** An approved call is executing. */
+  onToolCallStarted?: (started: { callId: string; name: string }) => void;
+  /** A call finished with a result the model saw. */
+  onToolCallResult?: (call: MessageToolCallView) => void;
+  /** A call ended without a result: denied, failed, cancelled or capped. */
+  onToolCallFailure?: (call: MessageToolCallView) => void;
+  /** A loop limit was reached; the answer came without more tools. */
+  onToolLoopStopped?: (stop: { limit: string; message: string }) => void;
 }
 
 interface UserProfileResponse {
@@ -210,6 +224,24 @@ export class ApiService {
       }
       if (parsed.contextCompacted) {
         handlers.onContextCompacted?.(parsed.contextCompacted);
+      }
+      if (parsed.toolDiscoveryFailed) {
+        handlers.onToolDiscoveryFailed?.(parsed.toolDiscoveryFailed);
+      }
+      if (parsed.toolApprovalRequest) {
+        handlers.onToolApprovalRequest?.(parsed.toolApprovalRequest);
+      }
+      if (parsed.toolCallStarted) {
+        handlers.onToolCallStarted?.(parsed.toolCallStarted);
+      }
+      if (parsed.toolCallResult) {
+        handlers.onToolCallResult?.(parsed.toolCallResult);
+      }
+      if (parsed.toolCallFailure) {
+        handlers.onToolCallFailure?.(parsed.toolCallFailure);
+      }
+      if (parsed.toolLoopStopped) {
+        handlers.onToolLoopStopped?.(parsed.toolLoopStopped);
       }
       if (parsed.reasoning) {
         handlers.onReasoning?.(parsed.reasoning);

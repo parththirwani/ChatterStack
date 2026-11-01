@@ -17,7 +17,9 @@ export type AppView =
   /** `/scheduled[/<task id>]` */
   | { kind: 'scheduled'; taskId?: string }
   /** `/customize/skills[/yours|/discover|/new/upload|/<id>[/contents]]` */
-  | { kind: 'skills'; tab: 'discover' | 'yours' | 'upload' | 'skill'; skillId?: string; section?: 'overview' | 'contents' };
+  | { kind: 'skills'; tab: 'discover' | 'yours' | 'upload' | 'skill'; skillId?: string; section?: 'overview' | 'contents' }
+  /** `/customize/connections` */
+  | { kind: 'connections' };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -31,6 +33,7 @@ export function appPageFromSegments(segments: string[]): Exclude<AppView, { kind
     return UUID.test(second) && third === undefined ? { kind: 'scheduled', taskId: second } : null;
   }
   if (first !== 'customize') return null;
+  if (second === 'connections') return third === undefined ? { kind: 'connections' } : null;
   if (second === undefined) return { kind: 'skills', tab: 'discover' };
   if (second !== 'skills') return null;
   if (third === undefined) return { kind: 'skills', tab: 'discover' };
@@ -67,6 +70,10 @@ export const skillsPath = {
   upload: '/customize/skills/new/upload',
   skill: (id: string, section: 'overview' | 'contents' = 'overview') =>
     `/customize/skills/${id}${section === 'contents' ? '/contents' : ''}`,
+};
+
+export const connectionsPath = {
+  list: '/customize/connections',
 };
 
 export const scheduledPath = {

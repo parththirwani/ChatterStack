@@ -3,10 +3,11 @@ import { ApiService } from '../services/api';
 import { showConversation } from '../lib/navigation';
 import { cacheInvalidators } from '../services/apiOptimizer';
 import { useModelSelection, type SendSettings } from '../context/ModelSelectionContext';
-import type { CompletionAnalytics, CouncilProgress, DocumentAttachment, Message } from '@/src/types/chat.types';
+import type { CompletionAnalytics, CouncilProgress, DocumentAttachment, LiveToolCallView, Message, MessageToolCallView } from '@/src/types/chat.types';
 import type { ChatState, QueuedMessage } from '@/src/store/slices/chat/chatSlice';
 import { useAppStore } from '@/src/store/rootStore';
 import { skillTagsIn } from '@/src/lib/client/skills';
+import { submitToolDecision } from '@/src/lib/client/mcp';
 import { COUNCIL_MIN_MEMBERS, isChatModelId } from '@/src/config/models';
 import type { SkillTag } from '@/src/types/skill.types';
 
@@ -202,10 +203,20 @@ async function sendToConversation(
     }
   };
 
+  // Tool calls are infrequent and each one needs to be visible on its own, so
+  // they update the message right away instead of joining the stream coalescing.
+  const toolNotice = (text: string) =>
+    patchStreamingMessage((msg) => ({ toolNotices: [...(msg.toolNotices ?? []), text] }));
+
+  const setLiveToolCall = (call: LiveToolCallView) =>
+    patchStreamingMessage(() => ({ toolCall: call }));
+
+  const finishToolCall = (call: MessageToolCallView) =>
+    patchStreamingMessage((msg) => ({ toolCalls: [...(msg.toolCalls ?? []), call], toolCall: undefined }));
+
   // Progress handler for council mode. Progress events are infrequent, so
   // they are applied immediately instead of being coalesced.
-  const handleProgress = (progress: CouncilProgress) => {
-    const fresh = useAppStore.getState();
+  const handleProgress = (progress: CouncilProgress) => {    const fresh = useAppStore.getState();
     const chat = fresh.chatState[key] ?? EMPTY_CHAT_STATE;
     const existing = chat.councilProgress?.find(
       (item) => item.stage === progress.stage && item.model === progress.model
@@ -285,6 +296,22 @@ async function sendToConversation(
         },
         onContextCompacted: (info) =>
           patchStreamingMessage(() => ({ contextCompacted: info })),
+        onToolDiscoveryFailed: ({ error }) =>
+          toolNotice(`A connection's tools could not be loaded: ${error}`),
+        onToolApprovalRequest: (request) =>
+          setLiveToolCall({
+            callId: request.callId,
+            name: request.name,
+            state: 'pending',
+            approvalId: request.approvalId,
+            arguments: request.arguments,
+            expiresAt: request.expiresAt,
+          }),
+        onToolCallStarted: ({ callId, name }) =>
+          setLiveToolCall({ callId, name, state: 'running' }),
+        onToolCallResult: finishToolCall,
+        onToolCallFailure: finishToolCall,
+        onToolLoopStopped: ({ message }) => toolNotice(message),
       },
       abortController.signal
     );
@@ -423,6 +450,40 @@ export const useChat = (conversationKey: string) => {
     activeRequests.get(conversationKey)?.abort('stop' satisfies AbortReason);
   }, [conversationKey]);
 
+  /**
+   * Answer the tool call this chat is waiting on. The approval id is single
+   * use, so a second click (or another tab) lands as `lost` instead of a
+   * second decision, and the server's own expiry does too.
+   */
+  const decideToolCall = useCallback(
+    async (decision: 'approved' | 'denied') => {
+      const chat = useAppStore.getState().chatState[conversationKey];
+      const call = chat?.messages.at(-1)?.toolCall;
+      if (!call?.approvalId || call.state !== 'pending') return;
+      const patchCall = (patch: Partial<LiveToolCallView>) => {
+        const fresh = useAppStore.getState();
+        const current = fresh.chatState[conversationKey];
+        const messages = current?.messages.slice() ?? [];
+        const index = messages.length - 1;
+        const last = messages[index];
+        if (!last?.toolCall) return;
+        messages[index] = { ...last, toolCall: { ...last.toolCall, ...patch } };
+        fresh.setChatState(conversationKey, { messages });
+      };
+      patchCall({ state: 'deciding' });
+      try {
+        await submitToolDecision({
+          approvalId: call.approvalId,
+          ...(conversationKey !== 'new' ? { conversationId: conversationKey } : {}),
+          decision,
+        });
+      } catch (failure) {
+        patchCall({ state: 'lost', error: failure instanceof Error ? failure.message : 'That decision did not reach the server.' });
+      }
+    },
+    [conversationKey]
+  );
+
   const sendMessage = useCallback(
     (
       message: string,
@@ -560,5 +621,6 @@ export const useChat = (conversationKey: string) => {
     startNewConversation,
     clearError,
     stopGenerating,
+    decideToolCall,
   };
 };

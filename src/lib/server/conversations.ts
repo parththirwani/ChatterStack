@@ -2,7 +2,7 @@ import { prisma } from '@/src/lib/prisma';
 import { MESSAGE_ORDER } from '@/src/lib/server/message-order';
 import type { Conversation } from '@/src/types/conversation.types';
 import type { Message } from '@/src/types/chat.types';
-import type { AttachmentMeta } from '@/src/types/chat.types';
+import type { AttachmentMeta, MessageToolCallView } from '@/src/types/chat.types';
 import type { SkillTag } from '@/src/types/skill.types';
 import type { Prisma } from '@prisma/client';
 
@@ -12,6 +12,19 @@ import type { Prisma } from '@prisma/client';
  * hydration paths see identical data.
  */
 
+interface MessageToolCallRow {
+  callId: string;
+  name: string;
+  toolId: string;
+  connectionId: string;
+  arguments: string;
+  status: string;
+  approval: string;
+  result: string;
+  truncated: boolean;
+  error: string | null;
+}
+
 interface MessageRow {
   id: string;
   role: string;
@@ -19,6 +32,7 @@ interface MessageRow {
   modelId: string | null;
   attachments?: unknown;
   skills?: unknown;
+  toolCalls?: unknown;
   position?: number | null;
   createdAt: Date;
   updatedAt: Date;
@@ -43,7 +57,31 @@ interface Present {
   skills: Set<string>;
 }
 
+/** One stored MessageToolCall row as the client sees it; rows come ordered. */
+function toView(row: MessageToolCallRow): MessageToolCallView {
+  return {
+    callId: row.callId,
+    name: row.name,
+    toolId: row.toolId,
+    connectionId: row.connectionId,
+    arguments: row.arguments,
+    status: row.status as MessageToolCallView['status'],
+    approval: row.approval as MessageToolCallView['approval'],
+    result: row.result,
+    truncated: row.truncated,
+    ...(row.error ? { error: row.error } : {}),
+  };
+}
+
+/** Rows → views, or undefined when there is nothing to attach (keeps payloads lean). */
+export function toolCallViews(rows: unknown): MessageToolCallView[] | undefined {
+  return Array.isArray(rows) && rows.length
+    ? (rows as MessageToolCallRow[]).map(toView)
+    : undefined;
+}
+
 function serializeMessage(message: MessageRow, present?: Present): Message {
+  const toolCalls = toolCallViews(message.toolCalls);
   return {
     id: message.id,
     role: message.role as Message['role'],
@@ -57,6 +95,7 @@ function serializeMessage(message: MessageRow, present?: Present): Message {
     skills: Array.isArray(message.skills) && message.skills.length
       ? (message.skills as SkillTag[]).map(({ id, name }) => ({ id, name, removed: !!present && !present.skills.has(id) }))
       : undefined,
+    ...(toolCalls ? { toolCalls } : {}),
     // Row order within the chat; absent on messages saved before positions.
     position: message.position ?? undefined,
     createdAt: message.createdAt.toISOString(),
@@ -110,7 +149,7 @@ export async function getConversation(
 ): Promise<Conversation | null> {
   const conversation = await db.conversation.findFirst({
     where: { id: conversationId, userId },
-    include: { messages: { orderBy: MESSAGE_ORDER } },
+    include: { messages: { orderBy: MESSAGE_ORDER, include: { toolCalls: { orderBy: { position: 'asc' } } } } },
   });
   if (!conversation) return null;
   const ids = conversation.messages.flatMap((message) =>
